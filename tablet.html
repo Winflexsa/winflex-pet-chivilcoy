@@ -375,15 +375,36 @@ let DATA = null;
 let SESSION = {
   loggedIn: false,
   // Operarios separados para cada planilla (pueden ser distintos)
-  operarioRegistros: null,  // quien carga la planilla WEC001
-  operarioBobinas: null,    // quien carga la planilla Producción-Bobinas
-  // Para compat (algunas funciones lo leen)
+  operarioRegistros: null,
+  operarioBobinas: null,
   operarioActual: null,
   turno: null,
   inicio: null,
   opSeleccionada: null
 };
 let pinBuffer = '';
+
+// IDs de items borrados localmente — se persisten en localStorage
+// para sobrevivir recargas de la tablet y evitar que un GET fresco "resucite"
+// items que el operario borró antes de que sincronizara.
+const DELETED_KEY = 'winflex_pet_tablet_deleted';
+function loadDeletedIds() {
+  try {
+    const raw = localStorage.getItem(DELETED_KEY);
+    if (!raw) return { bobinas: new Set(), registros: new Set() };
+    const obj = JSON.parse(raw);
+    return { bobinas: new Set(obj.bobinas || []), registros: new Set(obj.registros || []) };
+  } catch (e) { return { bobinas: new Set(), registros: new Set() }; }
+}
+function saveDeletedIds(d) {
+  try {
+    localStorage.setItem(DELETED_KEY, JSON.stringify({
+      bobinas: [...d.bobinas],
+      registros: [...d.registros]
+    }));
+  } catch (e) {}
+}
+let DELETED = loadDeletedIds();
 
 // ============================================================
 // LOGIN (con PIN general de fábrica)
@@ -1100,6 +1121,8 @@ async function deleteBobina(id) {
   if (!confirm('¿Eliminar esta bobina?')) return;
   const b = DATA.producciones.find(x => x.id === id);
   if (!b) return;
+  DELETED.bobinas.add(id);
+  saveDeletedIds(DELETED);
   DATA.producciones = DATA.producciones.filter(x => x.id !== id);
   recalcKgReales(b.pedidoId);
   await saveData();
@@ -1254,6 +1277,8 @@ async function saveRegistro(id, isEdit) {
 
 async function deleteRegistro(id) {
   if (!confirm('¿Eliminar este registro horario?')) return;
+  DELETED.registros.add(id);
+  saveDeletedIds(DELETED);
   DATA.registrosProduccion = (DATA.registrosProduccion || []).filter(x => x.id !== id);
   await saveData();
   renderOpDetail();
@@ -1294,6 +1319,40 @@ async function loadData() {
   if (!creds) openCredentialsTablet(true);
 }
 
+// ============================================================
+// MERGE INTELIGENTE — para soportar 2 tablets editando a la vez
+// La estrategia: antes de cada PUT, hacemos GET fresco del bin remoto
+// y combinamos arrays por ID, manteniendo las cargas de la otra tablet.
+// - Item solo en remoto (lo cargó otra tablet) → se mantiene
+// - Item solo en local (lo cargué yo) → se agrega
+// - Item en ambos → gana el de timestamp más reciente
+// - Item borrado localmente (en DELETED) → se excluye del merge
+// ============================================================
+function mergeArrayPorId(remoteArr, localArr, deletedSet) {
+  const out = new Map();
+  // Empezar con todo lo remoto
+  (remoteArr || []).forEach(item => {
+    if (item && item.id && !(deletedSet && deletedSet.has(item.id))) {
+      out.set(item.id, item);
+    }
+  });
+  // Pisar/agregar lo local que sea más reciente
+  (localArr || []).forEach(item => {
+    if (!item || !item.id) return;
+    if (deletedSet && deletedSet.has(item.id)) return;
+    const existing = out.get(item.id);
+    if (!existing) {
+      out.set(item.id, item);
+    } else {
+      const tsR = existing.timestamp || '';
+      const tsL = item.timestamp || '';
+      out.set(item.id, tsL >= tsR ? item : existing);
+    }
+  });
+  // Devolver ordenado por timestamp ascendente
+  return [...out.values()].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+}
+
 async function saveData() {
   DATA.lastUpdate = new Date().toISOString();
   localStorage.setItem(LS_KEY, JSON.stringify(DATA));
@@ -1301,46 +1360,87 @@ async function saveData() {
   const creds = getCredentials();
   if (!creds) { setSync('Sin credenciales', 'err'); return; }
   try {
-    // GET first to avoid overwriting concurrent changes
+    // 1) GET fresco del bin remoto
     const fresh = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, {
       headers: { 'X-Master-Key': creds.masterKey }
     });
-    if (fresh.ok) {
-      const j = await fresh.json();
-      const remoteData = j.record;
-      const merged = remoteData;
-      merged.producciones = DATA.producciones;
-      merged.registrosProduccion = DATA.registrosProduccion || [];
-      const pedidosTocados = new Set((DATA.producciones || []).map(b => b.pedidoId));
-      pedidosTocados.forEach(pid => {
-        const local = DATA.pedidos.find(p => p.id === pid);
-        const remote = merged.pedidos.find(p => p.id === pid);
-        if (local && remote) {
-          remote.kgReales = local.kgReales;
-          if (local.estadoWorkflow === 'En producción' && (remote.estadoWorkflow === 'OP' || remote.estadoWorkflow === 'Confirmada')) {
-            remote.estadoWorkflow = 'En producción';
-          }
-        }
-      });
-      merged.lastUpdate = new Date().toISOString();
-      const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type':'application/json', 'X-Master-Key': creds.masterKey },
-        body: JSON.stringify(merged)
-      });
-      if (r.ok) {
-        DATA = merged;
-        localStorage.setItem(LS_KEY, JSON.stringify(DATA));
-        setSync('Sincronizado', 'ok');
-      } else {
-        setSync('Error sync', 'err');
+    if (!fresh.ok) { setSync('Error fetch fresh', 'err'); return; }
+    const j = await fresh.json();
+    const remote = j.record;
+
+    // 2) MERGE INTELIGENTE
+    const merged = JSON.parse(JSON.stringify(remote));
+
+    // 2a) Producciones (bobinas) — merge por ID, respetando borrados locales
+    merged.producciones = mergeArrayPorId(
+      remote.producciones || [],
+      DATA.producciones || [],
+      DELETED.bobinas
+    );
+
+    // 2b) Registros de producción — igual
+    merged.registrosProduccion = mergeArrayPorId(
+      remote.registrosProduccion || [],
+      DATA.registrosProduccion || [],
+      DELETED.registros
+    );
+
+    // 2c) Recalcular kgReales de los pedidos afectados a partir del array MERGED
+    const pedidosAfectados = new Set([
+      ...(remote.producciones || []).map(b => b.pedidoId),
+      ...(DATA.producciones || []).map(b => b.pedidoId)
+    ]);
+    pedidosAfectados.forEach(pid => {
+      const p = (merged.pedidos || []).find(x => x.id === pid);
+      if (!p) return;
+      const total = merged.producciones
+        .filter(b => b.pedidoId === pid)
+        .reduce((s, b) => s + (+b.kg || 0), 0);
+      p.kgReales = Math.round(total * 100) / 100;
+      // Si mi local ya marcó "En producción" pero el remoto está en OP, propagar
+      const localP = (DATA.pedidos || []).find(x => x.id === pid);
+      if (localP && localP.estadoWorkflow === 'En producción' &&
+          (p.estadoWorkflow === 'OP' || p.estadoWorkflow === 'Confirmada')) {
+        p.estadoWorkflow = 'En producción';
       }
-    } else {
-      setSync('Error fetch fresh', 'err');
-    }
+    });
+
+    merged.lastUpdate = new Date().toISOString();
+
+    // 3) PUT del merged al bin
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type':'application/json', 'X-Master-Key': creds.masterKey },
+      body: JSON.stringify(merged)
+    });
+    if (!r.ok) { setSync('Error sync', 'err'); return; }
+
+    // 4) Actualizar local con el merged (ahora veo lo que cargó la otra tablet)
+    DATA = merged;
+    localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+    setSync('Sincronizado', 'ok');
   } catch (e) {
+    console.error('saveData error', e);
     setSync('Sin conexión', 'err');
   }
+}
+
+// Limpieza periódica de DELETED viejos: si una bobina/registro ya no existe en
+// el bin remoto, no hace falta seguir trackeandola como borrada.
+function limpiarDeletedAntiguos() {
+  if (!DATA) return;
+  const remotosIds = new Set([
+    ...(DATA.producciones || []).map(b => b.id),
+    ...(DATA.registrosProduccion || []).map(r => r.id)
+  ]);
+  let changed = false;
+  for (const id of [...DELETED.bobinas]) {
+    if (!remotosIds.has(id)) { DELETED.bobinas.delete(id); changed = true; }
+  }
+  for (const id of [...DELETED.registros]) {
+    if (!remotosIds.has(id)) { DELETED.registros.delete(id); changed = true; }
+  }
+  if (changed) saveDeletedIds(DELETED);
 }
 
 // Modal de credenciales para la tablet
@@ -1378,6 +1478,7 @@ async function saveCredsTablet() {
 
 async function reloadData() {
   await loadData();
+  limpiarDeletedAntiguos();
   if (!document.getElementById('screenOpDetail').classList.contains('hidden')) {
     renderOpDetail();
   } else {
@@ -1385,6 +1486,42 @@ async function reloadData() {
   }
   toast('Recargado', 'success');
 }
+
+// Auto-refresh silencioso cada 30 segundos para ver lo que cargó la otra tablet
+async function silentReload() {
+  if (!SESSION.loggedIn) return;
+  // No refrescar si hay un modal abierto (no interrumpir al usuario)
+  if (document.getElementById('modalContainer').innerHTML.trim() !== '') return;
+  try {
+    const creds = getCredentials();
+    if (!creds) return;
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, {
+      headers: { 'X-Master-Key': creds.masterKey }
+    });
+    if (!r.ok) return;
+    const j = await r.json();
+    // Hacer merge inteligente con lo remoto (por si tengo cargas locales aún sin sync)
+    const remote = j.record;
+    const merged = JSON.parse(JSON.stringify(remote));
+    merged.producciones = mergeArrayPorId(
+      remote.producciones || [], DATA.producciones || [], DELETED.bobinas
+    );
+    merged.registrosProduccion = mergeArrayPorId(
+      remote.registrosProduccion || [], DATA.registrosProduccion || [], DELETED.registros
+    );
+    DATA = merged;
+    localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+    // Re-renderizar la vista actual sin tocar el modal
+    if (!document.getElementById('screenOpDetail').classList.contains('hidden')) {
+      renderOpDetail();
+    } else if (!document.getElementById('screenOps').classList.contains('hidden')) {
+      renderOps();
+    }
+    setSync('Sincronizado', 'ok');
+  } catch (e) { /* silent */ }
+}
+// Empezar el auto-refresh al cargar
+setInterval(silentReload, 30000);
 
 function setSync(text, cls) {
   ['syncStatus','syncStatusOps','syncStatusDetail'].forEach(id => {
