@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Winflex PET — Tablet operarios</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 :root {
@@ -269,15 +270,15 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
 <div id="screenTurno" class="screen hidden">
   <header>
     <div>
-      <div class="titulo" id="turnoOpName">—</div>
-      <div class="info">Bienvenido a la planta</div>
+      <div class="titulo">🏭 Winflex PET — Chivilcoy</div>
+      <div class="info">Bienvenido</div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync">Listo</span>
       <button class="btn-sec" style="padding:8px 14px;font-size:13px;border-radius:8px" onclick="logout()">Salir</button>
     </div>
   </header>
-  <h2 class="section-title">¿En qué turno trabajás?</h2>
+  <h2 class="section-title">¿En qué turno arrancamos?</h2>
   <div class="turno-grid">
     <button class="turno-btn dia" onclick="selectTurno('dia')">
       <span class="icon">☀️</span>
@@ -294,7 +295,7 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
 <div id="screenOps" class="screen hidden">
   <header>
     <div>
-      <div class="titulo" id="opsOpName">—</div>
+      <div class="titulo">OPs activas</div>
       <div class="info"><span id="opsTurno">—</span> · <span id="opsHora">—</span></div>
     </div>
     <div class="right">
@@ -318,6 +319,13 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
     </div>
   </header>
   <div id="opDetailHeader"></div>
+  <div style="margin:10px 0;padding:10px 14px;background:white;border-radius:10px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+    <div>
+      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px">Operario actual</div>
+      <div style="font-size:16px;font-weight:600;color:#16a34a" id="operarioActualLbl">— (se pide al cargar)</div>
+    </div>
+    <button class="btn-sec" style="padding:8px 14px;font-size:13px;border-radius:8px" onclick="cambiarOperario()">Cambiar</button>
+  </div>
   <div class="btn-row" style="margin-top:6px">
     <button class="btn-big btn-success" onclick="openBobinaModal()">🎯<br>Cargar bobina<br><small style="font-weight:400;opacity:0.85">final máquina</small></button>
     <button class="btn-big btn-pri" onclick="openRegistroModal()">📊<br>Registro horario<br><small style="font-weight:400;opacity:0.85">control proceso</small></button>
@@ -358,15 +366,16 @@ const LS_KEY = 'winflex_pet_tablet_v1';
 // ============================================================
 let DATA = null;
 let SESSION = {
-  operario: null,
+  loggedIn: false,
+  operarioActual: null,  // operario seleccionado en este momento (puede cambiar)
   turno: null,
   inicio: null,
-  opSeleccionada: null  // id del pedido
+  opSeleccionada: null
 };
 let pinBuffer = '';
 
 // ============================================================
-// LOGIN
+// LOGIN (con PIN general de fábrica)
 // ============================================================
 function kp(n) {
   if (pinBuffer.length >= 6) return;
@@ -384,14 +393,13 @@ function refreshPin() {
 async function tryLogin() {
   if (!pinBuffer) return;
   if (!DATA) { await loadData(); }
-  const ops = DATA.catalogos.operarios || [];
-  const op = ops.find(o => o.pin === pinBuffer);
-  if (op) {
-    SESSION.operario = op;
+  // PIN general de fábrica (configurable en config, default 1234)
+  const pinFabrica = (DATA.config && DATA.config.pinFabrica) || '1234';
+  if (pinBuffer === pinFabrica) {
+    SESSION.loggedIn = true;
     pinBuffer = '';
     refreshPin();
     showScreen('Turno');
-    document.getElementById('turnoOpName').textContent = op.nombre;
   } else {
     document.getElementById('loginErr').textContent = 'PIN incorrecto';
     pinBuffer = '';
@@ -399,7 +407,7 @@ async function tryLogin() {
   }
 }
 function logout() {
-  SESSION = { operario: null, turno: null, inicio: null, opSeleccionada: null };
+  SESSION = { loggedIn: false, operarioActual: null, turno: null, inicio: null, opSeleccionada: null };
   showScreen('Login');
 }
 
@@ -417,15 +425,136 @@ function selectTurno(t) {
   SESSION.turno = t;
   SESSION.inicio = new Date().toISOString();
   showScreen('Ops');
-  document.getElementById('opsOpName').textContent = SESSION.operario.nombre;
   document.getElementById('opsTurno').textContent = 'Turno ' + (t==='dia'?'DÍA ☀️':'NOCHE 🌙');
   document.getElementById('opsHora').textContent = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
   renderOps();
 }
 
 function cerrarTurno() {
-  if (!confirm('¿Cerrar el turno? Vas a volver a la pantalla de login.')) return;
-  logout();
+  // Compilar lo que se cargó en este turno
+  const today = new Date().toISOString().slice(0,10);
+  const bobinas = (DATA.producciones || []).filter(b =>
+    b.turno === SESSION.turno && b.fecha === today
+  );
+  const registros = (DATA.registrosProduccion || []).filter(r =>
+    r.turno === SESSION.turno && r.fecha === today
+  );
+  const totalKg = bobinas.reduce((s, b) => s + (+b.kg || 0), 0);
+  const totalBobinas = bobinas.length;
+  const totalRegistros = registros.length;
+
+  const msg = `¿Cerrar el turno?\n\nResumen:\n• ${totalRegistros} registros horarios\n• ${totalBobinas} bobinas (${fmt(totalKg)} kg)\n\nSe genera un PDF del turno para descargar y enviar a Agustín.`;
+  if (!confirm(msg)) return;
+
+  if (totalRegistros === 0 && totalBobinas === 0) {
+    if (!confirm('No se cargó nada en este turno. ¿Cerrar igual sin PDF?')) return;
+    logout();
+    return;
+  }
+
+  try {
+    generarPDFTurno(registros, bobinas, totalKg);
+    toast('PDF generado, descargá y mandalo a Agustín', 'success');
+    setTimeout(() => { logout(); }, 1500);
+  } catch (e) {
+    console.error('PDF error', e);
+    alert('Error generando PDF: ' + e.message);
+  }
+}
+
+function generarPDFTurno(registros, bobinas, totalKg) {
+  if (!window.jspdf) { alert('jsPDF no cargado'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, H = 297, M = 10;
+  const C_PRI = [22, 163, 74], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
+
+  const setFill = (rgb) => doc.setFillColor(...rgb);
+  const setText = (rgb) => doc.setTextColor(...rgb);
+  const txt = (s, x, y, opts = {}) => {
+    doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+    doc.setFontSize(opts.size || 9);
+    setText(opts.color || C_DARK);
+    doc.text(String(s ?? '—'), x, y, { align: opts.align || 'left' });
+  };
+
+  // Header
+  setFill(C_PRI);
+  doc.rect(0, 0, W, 26, 'F');
+  txt('WINFLEX PET — CIERRE DE TURNO', M, 12, { bold: true, size: 16, color: [255,255,255] });
+  txt(`Turno ${SESSION.turno.toUpperCase()} · ${new Date().toLocaleDateString('es-AR')} · Planta Chivilcoy`, M, 20, { size: 10, color: [220, 252, 231] });
+  txt(`Generado ${new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}`, W - M, 20, { size: 9, color: [220, 252, 231], align: 'right' });
+
+  let y = 34;
+  // Resumen
+  setFill(C_LIGHT);
+  doc.roundedRect(M, y, W - 2*M, 22, 2, 2, 'F');
+  txt('RESUMEN', M + 3, y + 6, { bold: true, size: 10, color: C_DARK });
+  const colWR = (W - 2*M) / 4;
+  txt('TOTAL KG', M + 4, y + 13, { size: 8, color: C_GRAY });
+  txt(fmt(totalKg) + ' kg', M + 4, y + 19, { bold: true, size: 12, color: C_PRI });
+  txt('BOBINAS', M + colWR + 4, y + 13, { size: 8, color: C_GRAY });
+  txt(String(bobinas.length), M + colWR + 4, y + 19, { bold: true, size: 12, color: C_PRI });
+  txt('REGISTROS', M + 2*colWR + 4, y + 13, { size: 8, color: C_GRAY });
+  txt(String(registros.length), M + 2*colWR + 4, y + 19, { bold: true, size: 12, color: C_PRI });
+  txt('TURNO', M + 3*colWR + 4, y + 13, { size: 8, color: C_GRAY });
+  txt(SESSION.turno === 'dia' ? 'DÍA ☀' : 'NOCHE 🌙', M + 3*colWR + 4, y + 19, { bold: true, size: 12 });
+  y += 28;
+
+  // Registros horarios
+  if (registros.length > 0) {
+    setFill(C_PRI);
+    doc.rect(M, y, W - 2*M, 7, 'F');
+    txt('REGISTRO DE PRODUCCIÓN (WEC001)', M + 3, y + 5, { bold: true, size: 10, color: [255,255,255] });
+    y += 8;
+    // Header table
+    setFill(C_LIGHT);
+    doc.rect(M, y, W - 2*M, 6, 'F');
+    const cols = ['Hora','Bob','Partida','T°','Kg/h','Vel','SP Esp','SP Av','Torq','P1','P2','P3','Vacc','Gap','Sil','Eizq','Ecen','Eder','Op.'];
+    const colXs = [M+2, M+12, M+20, M+38, M+45, M+53, M+60, M+68, M+76, M+83, M+90, M+97, M+104, M+112, M+119, M+126, M+134, M+142, M+150];
+    cols.forEach((c, i) => txt(c, colXs[i], y + 4, { bold: true, size: 7, color: C_DARK }));
+    y += 6;
+    [...registros].sort((a,b) => (a.hora||'').localeCompare(b.hora||'')).forEach((r, i) => {
+      if (y > H - 20) { doc.addPage(); y = M; }
+      if (i % 2 === 0) { setFill([249, 250, 251]); doc.rect(M, y, W - 2*M, 5, 'F'); }
+      const vals = [r.hora||'', r.nroBobina||'', r.partida||'', r.tempEntrada||'', r.kgH||'', r.velMin||'', r.spEspesor||'', r.spAvEspesor||'', r.torqueM||'', r.p1||'', r.p2||'', r.p3||'', r.vacc||'', r.gap||'', r.sil||'', r.eIzq||'', r.eCen||'', r.eDer||'', (r.operario||'').substring(0,8)];
+      vals.forEach((v, j) => txt(String(v||'-'), colXs[j], y + 4, { size: 7 }));
+      y += 5;
+    });
+    y += 4;
+  }
+
+  // Bobinas producidas
+  if (bobinas.length > 0) {
+    if (y > H - 50) { doc.addPage(); y = M; }
+    setFill(C_PRI);
+    doc.rect(M, y, W - 2*M, 7, 'F');
+    txt('PRODUCCIÓN - BOBINAS', M + 3, y + 5, { bold: true, size: 10, color: [255,255,255] });
+    y += 8;
+    setFill(C_LIGHT);
+    doc.rect(M, y, W - 2*M, 6, 'F');
+    const cols2 = ['Hora','OP','Partida','Bob','Pallet','Ancho','Esp','Kg','Mts','Mezcla real','Obs','Op.'];
+    const colXs2 = [M+2, M+12, M+28, M+50, M+58, M+68, M+78, M+85, M+95, M+103, M+135, M+165];
+    cols2.forEach((c, i) => txt(c, colXs2[i], y + 4, { bold: true, size: 7, color: C_DARK }));
+    y += 6;
+    [...bobinas].sort((a,b) => (a.hora||'').localeCompare(b.hora||'')).forEach((b, i) => {
+      if (y > H - 20) { doc.addPage(); y = M; }
+      if (i % 2 === 0) { setFill([249, 250, 251]); doc.rect(M, y, W - 2*M, 5, 'F'); }
+      const ped = (DATA.pedidos || []).find(x => x.id === b.pedidoId);
+      const nopName = ped ? ped.nroOP : '-';
+      const vals = [b.hora||'-', nopName, b.partida||'-', b.nroBobina||'-', b.nroPallet||'-', b.ancho||'-', b.espesor||'-', fmt(b.kg||0), b.metros||'-', (b.mezclaReal||'').substring(0,30), (b.observaciones||'').substring(0,20), (b.operario||'').substring(0,8)];
+      vals.forEach((v, j) => txt(String(v||'-'), colXs2[j], y + 4, { size: 7 }));
+      y += 5;
+    });
+  }
+
+  // Footer
+  doc.setFontSize(7);
+  setText(C_GRAY);
+  doc.text(`Cierre turno · Winflex S.A. Planta Chivilcoy · ${new Date().toLocaleString('es-AR')}`, M, H - 6);
+
+  const fname = `Turno_${SESSION.turno}_${today.replace(/-/g,'')}.pdf`;
+  doc.save(fname);
 }
 
 // ============================================================
@@ -503,17 +632,15 @@ function renderOpDetail() {
   const pct = kgPed > 0 ? Math.round(kgReal/kgPed*100) : 0;
   const rec = (DATA.catalogos.recetas || []).find(r => r.codigo === p.recetaCodigo);
 
-  // Bobinas cargadas POR ESTE OPERARIO EN ESTE TURNO para este pedido
+  // Bobinas cargadas EN ESTE TURNO para este pedido (de cualquier operario, varias personas usan la tablet)
   const misBobinas = (DATA.producciones || []).filter(b =>
     b.pedidoId === p.id &&
-    b.operario === SESSION.operario.nombre &&
     b.turno === SESSION.turno &&
     b.fecha === new Date().toISOString().slice(0,10)
   );
-  // Registros cargados POR ESTE OPERARIO EN ESTE TURNO para este pedido
+  // Registros cargados EN ESTE TURNO para este pedido
   const misRegistros = (DATA.registrosProduccion || []).filter(r =>
     r.pedidoId === p.id &&
-    r.operario === SESSION.operario.nombre &&
     r.turno === SESSION.turno &&
     r.fecha === new Date().toISOString().slice(0,10)
   );
@@ -557,7 +684,7 @@ function renderOpDetail() {
         return `<div class="bobina-item">
           <div class="bobina-info">
             <div class="bobina-nro">🎯 Bobina #${b.nroBobina} · ${fmt(b.kg)} kg</div>
-            <div class="bobina-detail">Pallet ${b.nroPallet} · ${t}${b.observaciones?' · '+b.observaciones:''}</div>
+            <div class="bobina-detail">Pallet ${b.nroPallet} · ${t} · ${b.operario||'-'}${b.observaciones?' · '+b.observaciones:''}</div>
           </div>
           <div class="bobina-actions">
             <button class="bobina-btn" onclick="openBobinaModal('${b.id}')">✏️</button>
@@ -569,7 +696,7 @@ function renderOpDetail() {
         return `<div class="bobina-item" style="background:#f0fdf4;border-color:#86efac">
           <div class="bobina-info">
             <div class="bobina-nro" style="color:#15803d">📊 Registro ${r.hora||'--:--'} · Bob #${r.nroBobina||'-'}</div>
-            <div class="bobina-detail">Temp ${r.tempEntrada||'-'}° · ${r.kgH||'-'} kg/h · ${r.velMin||'-'} m/min · Partida ${r.partida||'-'}</div>
+            <div class="bobina-detail">Temp ${r.tempEntrada||'-'}° · ${r.kgH||'-'} kg/h · ${r.velMin||'-'} m/min · ${r.operario||'-'}</div>
           </div>
           <div class="bobina-actions">
             <button class="bobina-btn" onclick="openRegistroModal('${r.id}')">✏️</button>
@@ -579,12 +706,88 @@ function renderOpDetail() {
       }
     }).join('');
   }
+  actualizarOperarioLabel();
 }
+
+function cambiarOperario() {
+  SESSION.operarioActual = null;
+  promptOperarioPin(() => actualizarOperarioLabel());
+}
+function actualizarOperarioLabel() {
+  const el = document.getElementById('operarioActualLbl');
+  if (el) el.textContent = SESSION.operarioActual ? SESSION.operarioActual.nombre : '— (se pide al cargar)';
+}
+
+// ============================================================
+// PIN OPERARIO — pedido antes de cargar bobinas/registros
+// ============================================================
+function ensureOperarioPin(callback) {
+  // Si ya hay un operario actual seleccionado en esta sesión, usarlo
+  if (SESSION.operarioActual) { callback(); return; }
+  // Si no, mostrar modal para pedir PIN
+  promptOperarioPin(callback);
+}
+
+function promptOperarioPin(callback) {
+  const ops = (DATA.catalogos.operarios || []);
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg">
+      <div class="modal">
+        <h3>👤 PIN del operario <button class="close" onclick="closeModal()">✕</button></h3>
+        <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Ingresá tu PIN para registrar tu nombre en esta carga.</p>
+        <div class="field">
+          <input type="password" inputmode="numeric" id="opPinInput" maxlength="6" autocomplete="off" autofocus
+            style="text-align:center;font-size:32px;letter-spacing:8px;padding:14px"
+            oninput="document.getElementById('opPinErr').textContent=''">
+        </div>
+        <div id="opPinErr" style="color:#dc2626;font-size:13px;text-align:center;min-height:18px;margin-bottom:10px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+          <button class="btn-big btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn-big btn-pri" onclick="checkOperarioPin()">Confirmar</button>
+        </div>
+        ${SESSION.operarioActual ? `<button class="btn-ghost" style="display:block;margin:10px auto 0;font-size:12px;color:#6b7280" onclick="SESSION.operarioActual=null;closeModal();promptOperarioPin(window._operarioPinCallback)">Cambiar operario</button>` : ''}
+      </div>
+    </div>
+  `;
+  window._operarioPinCallback = callback;
+  setTimeout(() => { try { document.getElementById('opPinInput').focus(); } catch(e){} }, 100);
+}
+
+function checkOperarioPin() {
+  const pin = document.getElementById('opPinInput').value.trim();
+  if (!pin) return;
+  const op = (DATA.catalogos.operarios || []).find(o => o.pin === pin);
+  if (!op) {
+    document.getElementById('opPinErr').textContent = 'PIN incorrecto';
+    document.getElementById('opPinInput').value = '';
+    return;
+  }
+  SESSION.operarioActual = op;
+  closeModal();
+  toast(`👤 ${op.nombre}`, 'success');
+  actualizarOperarioLabel();
+  if (window._operarioPinCallback) {
+    const cb = window._operarioPinCallback;
+    window._operarioPinCallback = null;
+    setTimeout(cb, 100);
+  }
+}
+
+// Hook: antes de abrir bobina o registro, pedir PIN
+const _origOpenBobinaModal = null; // se setea abajo
 
 // ============================================================
 // MODAL CARGAR BOBINA
 // ============================================================
 function openBobinaModal(bobinaId) {
+  if (!bobinaId && !SESSION.operarioActual) {
+    ensureOperarioPin(() => openBobinaModal(bobinaId));
+    return;
+  }
+  _openBobinaModalImpl(bobinaId);
+}
+
+function _openBobinaModalImpl(bobinaId) {
   const p = DATA.pedidos.find(x => x.id === SESSION.opSeleccionada);
   if (!p) return;
 
@@ -595,16 +798,26 @@ function openBobinaModal(bobinaId) {
     const todas = (DATA.producciones || []).filter(x => x.pedidoId === p.id);
     const lastNro = todas.reduce((m, x) => Math.max(m, +x.nroBobina || 0), 0);
     const lastPallet = todas.reduce((m, x) => Math.max(m, +x.nroPallet || 0), 0);
+    // Calcular metros sugeridos
+    const densidad = (DATA.config && DATA.config.densidadPET) || 1330;
+    const kgDefault = p.kgPorBobina || 0;
+    const metrosDef = (kgDefault && p.ancho && p.espesor) ?
+      Math.round(kgDefault / (densidad * (p.ancho/1000) * (p.espesor/1_000_000))) : 0;
     b = {
       id: 'BOB-' + Date.now(),
       pedidoId: p.id,
-      operario: SESSION.operario.nombre,
+      operario: SESSION.operarioActual ? SESSION.operarioActual.nombre : "",
       turno: SESSION.turno,
       fecha: new Date().toISOString().slice(0,10),
       timestamp: new Date().toISOString(),
+      hora: new Date().toTimeString().slice(0,5),
       nroBobina: lastNro + 1,
       nroPallet: lastPallet || 1,
+      partida: p.op || '',
+      ancho: p.ancho || 0,
+      espesor: p.espesor || 0,
       kg: p.kgPorBobina || 0,
+      metros: metrosDef,
       mezclaReal: p.mezclaTeoricaTexto || '',
       siliconaPct: p.siliconaGramosM2 || 0,
       observaciones: ''
@@ -612,29 +825,44 @@ function openBobinaModal(bobinaId) {
   }
 
   document.getElementById('modalContainer').innerHTML = `
-    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal-bg" >
       <div class="modal">
         <h3>${isEdit ? 'Editar bobina' : 'Nueva bobina'} <button class="close" onclick="closeModal()">✕</button></h3>
-        <div class="field-row">
+        <p style="font-size:12px;color:#15803d;background:#f0fdf4;padding:8px 12px;border-radius:6px;margin-bottom:14px">🎯 Operario: <b>${SESSION.operarioActual ? SESSION.operarioActual.nombre : '—'}</b></p>
+        <div class="field-row-3">
+          <div class="field"><label>Hora</label><input type="time" id="b_hora" value="${b.hora||new Date().toTimeString().slice(0,5)}"></div>
           <div class="field"><label>N° Bobina</label><input type="number" id="b_nro" value="${b.nroBobina}" min="1"></div>
           <div class="field"><label>N° Pallet</label><input type="number" id="b_pallet" value="${b.nroPallet}" min="1"></div>
         </div>
         <div class="field">
-          <label>Kg producidos *</label>
-          <input type="number" step="0.1" id="b_kg" value="${b.kg||''}" inputmode="decimal" placeholder="200">
-          <div class="hint">Sugerido: ${p.kgPorBobina||0} kg/bobina</div>
+          <label>Partida (auto-completa de la OP)</label>
+          <input type="text" id="b_partida" value="${b.partida||p.op||''}" placeholder="Ej: 10726S-1V5">
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Ancho (mm)</label><input type="number" id="b_ancho" value="${b.ancho||p.ancho||0}" inputmode="numeric"></div>
+          <div class="field"><label>Espesor (mic)</label><input type="number" id="b_espesor" value="${b.espesor||p.espesor||0}" inputmode="numeric"></div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Kg *</label>
+            <input type="number" step="0.1" id="b_kg" value="${b.kg||''}" inputmode="decimal" placeholder="200" oninput="recalcMetros()">
+            <div class="hint">Sugerido: ${p.kgPorBobina||0} kg</div>
+          </div>
+          <div class="field">
+            <label>Metros</label>
+            <input type="number" id="b_metros" value="${b.metros||0}" inputmode="numeric">
+            <div class="hint">Auto-calc desde kg/dimensiones</div>
+          </div>
         </div>
         <div class="field">
           <label>Mezcla real</label>
           <textarea id="b_mezcla" rows="2" placeholder="Ej: 50% Pref. Cristal / 50% Scrap">${b.mezclaReal||''}</textarea>
-          <div class="hint">Default (teórica): ${p.mezclaTeoricaTexto||'-'}</div>
+          <div class="hint">Teórica: ${p.mezclaTeoricaTexto||'-'}</div>
         </div>
-        <div class="field-row">
-          <div class="field">
-            <label>Silicona %</label>
-            <input type="number" step="0.001" id="b_silicona" value="${b.siliconaPct||0}" inputmode="decimal">
-            <div class="hint">Teórica: ${p.siliconaGramosM2||0} g/m²</div>
-          </div>
+        <div class="field">
+          <label>Silicona %</label>
+          <input type="number" step="0.001" id="b_silicona" value="${b.siliconaPct||0}" inputmode="decimal">
+          <div class="hint">Teórica: ${p.siliconaGramosM2||0} g/m²</div>
         </div>
         <div class="field">
           <label>Observaciones</label>
@@ -647,8 +875,18 @@ function openBobinaModal(bobinaId) {
       </div>
     </div>
   `;
-  // Focus en kg
   setTimeout(() => { try { document.getElementById('b_kg').focus(); document.getElementById('b_kg').select(); } catch(e){} }, 100);
+}
+
+// Recalcula metros cuando cambia kg en el modal bobina
+function recalcMetros() {
+  const kg = +document.getElementById('b_kg').value || 0;
+  const ancho = +document.getElementById('b_ancho').value || 0;
+  const espesor = +document.getElementById('b_espesor').value || 0;
+  if (!kg || !ancho || !espesor) return;
+  const densidad = (DATA.config && DATA.config.densidadPET) || 1330;
+  const metros = Math.round(kg / (densidad * (ancho/1000) * (espesor/1_000_000)));
+  document.getElementById('b_metros').value = metros;
 }
 
 function closeModal() {
@@ -664,13 +902,18 @@ async function saveBobina(id, isEdit) {
   const data = {
     id,
     pedidoId: p.id,
-    operario: SESSION.operario.nombre,
+    operario: (SESSION.operarioActual ? SESSION.operarioActual.nombre : ""),
     turno: SESSION.turno,
     fecha: new Date().toISOString().slice(0,10),
     timestamp: isEdit ? (DATA.producciones.find(x => x.id === id)?.timestamp || new Date().toISOString()) : new Date().toISOString(),
+    hora: document.getElementById('b_hora').value,
     nroBobina: +document.getElementById('b_nro').value || 0,
     nroPallet: +document.getElementById('b_pallet').value || 1,
+    partida: document.getElementById('b_partida').value.trim(),
+    ancho: +document.getElementById('b_ancho').value || 0,
+    espesor: +document.getElementById('b_espesor').value || 0,
     kg: kg,
+    metros: +document.getElementById('b_metros').value || 0,
     mezclaReal: document.getElementById('b_mezcla').value.trim(),
     siliconaPct: +document.getElementById('b_silicona').value || 0,
     observaciones: document.getElementById('b_obs').value.trim()
@@ -716,6 +959,14 @@ function recalcKgReales(pedidoId) {
 // Cargar parámetros de control de proceso cada hora
 // ============================================================
 function openRegistroModal(registroId) {
+  if (!registroId && !SESSION.operarioActual) {
+    ensureOperarioPin(() => openRegistroModal(registroId));
+    return;
+  }
+  _openRegistroModalImpl(registroId);
+}
+
+function _openRegistroModalImpl(registroId) {
   const p = DATA.pedidos.find(x => x.id === SESSION.opSeleccionada);
   if (!p) return;
 
@@ -728,7 +979,7 @@ function openRegistroModal(registroId) {
     r = {
       id: 'REG-' + Date.now(),
       pedidoId: p.id,
-      operario: SESSION.operario.nombre,
+      operario: (SESSION.operarioActual ? SESSION.operarioActual.nombre : ""),
       turno: SESSION.turno,
       fecha: new Date().toISOString().slice(0,10),
       timestamp: new Date().toISOString(),
@@ -745,10 +996,10 @@ function openRegistroModal(registroId) {
   }
 
   document.getElementById('modalContainer').innerHTML = `
-    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal-bg" >
       <div class="modal">
         <h3>${isEdit ? 'Editar registro' : 'Nuevo registro horario'} <button class="close" onclick="closeModal()">✕</button></h3>
-        <p style="font-size:12px;color:#15803d;background:#f0fdf4;padding:8px 12px;border-radius:6px;margin-bottom:14px">📊 Control de proceso (planilla WEC001)</p>
+        <p style="font-size:12px;color:#15803d;background:#f0fdf4;padding:8px 12px;border-radius:6px;margin-bottom:14px">📊 Control de proceso (planilla WEC001) · Operario: <b>${SESSION.operarioActual ? SESSION.operarioActual.nombre : '—'}</b></p>
         <div class="field-row-3">
           <div class="field"><label>Hora</label><input type="time" id="r_hora" value="${r.hora||''}"></div>
           <div class="field"><label>N° Bobina</label><input type="number" id="r_nroBobina" value="${r.nroBobina||''}" min="1"></div>
@@ -801,7 +1052,7 @@ async function saveRegistro(id, isEdit) {
   const data = {
     id,
     pedidoId: p.id,
-    operario: SESSION.operario.nombre,
+    operario: (SESSION.operarioActual ? SESSION.operarioActual.nombre : ""),
     turno: SESSION.turno,
     fecha: new Date().toISOString().slice(0,10),
     timestamp: isEdit ? ((DATA.registrosProduccion||[]).find(x => x.id === id)?.timestamp || new Date().toISOString()) : new Date().toISOString(),

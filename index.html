@@ -387,7 +387,7 @@ function clearCredentials() {
 // reales se leen siempre de localStorage via getCredentials()
 const CONFIG = { JSONBIN_BIN_ID: '', MASTER_KEY: '' };
 
-const LS_KEY = 'winflex_pet_chivilcoy_v35';
+const LS_KEY = 'winflex_pet_chivilcoy_v36';
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 // ============================================================
@@ -517,6 +517,7 @@ function migrateLegacyData(d) {
   if (!d.config.densidadPET) d.config.densidadPET = 1330;
   if (!d.config.diametroTubo) d.config.diametroTubo = 152;
   if (!d.config.logoBase64) d.config.logoBase64 = '';
+  if (!d.config.pinFabrica) d.config.pinFabrica = '1234'; // PIN general para abrir la tablet
   // Registros de producción (parámetros horarios - planilla WEC001)
   if (!d.registrosProduccion) d.registrosProduccion = [];
   if (migrated > 0) console.log(`Migrated ${migrated} legacy fields`);
@@ -863,7 +864,7 @@ function openPedidoModal(id) {
   const colores = DATA.catalogos.colores;
 
   document.getElementById('modalContainer').innerHTML = `
-    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal-bg" >
       <div class="modal">
         <div class="modal-h">
           <h3>${id ? 'Editar pedido' : 'Nuevo pedido'} — ${p.id}</h3>
@@ -995,10 +996,16 @@ async function savePedido(id) {
       DATA.catalogos.clientes.sort();
     }
   }
+  const wasNew = !id;
+  const savedId = data.id;
   closeModal();
   await saveData();
   populateFilters();
   render();
+  // Si era un pedido nuevo (estado OC) → abrir detalle en tab OP para que vea el botón Mail
+  if (wasNew && data.estadoWorkflow === 'OC') {
+    setTimeout(() => { openPedidoDetail(savedId); currentDetailTab = 'acciones'; renderPedidoDetail(); }, 100);
+  }
   toast('Pedido guardado', 'success');
 }
 async function deletePedido(id, fromModal) {
@@ -1104,7 +1111,7 @@ function openCostoModal(key) {
   const defKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
 
   document.getElementById('modalContainer').innerHTML = `
-    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal-bg" >
       <div class="modal">
         <div class="modal-h"><h3>${key ? 'Editar' : 'Cargar'} costos mensuales</h3><button class="btn-ghost" onclick="closeModal()">✕</button></div>
         <div class="modal-body">
@@ -1294,7 +1301,7 @@ function renderOperariosTable(ops) {
 function openOperarioModal(idx) {
   const o = idx !== undefined ? DATA.catalogos.operarios[idx] : { nombre:'', legajo:'', ingreso:'', pin:'', rol:'operario' };
   document.getElementById('modalContainer').innerHTML = `
-    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal-bg" >
       <div class="modal">
         <div class="modal-h"><h3>${idx!==undefined?'Editar':'Nuevo'} operario</h3><button class="btn-ghost" onclick="closeModal()">✕</button></div>
         <div class="modal-body">
@@ -1379,7 +1386,7 @@ function openRecetaModal(idx) {
     compHtml += `<div class="field"><label>${mp}</label><input type="number" step="0.1" id="rec_comp_${btoa(mp).replace(/[^A-Za-z0-9]/g,'')}" value="${val||0}" min="0" max="100"><span class="hint">%</span></div>`;
   });
   document.getElementById('modalContainer').innerHTML = `
-    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal-bg" >
       <div class="modal detail-modal">
         <div class="modal-h"><h3>${idx!==undefined?'Editar':'Nueva'} receta</h3><button class="btn-ghost" onclick="closeModal()">✕</button></div>
         <div class="modal-body">
@@ -1460,7 +1467,7 @@ function renderPedidoDetail() {
   const wfIdx = wfSteps.indexOf(wf);
 
   document.getElementById('modalContainer').innerHTML = `
-    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal-bg" >
       <div class="modal detail-modal">
         <div class="detail-header">
           <div class="detail-title">
@@ -1774,7 +1781,7 @@ function openOPModal(pedidoId) {
   const destinos = DATA.catalogos.destinos || [];
 
   document.getElementById('modalContainer').innerHTML = `
-    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal-bg" >
       <div class="modal detail-modal">
         <div class="modal-h">
           <h3>${p.nroOP ? 'Editar OP' : 'Emitir OP'} — Pedido ${p.cliente} · ${p.ancho||'-'}×${p.espesor||'-'}</h3>
@@ -1790,7 +1797,7 @@ function openOPModal(pedidoId) {
             <div class="form-grid">
               <div class="field"><label>N° OP</label><input type="text" id="op_nroOP" value="${p.nroOP || p._nuevoNroOP || ''}" oninput="actualizarCodigoPartida()" placeholder="ej 10726"><div class="hint">Pedido del año + año2dig. Ej "10726" = pedido 107 del 2026</div></div>
               <div class="field"><label>N° Solicitud</label><input type="text" id="op_nroSolicitud" value="${p.nroSolicitud || p._nuevoNroSolicitud || ''}" placeholder="ej 12-0526"><div class="hint">Pedido del mes + mmaa. Ej "12-0526" = pedido 12 de mayo/2026</div></div>
-              <div class="field full"><label>Código de partida (auto)</label><input type="text" id="op_op" value="${p.op||p.partida||''}" readonly style="background:#f9fafb;font-family:monospace;font-weight:600;color:#16a34a"><div class="hint">NOP + receta + destino + silicona%. Ej <b>10726S-1V5</b> (X si SIN silicona)</div></div>
+              <div class="field full"><label>Código de partida (auto-completa, editable)</label><input type="text" id="op_op" value="${p.op||p.partida||''}" oninput="window._partidaEditadaManual=true" style="font-family:monospace;font-weight:600;color:#16a34a"><div class="hint">Se autocompleta NOP + receta + destino + silicona%. Ej <b>10726S-1V5</b> (X si SIN). Editá manualmente si necesitás algo distinto.</div></div>
             </div>
           </div>
 
@@ -1866,10 +1873,13 @@ function openOPModal(pedidoId) {
 
   updateOpCalc();
   aplicarRecetaOp(false);
+  window._partidaEditadaManual = false; // reset cada vez que se abre el modal
   actualizarCodigoPartida();
 }
 
 function actualizarCodigoPartida() {
+  // Si el usuario editó manualmente la partida, no la sobreescribimos
+  if (window._partidaEditadaManual) return;
   const p = DATA.pedidos.find(x => x.id === currentDetailPedidoId);
   if (!p) return;
   const nroOPEl = document.getElementById('op_nroOP');
@@ -1957,8 +1967,9 @@ async function saveOP(pedidoId) {
   p.recetaCodigo = recetaCodigo;
   p.mezclaTeoricaTexto = document.getElementById('op_mezclaTexto').value.trim();
   p.confeccion = document.getElementById('op_confeccion').value;
-  // Código de partida: auto-generado a partir de los componentes
-  p.op = generarCodigoPartida(p);
+  // Código de partida: usar lo que está en el input (puede haber sido editado manualmente)
+  const partidaInput = document.getElementById('op_op').value.trim();
+  p.op = partidaInput || generarCodigoPartida(p);
 
   // Derive formula from receta
   const rec = (DATA.catalogos.recetas || []).find(r => r.codigo === recetaCodigo);
@@ -2572,6 +2583,11 @@ function renderConfig() {
           <input type="text" id="cf_pinAdmin" value="${c.pinAdmin || '3080'}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
         </div>
         <div class="detail-field">
+          <span class="lbl">PIN general fábrica (tablet)</span>
+          <input type="text" id="cf_pinFabrica" value="${c.pinFabrica || '1234'}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
+          <div class="hint" style="font-size:11px;color:#9ca3af;margin-top:2px">Para abrir la tablet en planta</div>
+        </div>
+        <div class="detail-field">
           <span class="lbl">Próximo N° OP</span>
           <input type="number" id="cf_proxOP" value="${c.proximoNroOP || 111}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
         </div>
@@ -2657,6 +2673,7 @@ async function saveConfigParams() {
   DATA.config.densidadPET = +document.getElementById('cf_densidad').value || 1330;
   DATA.config.diametroTubo = +document.getElementById('cf_tubo').value || 152;
   DATA.config.pinAdmin = document.getElementById('cf_pinAdmin').value || '3080';
+  DATA.config.pinFabrica = document.getElementById('cf_pinFabrica').value || '1234';
   DATA.config.proximoNroOP = +document.getElementById('cf_proxOP').value || 111;
   DATA.config.proximoNroSolicitud = +document.getElementById('cf_proxSol').value || 1;
   await saveData();
