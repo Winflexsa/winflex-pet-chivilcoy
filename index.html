@@ -69,12 +69,17 @@ tbody tr:hover { background: #f9fafb; }
 
 /* Workflow badges */
 .wf { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+.wf-OC { background: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; }
+.wf-OP { background: #dbeafe; color: #1e40af; }
+.wf-Enproduccion { background: #fef3c7; color: #92400e; }
+.wf-Parcial { background: #fed7aa; color: #9a3412; }
+.wf-Despachada { background: #ccfbf1; color: #115e59; }
+.wf-Finalizada { background: #d1fae5; color: #065f46; }
+.wf-Cancelada { background: #fee2e2; color: #991b1b; }
+/* Legacy badges (compatibilidad) */
 .wf-Borrador { background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; }
 .wf-Confirmada { background: #dbeafe; color: #1e40af; }
-.wf-Enproduccion { background: #fef3c7; color: #92400e; }
-.wf-Despachada { background: #d1fae5; color: #065f46; }
 .wf-Facturada { background: #ddd6fe; color: #5b21b6; }
-.wf-Cancelada { background: #fee2e2; color: #991b1b; }
 
 /* Detail view modal - full screen */
 .detail-modal { max-width: 1100px; width: 100%; max-height: 95vh; }
@@ -239,11 +244,13 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb
             <label>Estado</label>
             <select id="fEstado">
               <option value="">Todos</option>
-              <option value="Borrador">Borrador</option>
-              <option value="Confirmada">Confirmada</option>
+              <option value="OC">OC</option>
+              <option value="OP">OP</option>
               <option value="En producción">En producción</option>
+              <option value="Parcial">Parcial</option>
               <option value="Despachada">Despachada</option>
-              <option value="Facturada">Facturada</option>
+              <option value="Finalizada">Finalizada</option>
+              <option value="Cancelada">Cancelada</option>
               <option value="VENCIDO">⚠ Vencidos</option>
             </select>
           </div>
@@ -360,17 +367,37 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb
 
 <script>
 // ============================================================
-// CONFIG
+// CONFIG — Las credenciales se guardan en localStorage por dispositivo.
+// Si están en localStorage, se usan. Si no, la app pide configurarlas
+// la primera vez que se abre. Las credenciales NO quedan en este archivo
+// (más seguro para el repo público de GitHub).
 // ============================================================
-const CONFIG = {
-  // ⚠️ Configurar después de crear el bin en JSONBin Pro:
-  JSONBIN_BIN_ID: '6a0c5008ee5a733b12e3f9d1',
-  JSONBIN_API_KEY: '$2a$10$8p4t41BnTv.9Ls.4kFLhouDMqJGQEd5LQlBYEz8n1y6nH/3dFq27G',
-  // ⚠️ Modo offline: si bin/key no están configurados, usa localStorage
-  MASTER_KEY: 'PEGAR_MASTER_KEY_AQUI'
-};
+const CRED_KEY = 'winflex_jsonbin_credentials';
 
-const LS_KEY = 'winflex_pet_chivilcoy_v31';
+function getCredentials() {
+  try {
+    const stored = localStorage.getItem(CRED_KEY);
+    if (stored) {
+      const c = JSON.parse(stored);
+      if (c && c.binId && c.masterKey) return c;
+    }
+  } catch (e) { console.warn('Error reading credentials', e); }
+  return null;
+}
+
+function saveCredentials(binId, masterKey) {
+  localStorage.setItem(CRED_KEY, JSON.stringify({ binId: binId.trim(), masterKey: masterKey.trim() }));
+}
+
+function clearCredentials() {
+  localStorage.removeItem(CRED_KEY);
+}
+
+// CONFIG legacy - se mantiene para compatibilidad pero las credenciales
+// reales se leen siempre de localStorage via getCredentials()
+const CONFIG = { JSONBIN_BIN_ID: '', MASTER_KEY: '' };
+
+const LS_KEY = 'winflex_pet_chivilcoy_v32';
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 // ============================================================
@@ -412,6 +439,12 @@ function logout() {
 function migrateLegacyData(d) {
   if (!d || !d.pedidos) return d;
   let migrated = 0;
+  // Mapeo de estados v3.1 -> v3.2
+  const estadoMap = {
+    'Borrador': 'OC',
+    'Confirmada': 'OP',
+    'Facturada': 'Finalizada'
+  };
   d.pedidos.forEach(p => {
     if (p.medida && (!p.ancho || !p.espesor)) {
       const s = String(p.medida).toLowerCase().replace('×','x').replace(/\s/g,'');
@@ -421,7 +454,10 @@ function migrateLegacyData(d) {
     if (p.partida && !p.op) { p.op = p.partida; migrated++; }
     if (!p.estadoWorkflow) {
       const kpr = p.kgReales || 0, kpd = p.kgPedidos || 0;
-      p.estadoWorkflow = kpr === 0 ? 'Confirmada' : (kpr >= kpd ? 'Despachada' : 'En producción');
+      p.estadoWorkflow = kpr === 0 ? 'OP' : (kpr >= kpd ? 'Despachada' : 'En producción');
+      migrated++;
+    } else if (estadoMap[p.estadoWorkflow]) {
+      p.estadoWorkflow = estadoMap[p.estadoWorkflow];
       migrated++;
     }
     if (p.silicona === undefined) p.silicona = '';
@@ -434,7 +470,6 @@ function migrateLegacyData(d) {
       if (f.master > 0) parts.push(`${(f.master*100).toFixed(0)}% Master`);
       p.mezclaTeoricaTexto = parts.join(' / ');
     }
-    // v3 fields
     if (p.nroOP === undefined) p.nroOP = '';
     if (p.nroSolicitud === undefined) p.nroSolicitud = '';
     if (p.producto === undefined) p.producto = 'Lamina r-PET FDA';
@@ -448,6 +483,8 @@ function migrateLegacyData(d) {
     if (p.siliconaGramosM2 === undefined) p.siliconaGramosM2 = 0;
     if (p.fechaInicioProd === undefined) p.fechaInicioProd = '';
     if (p.fechaFinProd === undefined) p.fechaFinProd = '';
+    // Migrar destino: M -> V (era Molinos = venta cliente)
+    if (p.destinoCodigo === 'M') { p.destinoCodigo = 'V'; migrated++; }
     if (p.destinoCodigo === undefined) p.destinoCodigo = 'T';
   });
   if (!d.catalogos.mezclasTeoricas) d.catalogos.mezclasTeoricas = [
@@ -462,17 +499,22 @@ function migrateLegacyData(d) {
   ];
   if (!d.catalogos.operarios) d.catalogos.operarios = [];
   if (!d.catalogos.tolvas) d.catalogos.tolvas = ['B1','B2','B3','B4','B5'];
-  if (!d.catalogos.destinos) d.catalogos.destinos = [
-    {codigo:'T', nombre:'Terminado / Despacho'},
-    {codigo:'V', nombre:'Venta directa'},
-    {codigo:'M', nombre:'Molinos (cliente)'}
+  // Forzar destinos al nuevo formato T/L/V
+  d.catalogos.destinos = [
+    {codigo:'T', nombre:'Termoformado (interno)'},
+    {codigo:'L', nombre:'Laminado con PE (interno)'},
+    {codigo:'V', nombre:'Venta (cliente)'}
   ];
   if (!d.config.emailsPlanta) d.config.emailsPlanta = [];
+  if (!d.config.emailAgustin) d.config.emailAgustin = '';
   if (!d.config.proximoNroOP) d.config.proximoNroOP = 111;
   if (!d.config.proximoNroSolicitud) d.config.proximoNroSolicitud = 16;
   if (!d.config.horasPorDiaDefault) d.config.horasPorDiaDefault = 11;
   if (!d.config.scrapTeoricoDefault) d.config.scrapTeoricoDefault = 0.20;
   if (!d.config.kgPorHoraDefault) d.config.kgPorHoraDefault = 300;
+  if (!d.config.densidadPET) d.config.densidadPET = 1330; // kg/m³
+  if (!d.config.diametroTubo) d.config.diametroTubo = 152; // mm
+  if (!d.config.logoBase64) d.config.logoBase64 = '';
   if (migrated > 0) console.log(`Migrated ${migrated} legacy fields`);
   return d;
 }
@@ -480,32 +522,35 @@ function migrateLegacyData(d) {
 async function loadData() {
   setSyncStatus('Cargando...', 'syncing');
   const cached = localStorage.getItem(LS_KEY);
-  const isConfigured = CONFIG.JSONBIN_BIN_ID && CONFIG.JSONBIN_BIN_ID !== 'PEGAR_BIN_ID_AQUI';
+  const creds = getCredentials();
 
-  if (isConfigured) {
+  if (creds) {
     try {
-      const headers = { 'X-Master-Key': CONFIG.MASTER_KEY };
-      const r = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}/latest`, { headers });
+      const headers = { 'X-Master-Key': creds.masterKey };
+      const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, { headers });
       if (r.ok) {
         const j = await r.json();
         DATA = migrateLegacyData(j.record);
         localStorage.setItem(LS_KEY, JSON.stringify(DATA));
         setSyncStatus('Sincronizado', 'ok');
         return DATA;
+      } else if (r.status === 401 || r.status === 403) {
+        setSyncStatus('Credenciales inválidas', 'error');
+        alert('Las credenciales JSONBin son inválidas (error '+r.status+'). Por favor verificalas.');
       }
     } catch (e) { console.warn('JSONBin offline:', e); }
   }
 
   if (cached) {
     DATA = migrateLegacyData(JSON.parse(cached));
-    setSyncStatus(isConfigured ? 'Offline (cache)' : 'Sin bin configurado', isConfigured ? 'error' : 'syncing');
+    setSyncStatus(creds ? 'Offline (cache)' : 'Sin credenciales — Configuración', creds ? 'error' : 'syncing');
     return DATA;
   }
 
-  // Fallback: bootstrap with seed (loaded from inline)
+  // Sin credenciales y sin cache: bootstrap con SEED
   DATA = migrateLegacyData(SEED);
   localStorage.setItem(LS_KEY, JSON.stringify(DATA));
-  setSyncStatus('Datos locales iniciales', 'syncing');
+  setSyncStatus(creds ? 'Datos locales' : 'Sin credenciales JSONBin', 'syncing');
   return DATA;
 }
 
@@ -515,12 +560,12 @@ async function saveData() {
   isDirty = true;
   setSyncStatus('Guardado local · pendiente sync', 'syncing');
 
-  const isConfigured = CONFIG.JSONBIN_BIN_ID && CONFIG.JSONBIN_BIN_ID !== 'PEGAR_BIN_ID_AQUI';
-  if (!isConfigured) return;
+  const creds = getCredentials();
+  if (!creds) { setSyncStatus('Sin credenciales (solo local)', 'error'); return; }
 
   try {
-    const headers = { 'Content-Type': 'application/json', 'X-Master-Key': CONFIG.MASTER_KEY };
-    const r = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}`, {
+    const headers = { 'Content-Type': 'application/json', 'X-Master-Key': creds.masterKey };
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}`, {
       method: 'PUT', headers, body: JSON.stringify(DATA)
     });
     if (r.ok) {
@@ -818,7 +863,7 @@ function openPedidoModal(id) {
       fechaInicioProd: '', fechaFinProd: '',
       destinoCodigo: 'T',
       confeccion: '', observaciones: '',
-      estadoWorkflow: 'Borrador'
+      estadoWorkflow: 'OC'
     };
   }
 
@@ -859,8 +904,8 @@ function openPedidoModal(id) {
             <div class="field"><label>Kg pedidos *</label><input type="number" id="m_kgPed" value="${p.kgPedidos||0}" min="0"></div>
             <div class="field"><label>Estado</label>
               <select id="m_estado">
-                ${['Borrador','Confirmada','En producción','Despachada','Facturada','Cancelada'].map(e =>
-                  `<option value="${e}" ${e===(p.estadoWorkflow||'Borrador')?'selected':''}>${e}</option>`).join('')}
+                ${['OC','OP','En producción','Parcial','Despachada','Finalizada','Cancelada'].map(e =>
+                  `<option value="${e}" ${e===(p.estadoWorkflow||'OC')?'selected':''}>${e}</option>`).join('')}
               </select>
             </div>
             <div class="field full"><label>Observaciones</label><textarea id="m_obs" rows="2">${p.observaciones||''}</textarea></div>
@@ -1156,7 +1201,7 @@ function renderPedidoDetail() {
   const bob = calcBobinas(p);
   const bobinasDelPedido = (DATA.producciones || []).filter(x => x.pedidoId === p.id);
 
-  const wfSteps = ['Borrador','Confirmada','En producción','Despachada','Facturada'];
+  const wfSteps = ['OC','OP','En producción','Despachada','Finalizada'];
   const wfIdx = wfSteps.indexOf(wf);
 
   document.getElementById('modalContainer').innerHTML = `
@@ -1268,19 +1313,38 @@ function renderDetailBody(p, bobinas) {
     `;
   } else if (currentDetailTab === 'acciones') {
     const emailsPlanta = (DATA.config.emailsPlanta || []).join(', ');
+    const emailAgustin = DATA.config.emailAgustin || '';
+    const estado = p.estadoWorkflow || 'OC';
     const tieneOP = !!(p.nroOP && p.recetaCodigo);
     const rec = (DATA.catalogos.recetas || []).find(r => r.codigo === p.recetaCodigo);
+
+    let html = '';
+
+    // SECCIÓN 1: Enviar OC a Agustín (visible en estados OC, OP)
+    if (estado === 'OC' || estado === 'OP') {
+      html += `
+        <div class="detail-section">
+          <h3>📧 Notificar a planta por la OC</h3>
+          <p style="font-size:13px;color:#6b7280;margin-bottom:12px">Envía un mail a Agustín avisándole que entró este pedido para que revise y emita la OP.</p>
+          <div class="detail-field" style="margin-bottom:12px"><span class="lbl">Email destino</span><span class="val" style="font-size:13px">${emailAgustin || '<span class="muted">Sin configurar (cargar en Configuración → email Agustín)</span>'}</span></div>
+          <div class="actions-row">
+            <button class="btn-action ${estado === 'OC' ? 'primary' : ''}" onclick="enviarOCmail('${p.id}')" ${!emailAgustin ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>📧 Enviar OC a Agustín</button>
+            <button class="btn-action" onclick="copiarTextoOC('${p.id}')">📋 Copiar texto</button>
+          </div>
+        </div>`;
+    }
+
+    // SECCIÓN 2: OP
     if (!tieneOP) {
-      body.innerHTML = `
-        <div class="detail-section" style="text-align:center;padding:30px 20px">
+      html += `
+        <div class="detail-section" style="text-align:center;padding:30px 20px;background:#f9fafb;border-radius:10px">
           <p style="font-size:15px;color:#6b7280;margin-bottom:8px">Este pedido todavía no tiene OP emitida.</p>
           <p style="font-size:13px;color:#9ca3af;margin-bottom:24px">Cargá los datos técnicos (N° OP, receta, cronograma, etc.) para poder generar el PDF y enviar a planta.</p>
           <button class="btn-action primary" style="padding:14px 28px;font-size:14px" onclick="openOPModal('${p.id}')">📝 Emitir OP</button>
         </div>`;
     } else {
-      const bobEst = (p.kgPorBobina > 0) ? Math.ceil(p.kgPedidos/p.kgPorBobina) : 0;
       const dias = (p.kgPorHora > 0 && p.horasPorDia > 0) ? (p.kgPedidos/(p.kgPorHora*p.horasPorDia)).toFixed(2) : '-';
-      body.innerHTML = `
+      html += `
         <div class="detail-section">
           <h3>OP emitida — N° ${p.nroOP}</h3>
           <div class="detail-grid">
@@ -1298,15 +1362,17 @@ function renderDetailBody(p, bobinas) {
           </div>
         </div>
         <div class="detail-section">
-          <h3>📄 Generar PDF y enviar a planta</h3>
-          <p style="font-size:13px;color:#6b7280;margin-bottom:8px">El PDF contiene todos los datos técnicos formateados como tu OP actual de Excel.</p>
-          <div class="detail-field" style="margin-bottom:12px"><span class="lbl">Destinatarios planta</span><span class="val" style="font-size:13px">${emailsPlanta || '<span class="muted">Sin configurar — Configuración</span>'}</span></div>
+          <h3>📄 PDF de OP para imprimir y enviar a planta</h3>
+          <p style="font-size:13px;color:#6b7280;margin-bottom:8px">PDF amigable para imprimir y entregar al operario.</p>
+          <div class="detail-field" style="margin-bottom:12px"><span class="lbl">Destinatarios mail (configurables)</span><span class="val" style="font-size:13px">${emailsPlanta || '<span class="muted">Sin configurar</span>'}</span></div>
           <div class="actions-row">
             <button class="btn-action primary" onclick="generarOPpdf('${p.id}')">📄 Descargar PDF</button>
             <button class="btn-action" onclick="generarOPmailto('${p.id}')">📧 Abrir mail a planta</button>
           </div>
         </div>`;
     }
+
+    body.innerHTML = html;
   } else if (currentDetailTab === 'bobinas') {
     if (bobinas.length === 0) {
       body.innerHTML = `<p class="muted" style="padding:30px;text-align:center">Todavía no se cargaron bobinas para este pedido.<br>Los operarios las cargan desde la app tablet (próxima v3).</p>`;
@@ -1341,6 +1407,71 @@ async function advanceWorkflow(id, nuevoEstado) {
   await saveData();
   renderPedidoDetail();
   toast(`Estado actualizado a ${nuevoEstado}`, 'success');
+}
+
+// ============================================================
+// MODAL CREDENCIALES JSONBIN
+// ============================================================
+function openCredentialsModal(isFirstRun = false) {
+  const current = getCredentials() || { binId: '', masterKey: '' };
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="${isFirstRun ? '' : 'if(event.target===this)closeModal()'}">
+      <div class="modal" style="max-width:540px">
+        <div class="modal-h">
+          <h3>🔑 ${isFirstRun ? 'Configurar credenciales JSONBin' : 'Credenciales JSONBin'}</h3>
+          ${isFirstRun ? '' : '<button class="btn-ghost" onclick="closeModal()">✕</button>'}
+        </div>
+        <div class="modal-body">
+          ${isFirstRun ? `
+            <div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:12px 14px;border-radius:4px;margin-bottom:16px">
+              <p style="font-size:13px;margin-bottom:6px"><b>Primera vez en este dispositivo.</b></p>
+              <p style="font-size:13px;color:#92400e">Pegá las credenciales del bin de JSONBin Pro donde se sincronizan los datos. Las credenciales quedan guardadas solo en este navegador, no se exponen en GitHub.</p>
+            </div>
+          ` : `
+            <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Las credenciales se guardan en este navegador. Si las cambiás, los nuevos pedidos y producciones se sincronizan con el bin nuevo.</p>
+          `}
+          <div class="field">
+            <label>Bin ID</label>
+            <input type="text" id="cred_binId" value="${current.binId}" placeholder="6831abc123..." style="padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-family:monospace;font-size:13px;width:100%">
+          </div>
+          <div class="field" style="margin-top:12px">
+            <label>X-Master-Key</label>
+            <input type="text" id="cred_masterKey" value="${current.masterKey}" placeholder="$2a$10$..." style="padding:10px 12px;border:1px solid #d1d5db;border-radius:6px;font-family:monospace;font-size:13px;width:100%">
+          </div>
+          <p class="hint" style="font-size:12px;color:#9ca3af;margin-top:10px">Las encontrás en jsonbin.io en la lista de bins (ID) y en la sección "API Keys" (Master Key).</p>
+        </div>
+        <div class="modal-f">
+          ${!isFirstRun && current.binId ? `<button class="btn btn-danger" onclick="confirmClearCreds()">🗑️ Quitar credenciales</button>` : ''}
+          ${isFirstRun ? '' : '<button class="btn btn-sec" onclick="closeModal()">Cancelar</button>'}
+          <button class="btn btn-pri" onclick="saveCredsModal(${isFirstRun})">${isFirstRun ? 'Guardar y conectar' : 'Guardar'}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function saveCredsModal(isFirstRun) {
+  const binId = document.getElementById('cred_binId').value.trim();
+  const masterKey = document.getElementById('cred_masterKey').value.trim();
+  if (!binId || !masterKey) { alert('Bin ID y Master Key son obligatorios'); return; }
+  saveCredentials(binId, masterKey);
+  closeModal();
+  toast('Credenciales guardadas', 'success');
+  if (isFirstRun) {
+    // Recargar datos del bin
+    await loadData();
+    // Si estaba la pantalla de login visible, dejarla con focus en el input
+    setTimeout(() => { const el = document.getElementById('pinInput'); if (el) el.focus(); }, 100);
+  } else {
+    await syncNow();
+  }
+}
+
+async function confirmClearCreds() {
+  if (!confirm('¿Quitar las credenciales JSONBin de este navegador? La app va a quedar en modo solo-local hasta que las cargues de nuevo.')) return;
+  clearCredentials();
+  closeModal();
+  setSyncStatus('Sin credenciales', 'error');
+  toast('Credenciales eliminadas', 'success');
 }
 
 // ============================================================
@@ -1402,8 +1533,8 @@ function openOPModal(pedidoId) {
             <div class="form-grid">
               <div class="field"><label>Kg / Bobina</label><input type="number" id="op_kgBobina" value="${p.kgPorBobina||80}" min="0" oninput="updateOpCalc()"></div>
               <div class="field"><label>Bobinas estimadas</label><input type="text" id="op_bobinasEst" readonly style="background:#f9fafb"></div>
-              <div class="field"><label>Metros por bobina</label><input type="number" id="op_metrosBobina" value="${p.metrosBobina||0}" min="0"></div>
-              <div class="field"><label>Diámetro (mm)</label><input type="number" id="op_diametro" value="${p.diametroBobina||0}" min="0"></div>
+              <div class="field"><label>Metros por bobina (auto)</label><input type="number" id="op_metrosBobina" value="${p.metrosBobina||0}" readonly style="background:#f9fafb"><div class="hint">Calculado a partir de kg/bobina + dimensiones</div></div>
+              <div class="field"><label>Diámetro (cm, auto)</label><input type="number" id="op_diametro" step="0.1" value="${p.diametroBobina||0}" readonly style="background:#f9fafb"><div class="hint">Tubo núcleo: ${DATA.config.diametroTubo||152} mm</div></div>
             </div>
           </div>
 
@@ -1465,6 +1596,11 @@ function updateOpCalc() {
   document.getElementById('op_bobinasEst').value = bob ? bob + ' bobinas' : '';
   const dias = (kgH > 0 && hD > 0) ? (p.kgPedidos / (kgH * hD)) : 0;
   document.getElementById('op_diasEst').value = dias ? dias.toFixed(2) + ' días' : '';
+  // Metros y diámetro auto
+  const metros = calcMetrosBobina(kgBob, p.ancho, p.espesor);
+  const diametro = calcDiametroBobina(kgBob, p.ancho);
+  document.getElementById('op_metrosBobina').value = Math.round(metros);
+  document.getElementById('op_diametro').value = diametro.toFixed(1);
 }
 
 function aplicarRecetaOp(autoApplyMezcla = true) {
@@ -1507,8 +1643,9 @@ async function saveOP(pedidoId) {
   p.codigoProducto = document.getElementById('op_codigoProducto').value;
   p.destinoCodigo = document.getElementById('op_destinoCodigo').value;
   p.kgPorBobina = +document.getElementById('op_kgBobina').value || 0;
-  p.metrosBobina = +document.getElementById('op_metrosBobina').value || 0;
-  p.diametroBobina = +document.getElementById('op_diametro').value || 0;
+  // Metros y diámetro calculados automáticamente
+  p.metrosBobina = Math.round(calcMetrosBobina(p.kgPorBobina, p.ancho, p.espesor));
+  p.diametroBobina = Math.round(calcDiametroBobina(p.kgPorBobina, p.ancho) * 10) / 10;
   p.kgPorHora = +document.getElementById('op_kgPorHora').value || 300;
   p.horasPorDia = +document.getElementById('op_horasPorDia').value || 11;
   p.scrapTeorico = +document.getElementById('op_scrapTeorico').value || 0.20;
@@ -1543,8 +1680,8 @@ async function saveOP(pedidoId) {
         DATA.config.proximoNroSolicitud = num + 1;
       }
     }
-    // Si estaba en Borrador, pasa a Confirmada
-    if (p.estadoWorkflow === 'Borrador') p.estadoWorkflow = 'Confirmada';
+    // Si estaba en OC, pasa a OP
+    if (p.estadoWorkflow === 'OC' || p.estadoWorkflow === 'Borrador') p.estadoWorkflow = 'OP';
   }
 
   // Catalogar mezcla si es nueva
@@ -1564,6 +1701,71 @@ async function saveOP(pedidoId) {
 }
 
 // ============================================================
+// CÁLCULO AUTOMÁTICO: metros y diámetro a partir de kg/bobina y dimensiones
+// Densidad PET ≈ 1.33 g/cm³, tubo núcleo 152 mm (6 pulgadas) por defecto
+// ============================================================
+function calcMetrosBobina(kgBobina, anchoMm, espesorUm) {
+  if (!kgBobina || !anchoMm || !espesorUm) return 0;
+  const densidad = (DATA && DATA.config && DATA.config.densidadPET) || 1330; // kg/m³
+  // metros = kg / (densidad * ancho_m * espesor_m)
+  return kgBobina / (densidad * (anchoMm/1000) * (espesorUm/1_000_000));
+}
+function calcDiametroBobina(kgBobina, anchoMm) {
+  if (!kgBobina || !anchoMm) return 0;
+  const densidad = (DATA && DATA.config && DATA.config.densidadPET) || 1330;
+  const tuboMm = (DATA && DATA.config && DATA.config.diametroTubo) || 152;
+  const volM3 = kgBobina / densidad;
+  const tuboM = tuboMm / 1000;
+  const D2 = tuboM*tuboM + 4*volM3 / (Math.PI * (anchoMm/1000));
+  return Math.sqrt(D2) * 100; // cm
+}
+
+// ============================================================
+// MAIL OC a Agustín (interno, le avisa que entró un pedido)
+// ============================================================
+function buildOCBody(p) {
+  return `Hola Agustín,
+
+Entró el siguiente pedido:
+
+• Cliente:        ${p.cliente}
+• OC cliente:     ${p.oc || '-'}
+• Producto:       Lámina PET ${p.color || ''}
+• Ancho:          ${p.ancho || 0} mm
+• Espesor:        ${p.espesor || 0} micrones
+• Silicona:       ${p.silicona || '-'}
+• Cantidad:       ${fmtNum(p.kgPedidos)} kg
+• Fecha despacho: ${fmtFecha(p.fechaDespacho) || 'a confirmar'}
+${p.observaciones ? '\nObservaciones del pedido:\n' + p.observaciones + '\n' : ''}
+Por favor revisar y emitir la OP correspondiente.
+
+Saludos,
+Matías`;
+}
+
+function enviarOCmail(id) {
+  const p = DATA.pedidos.find(x => x.id === id);
+  if (!p) return;
+  const to = (DATA.config.emailAgustin || '').trim();
+  if (!to) {
+    if (!confirm('No hay email de Agustín configurado. ¿Ir a Configuración para cargarlo?')) return;
+    closeModal();
+    switchTab('config');
+    return;
+  }
+  const subject = `Nuevo pedido ${p.cliente}${p.oc?' · '+p.oc:''} — ${p.ancho||'-'}×${p.espesor||'-'} · ${fmtNum(p.kgPedidos)} kg`;
+  const body = buildOCBody(p);
+  const href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = href;
+}
+
+function copiarTextoOC(id) {
+  const p = DATA.pedidos.find(x => x.id === id);
+  if (!p) return;
+  navigator.clipboard.writeText(buildOCBody(p)).then(() => toast('Texto OC copiado', 'success'));
+}
+
+// ============================================================
 // GENERACIÓN DE OP (mailto a planta + PDF)
 // ============================================================
 function generarOPpdf(id) {
@@ -1571,196 +1773,262 @@ function generarOPpdf(id) {
   if (!p) return;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const W = 210, H = 297, M = 14;
+  const W = 210, H = 297, M = 12;
 
-  // Box helper
-  const box = (x, y, w, h, fill) => {
-    if (fill) { doc.setFillColor(...fill); doc.rect(x, y, w, h, 'F'); }
-    doc.setDrawColor(160,160,160);
-    doc.setLineWidth(0.2);
-    doc.rect(x, y, w, h);
-  };
+  // ============ COLORS ============
+  const C_PRIMARY = [37, 99, 235];
+  const C_DARK = [15, 23, 42];
+  const C_GRAY = [107, 114, 128];
+  const C_LIGHT = [243, 244, 246];
+  const C_GREEN = [5, 150, 105];
+  const C_AMBER = [217, 119, 6];
+
+  // ============ HELPERS ============
+  const setFill = (rgb) => doc.setFillColor(...rgb);
+  const setStroke = (rgb) => doc.setDrawColor(...rgb);
+  const setText = (rgb) => doc.setTextColor(...rgb);
   const txt = (s, x, y, opts = {}) => {
     doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
     doc.setFontSize(opts.size || 9);
-    doc.setTextColor(...(opts.color || [15,23,42]));
-    doc.text(String(s ?? ''), x, y, { align: opts.align || 'left' });
+    setText(opts.color || C_DARK);
+    doc.text(String(s ?? '—'), x, y, { align: opts.align || 'left' });
+  };
+  const roundedBox = (x, y, w, h, fill, stroke) => {
+    if (fill) { setFill(fill); doc.roundedRect(x, y, w, h, 2, 2, 'F'); }
+    if (stroke !== false) {
+      setStroke([229, 231, 235]);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(x, y, w, h, 2, 2);
+    }
   };
 
-  // === HEADER ===
-  // Top row: N° Pedido | Fecha emisión
-  box(M, M, W-2*M, 8, [243,244,246]);
-  txt(`N° Pedido:  ${p.nroSolicitud || p.oc || '—'}`, M+2, M+5.5, { bold: true });
-  txt(fmtFecha(new Date().toISOString()), W-M-2, M+5.5, { align: 'right' });
+  // ============ HEADER con logo ============
+  setFill(C_PRIMARY);
+  doc.rect(0, 0, W, 32, 'F');
 
-  // Title centered
-  txt('ORDEN DE PRODUCCIÓN', W/2, M+18, { bold: true, size: 16, align: 'center' });
+  // Logo o placeholder
+  const logoData = (DATA.config && DATA.config.logoBase64) || '';
+  if (logoData) {
+    try {
+      doc.addImage(logoData, 'PNG', M, 6, 30, 20, undefined, 'FAST');
+    } catch (e) {
+      console.warn('Logo error, fallback to text', e);
+      txt('WINFLEX', M, 16, { bold: true, size: 22, color: [255,255,255] });
+    }
+  } else {
+    txt('WINFLEX', M, 16, { bold: true, size: 22, color: [255,255,255] });
+    txt('S.A.', M, 23, { size: 11, color: [219, 234, 254] });
+  }
 
-  // N° OP big + Solicitud + BobinasN°
-  let y = M + 24;
-  box(M, y, 70, 14, [255,255,255]);
-  txt('N°:', M+2, y+5, { size: 8, color: [107,114,128] });
-  txt(p.nroOP || '—', M+12, y+10, { bold: true, size: 18 });
+  // Centro: título
+  txt('ORDEN DE PRODUCCIÓN', W/2, 16, { bold: true, size: 18, align: 'center', color: [255,255,255] });
+  txt('Planta Chivilcoy', W/2, 23, { size: 10, align: 'center', color: [219, 234, 254] });
 
-  box(M+70, y, 60, 14);
-  txt('Solicitud', M+72, y+5, { size: 8, color: [107,114,128] });
-  txt(p.nroSolicitud || '—', M+72, y+11, { bold: true, size: 12 });
+  // Derecha: N° OP grande
+  setFill([255, 255, 255]);
+  doc.roundedRect(W - M - 50, 7, 50, 18, 3, 3, 'F');
+  txt('N° OP', W - M - 47, 13, { size: 8, color: C_GRAY });
+  txt(p.nroOP || '—', W - M - 47, 22, { bold: true, size: 18, color: C_PRIMARY });
 
-  const bobEst = (p.kgPorBobina > 0) ? Math.ceil(p.kgPedidos / p.kgPorBobina) : 0;
-  box(M+130, y, W-M-130-M, 14);
-  txt('Bobinas N°', M+132, y+5, { size: 8, color: [107,114,128] });
-  txt(`1  a  ${bobEst}`, M+132, y+11, { bold: true, size: 12 });
+  let y = 40;
+
+  // ============ Sub-header: cliente + solicitud + fecha ============
+  roundedBox(M, y, W - 2*M, 14, C_LIGHT);
+  txt('CLIENTE', M + 3, y + 5, { size: 8, color: C_GRAY });
+  txt(p.cliente || '—', M + 3, y + 11, { bold: true, size: 14 });
+
+  txt('OC CLIENTE', M + 80, y + 5, { size: 8, color: C_GRAY });
+  txt(p.oc || '—', M + 80, y + 11, { bold: true, size: 12 });
+
+  txt('SOLICITUD N°', M + 125, y + 5, { size: 8, color: C_GRAY });
+  txt(p.nroSolicitud || '—', M + 125, y + 11, { bold: true, size: 12 });
+
+  txt('EMITIDA', W - M - 30, y + 5, { size: 8, color: C_GRAY });
+  txt(fmtFecha(new Date().toISOString()), W - M - 30, y + 11, { size: 10 });
 
   y += 18;
 
-  // === PARAMS Y CRONOGRAMA ===
-  // Left: kg/Hora, Horas/día, Scrap
-  box(M, y, 70, 26);
-  txt('PARÁMETROS', M+2, y+5, { bold: true, size: 8, color: [107,114,128] });
-  txt('kg / Hora:', M+2, y+12, { size: 9 });
-  txt(p.kgPorHora || 0, M+30, y+12, { bold: true, size: 10 });
-  txt('Horas / día:', M+2, y+18, { size: 9 });
-  txt(p.horasPorDia || 0, M+30, y+18, { bold: true, size: 10 });
-  txt('Scrap:', M+2, y+24, { size: 9 });
-  txt(((p.scrapTeorico || 0) * 100).toFixed(0) + '%', M+30, y+24, { bold: true, size: 10 });
+  // ============ ESPECIFICACIONES (caja destacada en azul) ============
+  setFill(C_PRIMARY);
+  doc.roundedRect(M, y, W - 2*M, 8, 2, 2, 'F');
+  txt('ESPECIFICACIONES TÉCNICAS', M + 3, y + 5.5, { bold: true, size: 10, color: [255,255,255] });
+  y += 11;
 
-  // Right: cronograma
-  const dias = (p.kgPorHora > 0 && p.horasPorDia > 0) ? (p.kgPedidos / (p.kgPorHora * p.horasPorDia)) : 0;
-  box(M+70, y, W-M-70-M, 26);
-  txt('CRONOGRAMA', M+72, y+5, { bold: true, size: 8, color: [107,114,128] });
-  txt('Inicio:', M+72, y+12, { size: 9 });
-  txt(fmtFecha(p.fechaInicioProd) || '—', M+95, y+12, { size: 9 });
-  txt('Días:', M+130, y+12, { size: 9, color: [107,114,128] });
-  txt(dias.toFixed(2), M+145, y+12, { bold: true, size: 10 });
-  txt('Fin:', M+72, y+18, { size: 9 });
-  txt(fmtFecha(p.fechaFinProd) || '—', M+95, y+18, { size: 9 });
-  txt('Cliente:', M+72, y+24, { size: 9 });
-  txt(p.cliente || '—', M+95, y+24, { bold: true, size: 10 });
+  const espWidth = (W - 2*M) / 3;
+  // 3 cajas grandes: Ancho, Espesor, Color
+  roundedBox(M, y, espWidth - 2, 22);
+  txt('ANCHO', M + 3, y + 6, { size: 8, color: C_GRAY });
+  txt(`${p.ancho || 0}`, M + 3, y + 17, { bold: true, size: 20, color: C_PRIMARY });
+  txt('mm', M + 3 + doc.getTextWidth(String(p.ancho||0)) * 1.8 + 4, y + 17, { size: 11, color: C_GRAY });
+
+  roundedBox(M + espWidth, y, espWidth - 2, 22);
+  txt('ESPESOR', M + espWidth + 3, y + 6, { size: 8, color: C_GRAY });
+  txt(`${p.espesor || 0}`, M + espWidth + 3, y + 17, { bold: true, size: 20, color: C_PRIMARY });
+  txt('μm', M + espWidth + 3 + doc.getTextWidth(String(p.espesor||0)) * 1.8 + 4, y + 17, { size: 11, color: C_GRAY });
+
+  roundedBox(M + 2*espWidth, y, espWidth, 22);
+  txt('COLOR', M + 2*espWidth + 3, y + 6, { size: 8, color: C_GRAY });
+  txt(p.color || '—', M + 2*espWidth + 3, y + 17, { bold: true, size: 16 });
+
+  y += 26;
+
+  // Silicona + Producto + Destino (fila)
+  const dest = (DATA.catalogos.destinos || []).find(d => d.codigo === p.destinoCodigo);
+  const destNombre = dest ? dest.nombre : (p.destinoCodigo || '—');
+  roundedBox(M, y, (W - 2*M)/3 - 2, 14);
+  txt('SILICONA', M + 3, y + 5, { size: 8, color: C_GRAY });
+  txt(`${p.silicona || '—'}${p.siliconaGramosM2?'  '+p.siliconaGramosM2+' g/m²':''}`, M + 3, y + 11, { bold: true, size: 11 });
+
+  roundedBox(M + (W-2*M)/3, y, (W-2*M)/3 - 2, 14);
+  txt('PRODUCTO', M + (W-2*M)/3 + 3, y + 5, { size: 8, color: C_GRAY });
+  txt(p.producto || '—', M + (W-2*M)/3 + 3, y + 11, { bold: true, size: 10 });
+
+  roundedBox(M + 2*(W-2*M)/3, y, (W-2*M)/3, 14);
+  txt('DESTINO', M + 2*(W-2*M)/3 + 3, y + 5, { size: 8, color: C_GRAY });
+  txt(`${p.destinoCodigo || '—'} · ${destNombre}`, M + 2*(W-2*M)/3 + 3, y + 11, { bold: true, size: 10 });
+
+  y += 18;
+
+  // ============ CANTIDAD A PRODUCIR (caja destacada verde) ============
+  setFill(C_GREEN);
+  doc.roundedRect(M, y, W - 2*M, 26, 3, 3, 'F');
+  txt('CANTIDAD A PRODUCIR', M + 4, y + 7, { size: 9, color: [187, 247, 208], bold: true });
+  txt(`${fmtNum(p.kgPedidos)}`, M + 4, y + 22, { bold: true, size: 28, color: [255,255,255] });
+  txt('kg', M + 4 + doc.getTextWidth(fmtNum(p.kgPedidos)) * 1.6 + 2, y + 22, { size: 14, color: [187, 247, 208] });
+
+  // Side panel: bobinas estimadas
+  const bobEst = (p.kgPorBobina > 0) ? Math.ceil(p.kgPedidos/p.kgPorBobina) : 0;
+  txt('BOBINAS ESTIMADAS', W - M - 60, y + 7, { size: 8, color: [187, 247, 208] });
+  txt(String(bobEst), W - M - 60, y + 22, { bold: true, size: 22, color: [255,255,255] });
+  txt(`× ${p.kgPorBobina || 0} kg`, W - M - 60 + doc.getTextWidth(String(bobEst)) * 1.8 + 4, y + 22, { size: 11, color: [187, 247, 208] });
 
   y += 30;
 
-  // === PRODUCTO ===
-  box(M, y, W-2*M, 8, [243,244,246]);
-  txt('PRODUCTO', M+2, y+5.5, { bold: true, size: 10 });
+  // ============ BOBINAS Y CRONOGRAMA (dos columnas) ============
+  const colW = (W - 2*M - 3) / 2;
+  const yStartBoxes = y;
+
+  // Col izq: BOBINAS
+  setFill(C_LIGHT);
+  doc.roundedRect(M, y, colW, 8, 2, 2, 'F');
+  txt('BOBINAS', M + 3, y + 5.5, { bold: true, size: 9, color: C_DARK });
   y += 10;
+  roundedBox(M, y, colW, 32, [255,255,255]);
+  const rowsLeft = [
+    ['Kg / bobina:', `${p.kgPorBobina || 0} kg`],
+    ['Metros / bobina:', `${p.metrosBobina || 0} m`],
+    ['Diámetro estimado:', `${p.diametroBobina || 0} cm`],
+    ['N° bobinas:', `1 a ${bobEst}`]
+  ];
+  let ry = y + 6;
+  rowsLeft.forEach(([k, v]) => {
+    txt(k, M + 3, ry, { size: 9, color: C_GRAY });
+    txt(v, M + 35, ry, { bold: true, size: 10 });
+    ry += 6.5;
+  });
 
-  // Producto + Código
-  box(M, y, 130, 8);
-  txt('Producto:', M+2, y+5, { size: 9, color: [107,114,128] });
-  txt(p.producto || '—', M+28, y+5, { bold: true });
-  box(M+130, y, W-M-130-M, 8);
-  txt('Código:', M+132, y+5, { size: 9, color: [107,114,128] });
-  txt(p.codigoProducto || '—', M+150, y+5, { bold: true });
-  y += 10;
+  // Col der: CRONOGRAMA
+  let y2 = yStartBoxes;
+  setFill(C_LIGHT);
+  doc.roundedRect(M + colW + 3, y2, colW, 8, 2, 2, 'F');
+  txt('CRONOGRAMA', M + colW + 6, y2 + 5.5, { bold: true, size: 9, color: C_DARK });
+  y2 += 10;
+  roundedBox(M + colW + 3, y2, colW, 32, [255,255,255]);
+  const dias = (p.kgPorHora > 0 && p.horasPorDia > 0) ? (p.kgPedidos / (p.kgPorHora * p.horasPorDia)) : 0;
+  const rowsRight = [
+    ['Kg / hora:', `${p.kgPorHora || 0}`],
+    ['Horas / día:', `${p.horasPorDia || 0}`],
+    ['Días estimados:', dias.toFixed(2)],
+    ['Despacho cliente:', fmtFecha(p.fechaDespacho)]
+  ];
+  let ry2 = y2 + 6;
+  rowsRight.forEach(([k, v]) => {
+    txt(k, M + colW + 6, ry2, { size: 9, color: C_GRAY });
+    txt(v, M + colW + 6 + 32, ry2, { bold: true, size: 10 });
+    ry2 += 6.5;
+  });
 
-  // Kg total + Kg/bobina + Cantidad bobinas
-  box(M, y, 65, 24);
-  txt('CANTIDAD A PRODUCIR', M+2, y+5, { size: 8, color: [107,114,128] });
-  txt(`${fmtNum(p.kgPedidos)}`, M+2, y+16, { bold: true, size: 22, color: [37,99,235] });
-  txt('kg', M+55, y+16, { size: 12, color: [37,99,235] });
+  y = Math.max(ry, ry2) + 4;
 
-  box(M+65, y, 60, 24);
-  txt('BOBINAS', M+67, y+5, { size: 8, color: [107,114,128] });
-  txt('Kg x Bobina:', M+67, y+11, { size: 9 });
-  txt(p.kgPorBobina || 0, M+105, y+11, { bold: true });
-  txt('Cantidad:', M+67, y+16, { size: 9 });
-  txt(bobEst, M+105, y+16, { bold: true });
-  txt('Metros:', M+67, y+21, { size: 9 });
-  txt(p.metrosBobina || 0, M+105, y+21);
-
-  box(M+125, y, W-M-125-M, 24);
-  txt('DIMENSIONES', M+127, y+5, { size: 8, color: [107,114,128] });
-  txt('Ancho:', M+127, y+11, { size: 9 });
-  txt(`${p.ancho || 0} mm`, M+150, y+11, { bold: true });
-  txt('Espesor:', M+127, y+16, { size: 9 });
-  txt(`${p.espesor || 0} μm`, M+150, y+16, { bold: true });
-  txt('Diámetro:', M+127, y+21, { size: 9 });
-  txt(`${p.diametroBobina || 0} mm`, M+150, y+21);
-
-  y += 28;
-
-  // Color + Silicona
-  box(M, y, 95, 10);
-  txt('Color:', M+2, y+6, { size: 9, color: [107,114,128] });
-  txt(p.color || '—', M+25, y+6, { bold: true });
-  box(M+95, y, W-M-95-M, 10);
-  txt('Silicona:', M+97, y+6, { size: 9, color: [107,114,128] });
-  txt(p.silicona || '—', M+118, y+6, { bold: true });
-  txt(`${p.siliconaGramosM2 || 0} g/m²`, M+150, y+6, { size: 9 });
-  y += 14;
-
-  // === RECETA ===
-  box(M, y, W-2*M, 8, [243,244,246]);
-  txt('RECETA', M+2, y+5.5, { bold: true, size: 10 });
-  y += 10;
-
+  // ============ RECETA / MEZCLA ============
   const rec = (DATA.catalogos.recetas || []).find(r => r.codigo === p.recetaCodigo);
-  if (rec || p.mezclaTeoricaTexto) {
-    // Codigo
-    box(M, y, 95, 8);
-    txt('Código receta:', M+2, y+5, { size: 9, color: [107,114,128] });
-    txt(p.recetaCodigo || '—', M+30, y+5, { bold: true });
-    box(M+95, y, W-M-95-M, 8);
-    txt('Tipo:', M+97, y+5, { size: 9, color: [107,114,128] });
-    txt(rec ? rec.tipo : '—', M+115, y+5);
-    y += 10;
+  setFill(C_AMBER);
+  doc.roundedRect(M, y, W - 2*M, 8, 2, 2, 'F');
+  txt(`RECETA${p.recetaCodigo?'  '+p.recetaCodigo:''}${rec?'   ·   '+rec.tipo:''}`, M + 3, y + 5.5, { bold: true, size: 10, color: [255,255,255] });
+  y += 11;
 
-    // Tabla de componentes
-    box(M, y, W-2*M, 8, [243,244,246]);
-    txt('MP', M+4, y+5.5, { bold: true, size: 9, color: [55,65,81] });
-    txt('%', M+90, y+5.5, { bold: true, size: 9, color: [55,65,81] });
-    txt('Tolva', M+115, y+5.5, { bold: true, size: 9, color: [55,65,81] });
-    txt('Kg', M+150, y+5.5, { bold: true, size: 9, color: [55,65,81] });
-    y += 8;
-
-    if (rec) {
-      const kgMP = p.kgPedidos * (1 + (p.scrapTeorico || 0));
-      const tolvasDisponibles = DATA.catalogos.tolvas || ['B1','B2','B3','B4','B5'];
-      let i = 0;
-      Object.entries(rec.componentes).forEach(([mp, pct]) => {
-        box(M, y, W-2*M, 6);
-        txt(mp, M+4, y+4, { size: 9 });
-        txt((pct*100).toFixed(1) + '%', M+90, y+4, { size: 9 });
-        txt(tolvasDisponibles[i] || '-', M+115, y+4, { size: 9 });
-        txt(fmtNum(kgMP * pct), M+150, y+4, { bold: true, size: 9 });
-        y += 6;
-        i++;
-      });
-    } else {
-      box(M, y, W-2*M, 8);
-      txt(p.mezclaTeoricaTexto || '(sin definir)', M+4, y+5.5, { size: 9 });
-      y += 8;
-    }
-    y += 2;
+  if (p.mezclaTeoricaTexto) {
+    roundedBox(M, y, W - 2*M, 10, [255,251,235]);
+    txt(p.mezclaTeoricaTexto, M + 4, y + 6.5, { size: 11, bold: true });
+    y += 13;
   }
 
-  // === OBSERVACIONES ===
-  if (p.confeccion || p.observaciones) {
-    if (y > H - 40) { doc.addPage(); y = M; }
-    box(M, y, W-2*M, 8, [243,244,246]);
-    txt('OBSERVACIONES', M+2, y+5.5, { bold: true, size: 10 });
+  if (rec) {
+    const kgMP = p.kgPedidos * (1 + (p.scrapTeorico || 0));
+    // Headers
+    setFill(C_LIGHT);
+    doc.rect(M, y, W - 2*M, 7, 'F');
+    txt('COMPONENTE', M + 3, y + 5, { bold: true, size: 9, color: C_DARK });
+    txt('%', M + 70, y + 5, { bold: true, size: 9, color: C_DARK });
+    txt('TOLVA', M + 90, y + 5, { bold: true, size: 9, color: C_DARK });
+    txt(`KG (con ${((p.scrapTeorico||0)*100).toFixed(0)}% scrap)`, M + 115, y + 5, { bold: true, size: 9, color: C_DARK });
+    y += 7;
+
+    const tolvas = DATA.catalogos.tolvas || ['B1','B2','B3','B4','B5'];
+    let i = 0;
+    let totalKg = 0;
+    Object.entries(rec.componentes).forEach(([mp, pct]) => {
+      const kg = kgMP * pct;
+      totalKg += kg;
+      if (i % 2 === 0) { setFill([249, 250, 251]); doc.rect(M, y, W - 2*M, 7, 'F'); }
+      txt(mp, M + 3, y + 5, { size: 10 });
+      txt((pct*100).toFixed(1) + '%', M + 70, y + 5, { size: 10 });
+      txt(tolvas[i] || '—', M + 90, y + 5, { size: 10 });
+      txt(fmtNum(kg), M + 115, y + 5, { bold: true, size: 10 });
+      y += 7;
+      i++;
+    });
+    // Total
+    setFill(C_PRIMARY);
+    doc.rect(M, y, W - 2*M, 7, 'F');
+    txt('TOTAL', M + 3, y + 5, { bold: true, size: 10, color: [255,255,255] });
+    txt(fmtNum(totalKg) + ' kg', M + 115, y + 5, { bold: true, size: 10, color: [255,255,255] });
     y += 10;
+  }
+
+  // ============ INDICACIONES PARA EL OPERARIO ============
+  if (p.confeccion || p.observaciones) {
+    if (y > H - 50) { doc.addPage(); y = M; }
+    setFill([254, 226, 226]);
+    doc.roundedRect(M, y, W - 2*M, 8, 2, 2, 'F');
+    txt('📋 INDICACIONES IMPORTANTES', M + 3, y + 5.5, { bold: true, size: 10, color: [153, 27, 27] });
+    y += 11;
     if (p.confeccion) {
-      txt('Confección:', M+2, y, { size: 9, color: [107,114,128] });
-      const lines = doc.splitTextToSize(p.confeccion, W - 2*M - 30);
-      doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(15,23,42);
-      doc.text(lines, M+30, y);
-      y += lines.length * 5 + 3;
+      txt('CONFECCIÓN:', M + 3, y, { size: 9, color: C_GRAY, bold: true });
+      y += 5;
+      doc.setFont('helvetica','normal'); doc.setFontSize(11); setText(C_DARK);
+      const lines = doc.splitTextToSize(p.confeccion, W - 2*M - 6);
+      doc.text(lines, M + 3, y);
+      y += lines.length * 5.5 + 3;
     }
     if (p.observaciones) {
-      txt('Notas:', M+2, y, { size: 9, color: [107,114,128] });
-      const lines = doc.splitTextToSize(p.observaciones, W - 2*M - 30);
-      doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(15,23,42);
-      doc.text(lines, M+30, y);
-      y += lines.length * 5 + 3;
+      txt('OBSERVACIONES:', M + 3, y, { size: 9, color: C_GRAY, bold: true });
+      y += 5;
+      doc.setFont('helvetica','normal'); doc.setFontSize(11); setText(C_DARK);
+      const lines = doc.splitTextToSize(p.observaciones, W - 2*M - 6);
+      doc.text(lines, M + 3, y);
+      y += lines.length * 5.5 + 3;
     }
   }
 
-  // === FOOTER ===
-  doc.setTextColor(156, 163, 175);
-  doc.setFontSize(7);
-  doc.text(`Winflex S.A. · Planta Chivilcoy · Generado ${new Date().toLocaleString('es-AR')}`, M, H-8);
-  doc.text(`OP ${p.op || p.id}`, W-M, H-8, { align: 'right' });
+  // ============ FOOTER ============
+  setStroke([229, 231, 235]);
+  doc.setLineWidth(0.3);
+  doc.line(M, H - 14, W - M, H - 14);
+  setText(C_GRAY);
+  doc.setFontSize(8);
+  doc.text(`Winflex S.A. · Planta Chivilcoy · OP ${p.op || p.id}`, M, H - 8);
+  doc.text(`Generado ${new Date().toLocaleString('es-AR')}`, W - M, H - 8, { align: 'right' });
 
   const fname = `OP_${(p.nroOP||p.op||p.id).replace(/[^A-Za-z0-9_-]/g,'_')}_${(p.cliente||'').replace(/\s+/g,'_')}.pdf`;
   doc.save(fname);
@@ -1805,11 +2073,37 @@ Saludos.`;
 function renderConfig() {
   const c = DATA.config;
   const emailsPlanta = c.emailsPlanta || [];
+  const creds = getCredentials();
 
   document.getElementById('configContent').innerHTML = `
     <div class="detail-section">
-      <h3>📧 Emails de planta (para enviar OP)</h3>
-      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Estos mails se completan automáticamente como destinatarios al generar una OP.</p>
+      <h3>🔑 Credenciales JSONBin (sincronización)</h3>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Estas credenciales están guardadas solo en este navegador. Cada PC / tablet se configura una vez.</p>
+      ${creds ? `
+        <div style="background:#f0fdf4;border:1px solid #86efac;padding:12px 14px;border-radius:6px">
+          <p style="font-size:13px"><b style="color:#065f46">✓ Configuradas</b></p>
+          <p style="font-size:12px;color:#374151;margin-top:6px;font-family:monospace">Bin: ${creds.binId.substring(0,8)}...${creds.binId.substring(creds.binId.length-4)}</p>
+        </div>
+      ` : `
+        <div style="background:#fef2f2;border:1px solid #fca5a5;padding:12px 14px;border-radius:6px">
+          <p style="font-size:13px;color:#991b1b"><b>⚠ Sin credenciales configuradas.</b> La app funciona solo en modo local hasta que las cargues.</p>
+        </div>
+      `}
+      <button class="btn btn-sec" style="margin-top:10px" onclick="openCredentialsModal(false)">${creds ? '✏️ Cambiar credenciales' : '🔑 Configurar credenciales'}</button>
+    </div>
+
+    <div class="detail-section">
+      <h3>📧 Email de Agustín (para mail de OC ingresada)</h3>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Cuando entra un pedido, se le envía un mail a Agustín avisándole para que revise y emita la OP.</p>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="email" id="cf_emailAgustin" value="${c.emailAgustin || ''}" placeholder="agustin@winflex.com.ar" style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px">
+        <button class="btn btn-pri" onclick="saveEmailAgustin()">💾 Guardar</button>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h3>📧 Otros emails de planta (para reenvíos de OP)</h3>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Lista de destinatarios opcionales para el botón "Mail a planta" de la OP.</p>
       <div id="emailsPlantaList">
         ${emailsPlanta.length === 0 ? '<p class="muted">No hay emails cargados</p>' : emailsPlanta.map((e, i) => `
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
@@ -1818,10 +2112,22 @@ function renderConfig() {
           </div>`).join('')}
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-        <input type="email" id="newEmailPlanta" placeholder="agustin@winflex.com.ar" style="flex:1;padding:6px 10px;border:1px solid #d1d5db;border-radius:4px">
+        <input type="email" id="newEmailPlanta" placeholder="horacio@winflex.com.ar" style="flex:1;padding:6px 10px;border:1px solid #d1d5db;border-radius:4px">
         <button class="btn btn-pri" onclick="addEmailPlanta()">+ Agregar</button>
       </div>
       <button class="btn btn-sec" style="margin-top:10px" onclick="saveEmailsPlanta()">💾 Guardar lista</button>
+    </div>
+
+    <div class="detail-section">
+      <h3>🖼️ Logo Winflex (para el PDF de OP)</h3>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Subí el logo (PNG o JPG, máx 200 KB). Se va a usar arriba a la izquierda del PDF. Si no cargás logo, aparece "WINFLEX" en texto.</p>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        ${c.logoBase64 ? `<img src="${c.logoBase64}" style="max-width:140px;max-height:80px;border:1px solid #d1d5db;border-radius:6px;padding:4px;background:white">` : '<div style="width:140px;height:80px;border:2px dashed #d1d5db;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px">Sin logo</div>'}
+        <div>
+          <input type="file" id="logoFile" accept="image/png,image/jpeg" style="font-size:13px" onchange="cargarLogo()">
+          ${c.logoBase64 ? `<br><button class="btn-ghost" style="margin-top:6px" onclick="quitarLogo()">🗑️ Quitar logo</button>` : ''}
+        </div>
+      </div>
     </div>
 
     <div class="detail-section">
@@ -1840,8 +2146,14 @@ function renderConfig() {
           <input type="number" step="0.01" id="cf_scrap" value="${c.scrapTeoricoDefault || 0.20}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
         </div>
         <div class="detail-field">
-          <span class="lbl">Capacidad nominal (kg/h)</span>
-          <input type="number" id="cf_capacidad" value="${c.capacidadKgxHora || 300}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
+          <span class="lbl">Densidad PET (kg/m³)</span>
+          <input type="number" id="cf_densidad" value="${c.densidadPET || 1330}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
+          <div class="hint" style="font-size:11px;color:#9ca3af;margin-top:2px">Para cálculo de metros</div>
+        </div>
+        <div class="detail-field">
+          <span class="lbl">Diámetro tubo núcleo (mm)</span>
+          <input type="number" id="cf_tubo" value="${c.diametroTubo || 152}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
+          <div class="hint" style="font-size:11px;color:#9ca3af;margin-top:2px">Para cálculo de diámetro bobina</div>
         </div>
         <div class="detail-field">
           <span class="lbl">PIN admin (app PC)</span>
@@ -1859,6 +2171,37 @@ function renderConfig() {
       <button class="btn btn-pri" style="margin-top:12px" onclick="saveConfigParams()">💾 Guardar parámetros</button>
     </div>
   `;
+}
+
+async function saveEmailAgustin() {
+  DATA.config.emailAgustin = document.getElementById('cf_emailAgustin').value.trim();
+  await saveData();
+  toast('Email de Agustín guardado', 'success');
+}
+
+function cargarLogo() {
+  const file = document.getElementById('logoFile').files[0];
+  if (!file) return;
+  if (file.size > 200 * 1024) {
+    alert('El archivo es muy grande. Máx 200 KB.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    DATA.config.logoBase64 = e.target.result;
+    await saveData();
+    renderConfig();
+    toast('Logo guardado', 'success');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function quitarLogo() {
+  if (!confirm('¿Quitar el logo?')) return;
+  DATA.config.logoBase64 = '';
+  await saveData();
+  renderConfig();
+  toast('Logo eliminado', 'success');
 }
 
 function addEmailPlanta() {
@@ -1893,7 +2236,8 @@ async function saveConfigParams() {
   DATA.config.kgPorHoraDefault = +document.getElementById('cf_kgh').value || 300;
   DATA.config.horasPorDiaDefault = +document.getElementById('cf_horas').value || 11;
   DATA.config.scrapTeoricoDefault = +document.getElementById('cf_scrap').value || 0.20;
-  DATA.config.capacidadKgxHora = +document.getElementById('cf_capacidad').value || 300;
+  DATA.config.densidadPET = +document.getElementById('cf_densidad').value || 1330;
+  DATA.config.diametroTubo = +document.getElementById('cf_tubo').value || 152;
   DATA.config.pinAdmin = document.getElementById('cf_pinAdmin').value || '3080';
   DATA.config.proximoNroOP = +document.getElementById('cf_proxOP').value || 111;
   DATA.config.proximoNroSolicitud = +document.getElementById('cf_proxSol').value || 1;
@@ -1922,7 +2266,12 @@ function exportPedidosCSV() {
 // INIT
 // ============================================================
 loadData().then(() => {
-  setTimeout(() => document.getElementById('pinInput').focus(), 100);
+  if (!getCredentials()) {
+    // Primera vez en este dispositivo: pedir credenciales antes de hacer nada
+    openCredentialsModal(true);
+  } else {
+    setTimeout(() => document.getElementById('pinInput').focus(), 100);
+  }
 });
 
 // SEED se inyecta acá abajo en la próxima línea ⤵

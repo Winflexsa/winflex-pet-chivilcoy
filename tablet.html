@@ -326,12 +326,26 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
 
 <script>
 // ============================================================
-// CONFIG (debe coincidir con la app PC)
+// CREDENCIALES - se guardan en localStorage por dispositivo
+// (compartidas con la app PC, misma key)
 // ============================================================
-const CONFIG = {
-  JSONBIN_BIN_ID: '6a0c5008ee5a733b12e3f9d1',
-  MASTER_KEY: '$2a$10$8p4t41BnTv.9Ls.4kFLhouDMqJGQEd5LQlBYEz8n1y6nH/3dFq27G'
-};
+const CRED_KEY = 'winflex_jsonbin_credentials';
+
+function getCredentials() {
+  try {
+    const stored = localStorage.getItem(CRED_KEY);
+    if (stored) {
+      const c = JSON.parse(stored);
+      if (c && c.binId && c.masterKey) return c;
+    }
+  } catch (e) {}
+  return null;
+}
+
+function saveCredentialsLS(binId, masterKey) {
+  localStorage.setItem(CRED_KEY, JSON.stringify({ binId: binId.trim(), masterKey: masterKey.trim() }));
+}
+
 const LS_KEY = 'winflex_pet_tablet_v1';
 
 // ============================================================
@@ -414,14 +428,14 @@ function cerrarTurno() {
 // ============================================================
 function renderOps() {
   const lista = document.getElementById('opsList');
-  // OPs en estado Confirmada o En producción, con nroOP cargado
+  // OPs en estado OP o En producción, con nroOP cargado
   const ops = (DATA.pedidos || []).filter(p =>
-    (p.estadoWorkflow === 'Confirmada' || p.estadoWorkflow === 'En producción') &&
+    (p.estadoWorkflow === 'OP' || p.estadoWorkflow === 'En producción' || p.estadoWorkflow === 'Parcial' || p.estadoWorkflow === 'Confirmada') &&
     p.nroOP && p.recetaCodigo
   );
-  // Ordenar: primero "En producción", luego "Confirmada", dentro de cada por fecha
+  // Ordenar: primero "En producción"/"Parcial", luego "OP", dentro de cada por fecha
   ops.sort((a, b) => {
-    const order = { 'En producción': 0, 'Confirmada': 1 };
+    const order = { 'En producción': 0, 'Parcial': 0, 'OP': 1, 'Confirmada': 1 };
     if (order[a.estadoWorkflow] !== order[b.estadoWorkflow]) return order[a.estadoWorkflow] - order[b.estadoWorkflow];
     return (a.fechaDespacho || '') < (b.fechaDespacho || '') ? -1 : 1;
   });
@@ -459,9 +473,9 @@ function selectOp(id) {
   SESSION.opSeleccionada = id;
   showScreen('OpDetail');
   renderOpDetail();
-  // Si está en Confirmada y arrancamos a producir, pasarla a "En producción"
+  // Si está en OP y arrancamos a producir, pasarla a "En producción"
   const p = DATA.pedidos.find(x => x.id === id);
-  if (p && p.estadoWorkflow === 'Confirmada') {
+  if (p && (p.estadoWorkflow === 'OP' || p.estadoWorkflow === 'Confirmada')) {
     p.estadoWorkflow = 'En producción';
     saveData();
   }
@@ -664,11 +678,11 @@ function recalcKgReales(pedidoId) {
 // ============================================================
 async function loadData() {
   setSync('Cargando...', 'warn');
-  const isConfigured = CONFIG.JSONBIN_BIN_ID && CONFIG.JSONBIN_BIN_ID !== 'PEGAR_BIN_ID_AQUI';
-  if (isConfigured) {
+  const creds = getCredentials();
+  if (creds) {
     try {
-      const r = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}/latest`, {
-        headers: { 'X-Master-Key': CONFIG.MASTER_KEY }
+      const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, {
+        headers: { 'X-Master-Key': creds.masterKey }
       });
       if (r.ok) {
         const j = await r.json();
@@ -676,6 +690,10 @@ async function loadData() {
         localStorage.setItem(LS_KEY, JSON.stringify(DATA));
         setSync('Sincronizado', 'ok');
         return DATA;
+      } else if (r.status === 401 || r.status === 403) {
+        alert('Credenciales inválidas. Configurá de nuevo.');
+        openCredentialsTablet(true);
+        return;
       }
     } catch (e) { console.warn('JSONBin offline:', e); }
   }
@@ -685,44 +703,41 @@ async function loadData() {
     setSync('Offline (cache)', 'err');
     return DATA;
   }
-  alert('No se pudo cargar datos. Verificá la configuración del bin.');
   setSync('Sin datos', 'err');
+  if (!creds) openCredentialsTablet(true);
 }
 
 async function saveData() {
   DATA.lastUpdate = new Date().toISOString();
   localStorage.setItem(LS_KEY, JSON.stringify(DATA));
   setSync('Guardando...', 'warn');
-  const isConfigured = CONFIG.JSONBIN_BIN_ID && CONFIG.JSONBIN_BIN_ID !== 'PEGAR_BIN_ID_AQUI';
-  if (!isConfigured) { setSync('Sin bin (local)', 'warn'); return; }
+  const creds = getCredentials();
+  if (!creds) { setSync('Sin credenciales', 'err'); return; }
   try {
     // GET first to avoid overwriting concurrent changes
-    const fresh = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}/latest`, {
-      headers: { 'X-Master-Key': CONFIG.MASTER_KEY }
+    const fresh = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, {
+      headers: { 'X-Master-Key': creds.masterKey }
     });
     if (fresh.ok) {
       const j = await fresh.json();
       const remoteData = j.record;
-      // Merge: priorizamos producciones (lo que cargó la tablet) y kgReales del pedido afectado
-      // Resto del bin: usar la versión remota (más actualizada para todo lo demás)
       const merged = remoteData;
       merged.producciones = DATA.producciones;
-      // Sync kgReales para los pedidos que toqué
       const pedidosTocados = new Set((DATA.producciones || []).map(b => b.pedidoId));
       pedidosTocados.forEach(pid => {
         const local = DATA.pedidos.find(p => p.id === pid);
         const remote = merged.pedidos.find(p => p.id === pid);
         if (local && remote) {
           remote.kgReales = local.kgReales;
-          if (local.estadoWorkflow === 'En producción' && remote.estadoWorkflow === 'Confirmada') {
+          if (local.estadoWorkflow === 'En producción' && (remote.estadoWorkflow === 'OP' || remote.estadoWorkflow === 'Confirmada')) {
             remote.estadoWorkflow = 'En producción';
           }
         }
       });
       merged.lastUpdate = new Date().toISOString();
-      const r = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}`, {
+      const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}`, {
         method: 'PUT',
-        headers: { 'Content-Type':'application/json', 'X-Master-Key': CONFIG.MASTER_KEY },
+        headers: { 'Content-Type':'application/json', 'X-Master-Key': creds.masterKey },
         body: JSON.stringify(merged)
       });
       if (r.ok) {
@@ -738,6 +753,39 @@ async function saveData() {
   } catch (e) {
     setSync('Sin conexión', 'err');
   }
+}
+
+// Modal de credenciales para la tablet
+function openCredentialsTablet(isFirstRun) {
+  const current = getCredentials() || { binId: '', masterKey: '' };
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg">
+      <div class="modal">
+        <h3>🔑 ${isFirstRun ? 'Configurar credenciales' : 'Credenciales JSONBin'}</h3>
+        ${isFirstRun ? `<p style="font-size:13px;color:#92400e;background:#fffbeb;padding:10px;border-radius:6px;margin-bottom:14px">Primera vez en esta tablet. Pegá las credenciales JSONBin (las mismas de la app PC). Quedan guardadas en este dispositivo.</p>` : ''}
+        <div class="field">
+          <label>Bin ID</label>
+          <input type="text" id="cred_binId" value="${current.binId}" placeholder="6831abc123..." autocomplete="off">
+        </div>
+        <div class="field">
+          <label>X-Master-Key</label>
+          <input type="text" id="cred_masterKey" value="${current.masterKey}" placeholder="$2a$10$..." autocomplete="off">
+        </div>
+        <div style="display:grid;grid-template-columns:${isFirstRun?'1fr':'1fr 1fr'};gap:10px;margin-top:14px">
+          ${isFirstRun ? '' : '<button class="btn-big btn-sec" onclick="closeModal()">Cancelar</button>'}
+          <button class="btn-big btn-success" onclick="saveCredsTablet()">Guardar</button>
+        </div>
+      </div>
+    </div>`;
+}
+async function saveCredsTablet() {
+  const binId = document.getElementById('cred_binId').value.trim();
+  const masterKey = document.getElementById('cred_masterKey').value.trim();
+  if (!binId || !masterKey) { alert('Bin ID y Master Key son obligatorios'); return; }
+  saveCredentialsLS(binId, masterKey);
+  closeModal();
+  toast('Credenciales guardadas', 'success');
+  await loadData();
 }
 
 async function reloadData() {
@@ -773,7 +821,11 @@ function fmt(n) {
 // ============================================================
 // INIT
 // ============================================================
-loadData();
+if (!getCredentials()) {
+  openCredentialsTablet(true);
+} else {
+  loadData();
+}
 </script>
 </body>
 </html>
