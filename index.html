@@ -11,14 +11,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .hidden { display: none !important; }
 
 /* Login */
-#login { position: fixed; inset: 0; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+#login { position: fixed; inset: 0; background: linear-gradient(135deg, #064e3b 0%, #16a34a 100%); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .login-box { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 360px; }
 .login-box h1 { font-size: 22px; margin-bottom: 6px; color: #0f172a; }
 .login-box .sub { color: #6b7280; font-size: 13px; margin-bottom: 24px; }
 .pin-input { width: 100%; padding: 14px; font-size: 22px; text-align: center; letter-spacing: 8px; border: 2px solid #e5e7eb; border-radius: 8px; margin-bottom: 16px; }
-.pin-input:focus { outline: none; border-color: #2563eb; }
-.btn-primary { background: #2563eb; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; }
-.btn-primary:hover { background: #1d4ed8; }
+.pin-input:focus { outline: none; border-color: #16a34a; }
+.btn-primary { background: #16a34a; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; }
+.btn-primary:hover { background: #15803d; }
 .login-err { color: #dc2626; font-size: 13px; margin-top: 8px; text-align: center; }
 
 /* Header */
@@ -36,7 +36,7 @@ header .right { display: flex; align-items: center; gap: 12px; }
 nav.tabs { background: white; border-bottom: 1px solid #e5e7eb; padding: 0 24px; display: flex; gap: 4px; overflow-x: auto; }
 .tab { padding: 12px 18px; cursor: pointer; border: none; background: none; font-size: 14px; color: #6b7280; font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap; }
 .tab:hover { color: #1f2937; }
-.tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+.tab.active { color: #16a34a; border-bottom-color: #16a34a; }
 
 /* Content */
 main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
@@ -64,21 +64,21 @@ tbody tr:hover { background: #f9fafb; }
 .estado { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .estado-FINALIZADO { background: #d1fae5; color: #065f46; }
 .estado-PENDIENTE { background: #fef3c7; color: #92400e; }
-.estado-PARCIAL { background: #dbeafe; color: #1e40af; }
+.estado-PARCIAL { background: #dcfce7; color: #15803d; }
 .estado-VENCIDO { background: #fee2e2; color: #991b1b; }
 
 /* Workflow badges */
 .wf { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
 .wf-OC { background: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; }
-.wf-OP { background: #dbeafe; color: #1e40af; }
+.wf-OP { background: #dcfce7; color: #15803d; }
 .wf-Enproduccion { background: #fef3c7; color: #92400e; }
 .wf-Parcial { background: #fed7aa; color: #9a3412; }
-.wf-Despachada { background: #ccfbf1; color: #115e59; }
+.wf-Despachada { background: #dcfce7; color: #14532d; }
 .wf-Finalizada { background: #d1fae5; color: #065f46; }
 .wf-Cancelada { background: #fee2e2; color: #991b1b; }
 /* Legacy badges (compatibilidad) */
 .wf-Borrador { background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; }
-.wf-Confirmada { background: #dbeafe; color: #1e40af; }
+.wf-Confirmada { background: #dcfce7; color: #15803d; }
 .wf-Facturada { background: #ddd6fe; color: #5b21b6; }
 
 /* Detail view modal - full screen */
@@ -88,7 +88,7 @@ tbody tr:hover { background: #f9fafb; }
 .detail-title h2 { font-size: 20px; font-weight: 700; color: #0f172a; }
 .detail-tabs { display: flex; gap: 2px; padding: 0 24px; border-bottom: 1px solid #e5e7eb; background: white; }
 .detail-tab { padding: 12px 16px; cursor: pointer; border: none; background: none; font-size: 13px; color: #6b7280; font-weight: 500; border-bottom: 2px solid transparent; }
-.detail-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+.detail-tab.active { color: #16a34a; border-bottom-color: #16a34a; }
 .detail-body { padding: 20px 24px; overflow-y: auto; max-height: calc(95vh - 200px); }
 .detail-section { margin-bottom: 24px; }
 .detail-section h3 { font-size: 13px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; }
@@ -101,16 +101,16 @@ tbody tr:hover { background: #f9fafb; }
 /* Action buttons row */
 .actions-row { display: flex; gap: 10px; flex-wrap: wrap; padding: 14px 0; }
 .btn-action { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; background: white; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; color: #374151; }
-.btn-action:hover { border-color: #2563eb; color: #2563eb; }
-.btn-action.primary { background: #2563eb; color: white; border-color: #2563eb; }
-.btn-action.primary:hover { background: #1d4ed8; }
+.btn-action:hover { border-color: #16a34a; color: #16a34a; }
+.btn-action.primary { background: #16a34a; color: white; border-color: #16a34a; }
+.btn-action.primary:hover { background: #15803d; }
 
 /* Workflow steps */
 .wf-stepper { display: flex; align-items: center; gap: 4px; margin: 12px 0; flex-wrap: wrap; }
 .wf-step { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; background: #f3f4f6; color: #9ca3af; cursor: pointer; border: 1px solid transparent; }
 .wf-step.done { background: #d1fae5; color: #065f46; }
-.wf-step.current { background: #2563eb; color: white; }
-.wf-step:hover { border-color: #2563eb; }
+.wf-step.current { background: #16a34a; color: white; }
+.wf-step:hover { border-color: #16a34a; }
 .wf-arrow { color: #d1d5db; font-size: 14px; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .muted { color: #9ca3af; }
@@ -120,12 +120,12 @@ tbody tr:hover { background: #f9fafb; }
 .filter-group { display: flex; flex-direction: column; gap: 4px; }
 .filter-group label { font-size: 11px; color: #6b7280; text-transform: uppercase; }
 input[type=text], input[type=number], input[type=date], select, textarea { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; font-family: inherit; }
-input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,0.1); }
 
 /* Buttons */
 .btn { padding: 8px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; border: 1px solid transparent; font-weight: 500; }
-.btn-pri { background: #2563eb; color: white; }
-.btn-pri:hover { background: #1d4ed8; }
+.btn-pri { background: #16a34a; color: white; }
+.btn-pri:hover { background: #15803d; }
 .btn-sec { background: white; color: #374151; border-color: #d1d5db; }
 .btn-sec:hover { background: #f9fafb; }
 .btn-danger { background: #dc2626; color: white; }
@@ -151,19 +151,19 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb
 .month-table tbody tr { cursor: pointer; }
 
 /* Tag/chip */
-.chip { display: inline-block; padding: 2px 8px; background: #eff6ff; color: #1e40af; border-radius: 10px; font-size: 11px; margin: 2px; }
+.chip { display: inline-block; padding: 2px 8px; background: #f0fdf4; color: #15803d; border-radius: 10px; font-size: 11px; margin: 2px; }
 
 /* Formula bar */
 .formula-bar { display: flex; height: 24px; border-radius: 4px; overflow: hidden; border: 1px solid #e5e7eb; }
 .formula-bar > div { display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: 600; }
-.f-preforma { background: #2563eb; }
+.f-preforma { background: #16a34a; }
 .f-scrap { background: #d97706; }
 .f-virgen { background: #059669; }
 .f-master { background: #7c3aed; }
 
 /* Loading */
 .loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: #6b7280; }
-.spinner { width: 30px; height: 30px; border: 3px solid #e5e7eb; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; }
+.spinner { width: 30px; height: 30px; border: 3px solid #e5e7eb; border-top-color: #16a34a; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Toast */
@@ -206,7 +206,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb
     <button class="tab" data-tab="consulta">🔍 Consulta</button>
     <button class="tab" data-tab="producciones">⚙️ Producciones</button>
     <button class="tab" data-tab="mp">📦 Materia Prima</button>
-    <button class="tab" data-tab="costos">💰 Costos Mensuales</button>
     <button class="tab" data-tab="catalogos">📚 Catálogos</button>
     <button class="tab" data-tab="config">⚙️ Configuración</button>
   </nav>
@@ -333,16 +332,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb
       </div>
     </div>
 
-    <!-- COSTOS -->
-    <div id="tab-costos" class="tab-content hidden">
-      <div class="panel">
-        <div class="panel-h">
-          <h2>Costos por mes</h2>
-          <button class="btn btn-pri" onclick="openCostoModal()">+ Cargar mes</button>
-        </div>
-        <table id="costosTabla"></table>
-      </div>
-    </div>
+    <!-- COSTOS REMOVED - se va a manejar aparte -->
 
     <!-- CATALOGOS -->
     <div id="tab-catalogos" class="tab-content hidden">
@@ -397,7 +387,7 @@ function clearCredentials() {
 // reales se leen siempre de localStorage via getCredentials()
 const CONFIG = { JSONBIN_BIN_ID: '', MASTER_KEY: '' };
 
-const LS_KEY = 'winflex_pet_chivilcoy_v32';
+const LS_KEY = 'winflex_pet_chivilcoy_v34';
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 // ============================================================
@@ -486,6 +476,13 @@ function migrateLegacyData(d) {
     // Migrar destino: M -> V (era Molinos = venta cliente)
     if (p.destinoCodigo === 'M') { p.destinoCodigo = 'V'; migrated++; }
     if (p.destinoCodigo === undefined) p.destinoCodigo = 'T';
+    // Conos: por defecto cono 6
+    if (p.conoTipo === undefined) p.conoTipo = '6';
+    if (p.kgPorBobina6 === undefined) p.kgPorBobina6 = p.kgPorBobina || 0;
+    if (p.kgFinalCono3 === undefined) p.kgFinalCono3 = 0;
+    // Silicona enriquecida
+    if (p.siliconaPct === undefined) p.siliconaPct = 0;
+    if (p.siliconaCaras === undefined) p.siliconaCaras = 0;
   });
   if (!d.catalogos.mezclasTeoricas) d.catalogos.mezclasTeoricas = [
     '50% Pref. Cristal / 50% Scrap','70% Pref. Cristal / 30% Scrap','30% Pref. Cristal / 70% Scrap','100% Pref. Cristal','98% Pref. Cristal / 2% Azulino'
@@ -674,7 +671,6 @@ function render() {
   else if (currentTab === 'pedidos') renderPedidos();
   else if (currentTab === 'consulta') renderConsulta();
   else if (currentTab === 'producciones') renderProducciones();
-  else if (currentTab === 'costos') renderCostos();
   else if (currentTab === 'catalogos') renderCatalogos();
   else if (currentTab === 'config') renderConfig();
 }
@@ -713,23 +709,12 @@ function renderDashboard() {
     }
   });
 
-  let html = `<thead><tr><th>Mes</th><th class="num">Kg pedidos</th><th class="num">Kg producidos</th><th class="num">Rendimiento</th><th class="num">Costo Energía/kg</th><th class="num">Costo MO/kg</th></tr></thead><tbody>`;
-  const yearActual = new Date().getFullYear();
+  let html = `<thead><tr><th>Mes</th><th class="num">Kg pedidos</th><th class="num">Kg producidos</th><th class="num">Avance</th></tr></thead><tbody>`;
   MESES.forEach((m, idx) => {
     const md = mesesData[m] || { kgPedidos: 0, kgReales: 0 };
-    const costoKey = `${yearActual}-${String(idx+1).padStart(2,'0')}`;
-    const cm = DATA.costosMensuales[costoKey];
-    let costoEn = '', costoMO = '', rend = '';
-    if (cm && md.kgReales > 0 && cm.tcProm > 0) {
-      costoEn = '$' + ((cm.energia / md.kgReales) / cm.tcProm).toFixed(3);
-      costoMO = '$' + ((cm.manoDeObra / md.kgReales) / cm.tcProm).toFixed(3);
-    }
-    if (cm && md.kgReales > 0) {
-      const kgTeoricos = cm.diasProduccion * cm.horasXDia * DATA.config.capacidadKgxHora;
-      if (kgTeoricos > 0) rend = fmtPct(md.kgReales / kgTeoricos);
-    }
     if (md.kgPedidos > 0 || md.kgReales > 0) {
-      html += `<tr><td><b>${m}</b></td><td class="num">${fmtNum(md.kgPedidos)}</td><td class="num">${fmtNum(md.kgReales)}</td><td class="num">${rend}</td><td class="num">${costoEn}</td><td class="num">${costoMO}</td></tr>`;
+      const avance = md.kgPedidos > 0 ? Math.round(md.kgReales/md.kgPedidos*100) : 0;
+      html += `<tr><td><b>${m}</b></td><td class="num">${fmtNum(md.kgPedidos)}</td><td class="num">${fmtNum(md.kgReales)}</td><td class="num">${avance}%</td></tr>`;
     }
   });
   html += '</tbody>';
@@ -878,7 +863,7 @@ function openPedidoModal(id) {
           <button class="btn-ghost" onclick="closeModal()">✕</button>
         </div>
         <div class="modal-body">
-          <p style="font-size:12px;color:#6b7280;margin-bottom:14px;padding:8px 12px;background:#f9fafb;border-radius:6px;border-left:3px solid #2563eb">
+          <p style="font-size:12px;color:#6b7280;margin-bottom:14px;padding:8px 12px;background:#f9fafb;border-radius:6px;border-left:3px solid #16a34a">
             💡 Cargá los datos generales del pedido. Los datos técnicos (receta, cronograma, etc.) los agregás después emitiendo la OP desde la vista detalle.
           </p>
           <div class="form-grid">
@@ -890,15 +875,23 @@ function openPedidoModal(id) {
             </div>
             <div class="field"><label>OC cliente</label><input type="text" id="m_oc" value="${p.oc||''}" placeholder="OC 2211"></div>
             <div class="field"><label>Ancho (mm) *</label><input type="number" id="m_ancho" value="${p.ancho||''}" placeholder="500"></div>
-            <div class="field"><label>Espesor (μm) *</label><input type="number" id="m_espesor" value="${p.espesor||''}" placeholder="200"></div>
+            <div class="field"><label>Espesor (mic) *</label><input type="number" id="m_espesor" value="${p.espesor||''}" placeholder="200"></div>
             <div class="field"><label>Color</label>
               <select id="m_color">${colores.map(c => `<option value="${c}" ${c===p.color?'selected':''}>${c}</option>`).join('')}</select>
             </div>
             <div class="field"><label>Silicona</label>
-              <select id="m_silicona">
+              <select id="m_silicona" onchange="toggleSiliconaFields()">
                 <option value="" ${!p.silicona?'selected':''}>—</option>
                 <option value="SIN" ${p.silicona==='SIN'?'selected':''}>SIN</option>
                 <option value="CON" ${p.silicona==='CON'?'selected':''}>CON</option>
+              </select>
+            </div>
+            <div class="field" id="silicona_pct_field" style="${p.silicona==='CON'?'':'display:none'}"><label>Silicona %</label><input type="number" step="0.1" id="m_siliconaPct" value="${p.siliconaPct||0}" min="0" max="100" placeholder="5 o 19"></div>
+            <div class="field" id="silicona_caras_field" style="${p.silicona==='CON'?'':'display:none'}"><label>Caras siliconadas</label>
+              <select id="m_siliconaCaras">
+                <option value="0" ${!p.siliconaCaras?'selected':''}>—</option>
+                <option value="1" ${p.siliconaCaras==1?'selected':''}>1 cara</option>
+                <option value="2" ${p.siliconaCaras==2?'selected':''}>2 caras</option>
               </select>
             </div>
             <div class="field"><label>Kg pedidos *</label><input type="number" id="m_kgPed" value="${p.kgPedidos||0}" min="0"></div>
@@ -941,6 +934,8 @@ async function savePedido(id) {
     espesor: +document.getElementById('m_espesor').value || 0,
     color: document.getElementById('m_color').value,
     silicona: document.getElementById('m_silicona').value,
+    siliconaPct: +document.getElementById('m_siliconaPct').value || 0,
+    siliconaCaras: +document.getElementById('m_siliconaCaras').value || 0,
     kgPedidos: +document.getElementById('m_kgPed').value || 0,
     estadoWorkflow: document.getElementById('m_estado').value,
     observaciones: document.getElementById('m_obs').value,
@@ -948,8 +943,9 @@ async function savePedido(id) {
     codigoProducto: ''
   };
   data.codigoProducto = (data.ancho && data.espesor) ? `${data.ancho}${data.espesor}` : '';
-  // Silicona g/m² auto
-  data.siliconaGramosM2 = data.silicona === 'SIN' ? 0.10 : (data.silicona === 'CON' ? 0.05 : 0);
+  // Silicona g/m² auto: SIN = 0.10 (es la cantidad de antiblocking típico interno), CON = según %
+  data.siliconaGramosM2 = data.silicona === 'SIN' ? 0 : (data.silicona === 'CON' ? (data.siliconaPct/100*0.5).toFixed(3) : 0);
+  if (data.silicona !== 'CON') { data.siliconaPct = 0; data.siliconaCaras = 0; }
 
   if (!data.cliente || !data.kgPedidos) { alert('Cliente y kg pedidos son obligatorios'); return; }
 
@@ -1125,55 +1121,296 @@ async function saveCosto(key) {
   toast('Costos guardados', 'success');
 }
 
-// --- CATALOGOS ---
+// --- CATALOGOS (ABM editable) ---
+let currentCatalogTab = 'clientes';
+
 function renderCatalogos() {
   const c = DATA.catalogos;
-  const recetas = c.recetas || [];
-  const operarios = c.operarios || [];
-  let html = `
-    <div class="detail-section">
-      <h3>Operarios (${operarios.length})</h3>
-      <table>
-        <thead><tr><th>Legajo</th><th>Nombre</th><th>Rol</th><th>Ingreso</th><th>PIN tablet</th></tr></thead>
-        <tbody>
-          ${operarios.map(o => `<tr>
-            <td><b>${o.legajo}</b></td>
-            <td>${o.nombre}</td>
-            <td><span class="chip">${o.rol||'operario'}</span></td>
-            <td>${fmtFecha(o.ingreso)}</td>
-            <td><code>${o.pin||''}</code></td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="detail-section">
-      <h3>Recetas codificadas (${recetas.length})</h3>
-      <table>
-        <thead><tr><th>Código</th><th>Tipo</th><th>Composición</th></tr></thead>
-        <tbody>
-          ${recetas.map(r => {
-            const comp = Object.entries(r.componentes).map(([k,v]) => `<span class="chip">${(v*100).toFixed(0)}% ${k}</span>`).join(' ');
-            const ok = Math.abs((r.suma||0) - 1) < 0.01;
-            return `<tr><td><b><code>${r.codigo}</code></b></td><td>${r.tipo}</td><td>${comp} ${ok ? '' : '<span style="color:#d97706;font-size:11px">(suma '+((r.suma||0)*100).toFixed(0)+'%)</span>'}</td></tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="detail-section">
-      <h3>Productos y otros</h3>
-      <div class="form-grid">
-        <div class="field"><label>Productos</label><div>${(c.productos||[]).map(x => `<span class="chip">${x.nombre} (${x.codigo})</span>`).join('')}</div></div>
-        <div class="field"><label>Tolvas</label><div>${(c.tolvas||[]).map(x => `<span class="chip">${x}</span>`).join('')}</div></div>
-        <div class="field"><label>Destinos</label><div>${(c.destinos||[]).map(x => `<span class="chip">${x.codigo} — ${x.nombre}</span>`).join('')}</div></div>
-        <div class="field"><label>Colores</label><div>${c.colores.map(x => `<span class="chip">${x}</span>`).join('')}</div></div>
-        <div class="field"><label>Clientes (${c.clientes.length})</label><div>${c.clientes.map(x => `<span class="chip">${x}</span>`).join('')}</div></div>
-      </div>
-    </div>
-    <p class="muted" style="margin-top:20px">ABM completo de catálogos en futura iteración. Por ahora se editan desde el seed JSON o se autocompletan al usar.</p>
-  `;
+  const tabs = [
+    { id: 'clientes',  label: 'Clientes',  count: (c.clientes||[]).length },
+    { id: 'colores',   label: 'Colores',   count: (c.colores||[]).length },
+    { id: 'productos', label: 'Productos', count: (c.productos||[]).length },
+    { id: 'recetas',   label: 'Recetas',   count: (c.recetas||[]).length },
+    { id: 'operarios', label: 'Operarios', count: (c.operarios||[]).length },
+    { id: 'tolvas',    label: 'Tolvas',    count: (c.tolvas||[]).length },
+    { id: 'destinos',  label: 'Destinos',  count: (c.destinos||[]).length },
+    { id: 'mezclas',   label: 'Mezclas',   count: (c.mezclasTeoricas||[]).length }
+  ];
+  let html = `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:18px;border-bottom:1px solid #e5e7eb;padding-bottom:6px">`;
+  tabs.forEach(t => {
+    html += `<button class="btn-ghost" style="font-weight:${currentCatalogTab===t.id?'600':'400'};color:${currentCatalogTab===t.id?'#16a34a':'#6b7280'};border-bottom:2px solid ${currentCatalogTab===t.id?'#16a34a':'transparent'};padding:6px 12px;border-radius:0" onclick="setCatalogTab('${t.id}')">${t.label} (${t.count})</button>`;
+  });
+  html += `</div><div id="catalogTabContent"></div>`;
   document.getElementById('catalogosContent').innerHTML = html;
+  renderCatalogTab();
+}
+
+function setCatalogTab(id) { currentCatalogTab = id; renderCatalogos(); }
+
+function renderCatalogTab() {
+  const c = DATA.catalogos;
+  const el = document.getElementById('catalogTabContent');
+  const t = currentCatalogTab;
+  if (t === 'clientes')  el.innerHTML = renderSimpleList('clientes', 'Cliente', c.clientes || []);
+  else if (t === 'colores')   el.innerHTML = renderSimpleList('colores', 'Color', c.colores || []);
+  else if (t === 'tolvas')    el.innerHTML = renderSimpleList('tolvas', 'Tolva', c.tolvas || []);
+  else if (t === 'mezclas')   el.innerHTML = renderSimpleList('mezclasTeoricas', 'Mezcla teórica', c.mezclasTeoricas || []);
+  else if (t === 'productos') el.innerHTML = renderObjectList('productos', c.productos || [], ['nombre','codigo'], ['Nombre','Código']);
+  else if (t === 'destinos')  el.innerHTML = renderObjectList('destinos', c.destinos || [], ['codigo','nombre'], ['Código','Nombre']);
+  else if (t === 'operarios') el.innerHTML = renderOperariosTable(c.operarios || []);
+  else if (t === 'recetas')   el.innerHTML = renderRecetasTable(c.recetas || []);
+}
+
+function renderSimpleList(key, label, arr) {
+  return `
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+      <input type="text" id="newSimple_${key}" placeholder="Nuevo ${label.toLowerCase()}..." style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px">
+      <button class="btn btn-pri" onclick="addSimpleItem('${key}')">+ Agregar</button>
+    </div>
+    <table><thead><tr><th>${label}</th><th style="width:120px"></th></tr></thead><tbody>
+      ${arr.map((item, i) => `<tr>
+        <td><input type="text" id="simpItem_${key}_${i}" value="${(item+'').replace(/"/g,'&quot;')}" style="width:100%;padding:6px 8px;border:1px solid transparent;background:transparent" onfocus="this.style.border='1px solid #d1d5db';this.style.background='white'" onblur="updateSimpleItem('${key}',${i},this.value);this.style.border='1px solid transparent';this.style.background='transparent'"></td>
+        <td><button class="btn-ghost" onclick="removeSimpleItem('${key}',${i})">🗑️</button></td>
+      </tr>`).join('')}
+    </tbody></table>
+    ${arr.length === 0 ? '<p class="muted" style="padding:20px;text-align:center">Vacío. Agregá items con el campo de arriba.</p>' : ''}
+  `;
+}
+
+async function addSimpleItem(key) {
+  const inp = document.getElementById('newSimple_'+key);
+  const v = inp.value.trim();
+  if (!v) return;
+  if (!DATA.catalogos[key]) DATA.catalogos[key] = [];
+  if (DATA.catalogos[key].includes(v)) { alert('Ya existe'); return; }
+  DATA.catalogos[key].push(v);
+  if (key === 'clientes' || key === 'colores' || key === 'tolvas') DATA.catalogos[key].sort();
+  inp.value = '';
+  await saveData();
+  renderCatalogos();
+  toast('Agregado', 'success');
+}
+
+async function updateSimpleItem(key, idx, newVal) {
+  newVal = newVal.trim();
+  if (!newVal) { alert('No puede quedar vacío'); renderCatalogos(); return; }
+  if (DATA.catalogos[key][idx] === newVal) return;
+  DATA.catalogos[key][idx] = newVal;
+  await saveData();
+  toast('Actualizado', 'success');
+}
+
+async function removeSimpleItem(key, idx) {
+  const item = DATA.catalogos[key][idx];
+  if (!confirm(`¿Eliminar "${item}"?`)) return;
+  DATA.catalogos[key].splice(idx, 1);
+  await saveData();
+  renderCatalogos();
+  toast('Eliminado', 'success');
+}
+
+function renderObjectList(key, arr, fields, labels) {
+  return `
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+      ${fields.map((f, i) => `<input type="text" id="newObj_${key}_${f}" placeholder="${labels[i]}..." style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px">`).join('')}
+      <button class="btn btn-pri" onclick="addObjectItem('${key}', ${JSON.stringify(fields).replace(/"/g,'&quot;')})">+ Agregar</button>
+    </div>
+    <table><thead><tr>${labels.map(l => `<th>${l}</th>`).join('')}<th style="width:120px"></th></tr></thead><tbody>
+      ${arr.map((item, i) => `<tr>
+        ${fields.map(f => `<td><input type="text" id="objItem_${key}_${i}_${f}" value="${(item[f]+'').replace(/"/g,'&quot;')}" style="width:100%;padding:6px 8px;border:1px solid transparent;background:transparent" onfocus="this.style.border='1px solid #d1d5db';this.style.background='white'" onblur="updateObjectItem('${key}',${i},'${f}',this.value);this.style.border='1px solid transparent';this.style.background='transparent'"></td>`).join('')}
+        <td><button class="btn-ghost" onclick="removeObjectItem('${key}',${i})">🗑️</button></td>
+      </tr>`).join('')}
+    </tbody></table>
+    ${arr.length === 0 ? '<p class="muted" style="padding:20px;text-align:center">Vacío.</p>' : ''}
+  `;
+}
+
+async function addObjectItem(key, fields) {
+  const obj = {};
+  for (const f of fields) {
+    const v = document.getElementById(`newObj_${key}_${f}`).value.trim();
+    if (!v) { alert(`Falta ${f}`); return; }
+    obj[f] = v;
+  }
+  if (!DATA.catalogos[key]) DATA.catalogos[key] = [];
+  DATA.catalogos[key].push(obj);
+  fields.forEach(f => { document.getElementById(`newObj_${key}_${f}`).value = ''; });
+  await saveData();
+  renderCatalogos();
+  toast('Agregado', 'success');
+}
+
+async function updateObjectItem(key, idx, field, newVal) {
+  newVal = newVal.trim();
+  if (DATA.catalogos[key][idx][field] === newVal) return;
+  DATA.catalogos[key][idx][field] = newVal;
+  await saveData();
+  toast('Actualizado', 'success');
+}
+
+async function removeObjectItem(key, idx) {
+  if (!confirm('¿Eliminar este item?')) return;
+  DATA.catalogos[key].splice(idx, 1);
+  await saveData();
+  renderCatalogos();
+  toast('Eliminado', 'success');
+}
+
+function renderOperariosTable(ops) {
+  return `
+    <button class="btn btn-pri" style="margin-bottom:12px" onclick="openOperarioModal()">+ Nuevo operario</button>
+    <table><thead><tr><th>Legajo</th><th>Nombre</th><th>Rol</th><th>Ingreso</th><th>PIN</th><th></th></tr></thead><tbody>
+      ${ops.map((o, i) => `<tr>
+        <td><b>${o.legajo}</b></td>
+        <td>${o.nombre}</td>
+        <td><span class="chip">${o.rol||'operario'}</span></td>
+        <td>${fmtFecha(o.ingreso)}</td>
+        <td><code>${o.pin||''}</code></td>
+        <td><button class="btn-ghost" onclick="openOperarioModal(${i})">✏️</button> <button class="btn-ghost" onclick="removeOperario(${i})">🗑️</button></td>
+      </tr>`).join('')}
+    </tbody></table>
+    ${ops.length === 0 ? '<p class="muted" style="padding:20px;text-align:center">Sin operarios.</p>' : ''}
+  `;
+}
+
+function openOperarioModal(idx) {
+  const o = idx !== undefined ? DATA.catalogos.operarios[idx] : { nombre:'', legajo:'', ingreso:'', pin:'', rol:'operario' };
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-h"><h3>${idx!==undefined?'Editar':'Nuevo'} operario</h3><button class="btn-ghost" onclick="closeModal()">✕</button></div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="field"><label>Nombre *</label><input type="text" id="op_nombre" value="${o.nombre}"></div>
+            <div class="field"><label>Legajo *</label><input type="text" id="op_legajo" value="${o.legajo}"></div>
+            <div class="field"><label>Fecha ingreso</label><input type="date" id="op_ingreso" value="${o.ingreso||''}"></div>
+            <div class="field"><label>PIN (tablet) *</label><input type="text" id="op_pin" value="${o.pin||''}" maxlength="6" placeholder="4 dígitos"></div>
+            <div class="field"><label>Rol</label>
+              <select id="op_rol">
+                <option value="operario" ${o.rol==='operario'?'selected':''}>Operario</option>
+                <option value="ingeniero" ${o.rol==='ingeniero'?'selected':''}>Ingeniero</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="saveOperario(${idx===undefined?'null':idx})">Guardar</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function saveOperario(idx) {
+  const data = {
+    nombre: document.getElementById('op_nombre').value.trim(),
+    legajo: document.getElementById('op_legajo').value.trim(),
+    ingreso: document.getElementById('op_ingreso').value,
+    pin: document.getElementById('op_pin').value.trim(),
+    rol: document.getElementById('op_rol').value
+  };
+  if (!data.nombre || !data.legajo || !data.pin) { alert('Nombre, legajo y PIN son obligatorios'); return; }
+  if (!DATA.catalogos.operarios) DATA.catalogos.operarios = [];
+  // Verificar PIN no duplicado
+  const dupIdx = DATA.catalogos.operarios.findIndex((o, i) => o.pin === data.pin && i !== idx);
+  if (dupIdx >= 0) { alert('Ese PIN ya lo tiene otro operario: ' + DATA.catalogos.operarios[dupIdx].nombre); return; }
+  if (idx === null) DATA.catalogos.operarios.push(data);
+  else DATA.catalogos.operarios[idx] = data;
+  closeModal();
+  await saveData();
+  renderCatalogos();
+  toast('Operario guardado', 'success');
+}
+
+async function removeOperario(idx) {
+  if (!confirm(`¿Eliminar a ${DATA.catalogos.operarios[idx].nombre}?`)) return;
+  DATA.catalogos.operarios.splice(idx, 1);
+  await saveData();
+  renderCatalogos();
+  toast('Eliminado', 'success');
+}
+
+function renderRecetasTable(rs) {
+  return `
+    <button class="btn btn-pri" style="margin-bottom:12px" onclick="openRecetaModal()">+ Nueva receta</button>
+    <table><thead><tr><th>Código</th><th>Tipo</th><th>Composición</th><th class="num">Suma</th><th></th></tr></thead><tbody>
+      ${rs.map((r, i) => {
+        const comp = Object.entries(r.componentes).map(([k,v]) => `<span class="chip">${(v*100).toFixed(0)}% ${k}</span>`).join(' ');
+        const suma = Object.values(r.componentes).reduce((s,v) => s+v, 0);
+        const ok = Math.abs(suma - 1) < 0.01;
+        return `<tr>
+          <td><b><code>${r.codigo}</code></b></td>
+          <td>${r.tipo}</td>
+          <td>${comp}</td>
+          <td class="num">${ok ? '<span style="color:#059669">'+(suma*100).toFixed(0)+'%</span>' : '<span style="color:#d97706">'+(suma*100).toFixed(0)+'%</span>'}</td>
+          <td><button class="btn-ghost" onclick="openRecetaModal(${i})">✏️</button> <button class="btn-ghost" onclick="removeReceta(${i})">🗑️</button></td>
+        </tr>`;
+      }).join('')}
+    </tbody></table>
+    ${rs.length === 0 ? '<p class="muted" style="padding:20px;text-align:center">Sin recetas.</p>' : ''}
+  `;
+}
+
+const MPs_RECETA = ['Scrap','Scrap Sil','Pref. Cristal','Pref. Azul','Clase 1','Clase 2','Scrap Blanco','Scrap Color','Recorte','Master','Flake'];
+
+function openRecetaModal(idx) {
+  const r = idx !== undefined ? DATA.catalogos.recetas[idx] : { codigo:'', tipo:'', componentes:{} };
+  let compHtml = '';
+  MPs_RECETA.forEach(mp => {
+    const val = (r.componentes[mp] || 0) * 100;
+    compHtml += `<div class="field"><label>${mp}</label><input type="number" step="0.1" id="rec_comp_${btoa(mp).replace(/[^A-Za-z0-9]/g,'')}" value="${val||0}" min="0" max="100"><span class="hint">%</span></div>`;
+  });
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal detail-modal">
+        <div class="modal-h"><h3>${idx!==undefined?'Editar':'Nueva'} receta</h3><button class="btn-ghost" onclick="closeModal()">✕</button></div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="field"><label>Código *</label><input type="text" id="rec_codigo" value="${r.codigo}" placeholder="PC-1"></div>
+            <div class="field"><label>Tipo *</label><input type="text" id="rec_tipo" value="${r.tipo}" placeholder="Preforma Cristal"></div>
+          </div>
+          <h3 style="margin-top:16px;font-size:14px;color:#374151">Componentes (%, deben sumar 100% para recetas completas)</h3>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr">
+            ${compHtml}
+          </div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="saveReceta(${idx===undefined?'null':idx})">Guardar</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function saveReceta(idx) {
+  const codigo = document.getElementById('rec_codigo').value.trim();
+  const tipo = document.getElementById('rec_tipo').value.trim();
+  if (!codigo || !tipo) { alert('Código y tipo son obligatorios'); return; }
+  const componentes = {};
+  let suma = 0;
+  MPs_RECETA.forEach(mp => {
+    const v = +document.getElementById('rec_comp_'+btoa(mp).replace(/[^A-Za-z0-9]/g,'')).value || 0;
+    if (v > 0) { componentes[mp] = v/100; suma += v/100; }
+  });
+  if (Object.keys(componentes).length === 0) { alert('Cargá al menos un componente con %'); return; }
+  const data = { codigo, tipo, componentes, suma };
+  if (!DATA.catalogos.recetas) DATA.catalogos.recetas = [];
+  if (idx === null) {
+    if (DATA.catalogos.recetas.find(r => r.codigo === codigo)) { alert('Ya existe una receta con código ' + codigo); return; }
+    DATA.catalogos.recetas.push(data);
+  } else DATA.catalogos.recetas[idx] = data;
+  closeModal();
+  await saveData();
+  renderCatalogos();
+  toast('Receta guardada', 'success');
+}
+
+async function removeReceta(idx) {
+  if (!confirm(`¿Eliminar receta ${DATA.catalogos.recetas[idx].codigo}?`)) return;
+  DATA.catalogos.recetas.splice(idx, 1);
+  await saveData();
+  renderCatalogos();
+  toast('Eliminada', 'success');
 }
 
 // ============================================================
@@ -1271,7 +1508,7 @@ function renderDetailBody(p, bobinas) {
           <div class="detail-field"><span class="lbl">Producto</span><span class="val">${p.producto||'-'}</span></div>
           <div class="detail-field"><span class="lbl">Código</span><span class="val"><code>${p.codigoProducto||'-'}</code></span></div>
           <div class="detail-field"><span class="lbl">Ancho</span><span class="val big">${p.ancho||0} mm</span></div>
-          <div class="detail-field"><span class="lbl">Espesor</span><span class="val big">${p.espesor||0} μm</span></div>
+          <div class="detail-field"><span class="lbl">Espesor</span><span class="val big">${p.espesor||0} mic</span></div>
           <div class="detail-field"><span class="lbl">Color</span><span class="val">${p.color||'-'}</span></div>
           <div class="detail-field"><span class="lbl">Silicona</span><span class="val">${p.silicona||'-'} ${p.siliconaGramosM2 ? `(${p.siliconaGramosM2} g/m²)` : ''}</span></div>
         </div>
@@ -1474,6 +1711,13 @@ async function confirmClearCreds() {
   toast('Credenciales eliminadas', 'success');
 }
 
+function toggleSiliconaFields() {
+  const s = document.getElementById('m_silicona').value;
+  const show = (s === 'CON');
+  document.getElementById('silicona_pct_field').style.display = show ? '' : 'none';
+  document.getElementById('silicona_caras_field').style.display = show ? '' : 'none';
+}
+
 // ============================================================
 // MODAL OP - DATOS TÉCNICOS (se emite sobre un pedido existente)
 // ============================================================
@@ -1502,7 +1746,7 @@ function openOPModal(pedidoId) {
           <button class="btn-ghost" onclick="closeModal()">✕</button>
         </div>
         <div class="modal-body">
-          <p style="font-size:12px;color:#6b7280;margin-bottom:14px;padding:8px 12px;background:#eff6ff;border-radius:6px;border-left:3px solid #2563eb">
+          <p style="font-size:12px;color:#6b7280;margin-bottom:14px;padding:8px 12px;background:#f0fdf4;border-radius:6px;border-left:3px solid #16a34a">
             📝 Cargá los datos técnicos para emitir la OP. Cuando guardes, el pedido pasa a estado "Confirmada" si todavía estaba en "Borrador".
           </p>
 
@@ -1529,9 +1773,16 @@ function openOPModal(pedidoId) {
           </div>
 
           <div class="detail-section">
-            <h3>Bobinas</h3>
+            <h3>Bobinas y conos</h3>
             <div class="form-grid">
-              <div class="field"><label>Kg / Bobina</label><input type="number" id="op_kgBobina" value="${p.kgPorBobina||80}" min="0" oninput="updateOpCalc()"></div>
+              <div class="field"><label>Cono</label>
+                <select id="op_conoTipo" onchange="updateOpCalc()">
+                  <option value="6" ${(p.conoTipo||'6')==='6'?'selected':''}>Cono 6"</option>
+                  <option value="3" ${p.conoTipo==='3'?'selected':''}>Cono 3" (rebobinar Lanús)</option>
+                </select>
+              </div>
+              <div class="field"><label>Kg por bobina (cono 6)</label><input type="number" id="op_kgBobina" value="${p.kgPorBobina||p.kgPorBobina6||80}" min="0" oninput="updateOpCalc()"></div>
+              <div class="field" id="field_kgFinalCono3" style="${(p.conoTipo||'6')==='3'?'':'display:none'}"><label>Kg final en cono 3 (Lanús)</label><input type="number" id="op_kgFinalCono3" value="${p.kgFinalCono3||0}" min="0"><div class="hint">Después de rebobinar en Lanús</div></div>
               <div class="field"><label>Bobinas estimadas</label><input type="text" id="op_bobinasEst" readonly style="background:#f9fafb"></div>
               <div class="field"><label>Metros por bobina (auto)</label><input type="number" id="op_metrosBobina" value="${p.metrosBobina||0}" readonly style="background:#f9fafb"><div class="hint">Calculado a partir de kg/bobina + dimensiones</div></div>
               <div class="field"><label>Diámetro (cm, auto)</label><input type="number" id="op_diametro" step="0.1" value="${p.diametroBobina||0}" readonly style="background:#f9fafb"><div class="hint">Tubo núcleo: ${DATA.config.diametroTubo||152} mm</div></div>
@@ -1601,6 +1852,11 @@ function updateOpCalc() {
   const diametro = calcDiametroBobina(kgBob, p.ancho);
   document.getElementById('op_metrosBobina').value = Math.round(metros);
   document.getElementById('op_diametro').value = diametro.toFixed(1);
+  // Mostrar/ocultar campo cono 3
+  const conoTipoEl = document.getElementById('op_conoTipo');
+  const conoTipo = conoTipoEl ? conoTipoEl.value : '6';
+  const fieldKg3 = document.getElementById('field_kgFinalCono3');
+  if (fieldKg3) fieldKg3.style.display = conoTipo === '3' ? '' : 'none';
 }
 
 function aplicarRecetaOp(autoApplyMezcla = true) {
@@ -1612,7 +1868,7 @@ function aplicarRecetaOp(autoApplyMezcla = true) {
   if (!r) { prev.innerHTML = ''; return; }
   const scrap = +document.getElementById('op_scrapTeorico').value || 0;
   const kgMP = p.kgPedidos * (1 + scrap);
-  let html = `<div style="background:#f0f9ff;padding:12px;border-radius:6px;border:1px solid #bae6fd"><b>${r.codigo}</b> — ${r.tipo}<br>`;
+  let html = `<div style="background:#f0f9ff;padding:12px;border-radius:6px;border:1px solid #bbf7d0"><b>${r.codigo}</b> — ${r.tipo}<br>`;
   html += `<table style="margin-top:8px;width:100%;font-size:13px"><thead><tr><th>Componente</th><th class="num">%</th><th class="num">Kg (con ${(scrap*100).toFixed(0)}% scrap)</th></tr></thead><tbody>`;
   let txt = [];
   Object.entries(r.componentes).forEach(([mp, pct]) => {
@@ -1643,6 +1899,9 @@ async function saveOP(pedidoId) {
   p.codigoProducto = document.getElementById('op_codigoProducto').value;
   p.destinoCodigo = document.getElementById('op_destinoCodigo').value;
   p.kgPorBobina = +document.getElementById('op_kgBobina').value || 0;
+  p.kgPorBobina6 = p.kgPorBobina; // alias for clarity
+  p.conoTipo = document.getElementById('op_conoTipo').value || '6';
+  p.kgFinalCono3 = p.conoTipo === '3' ? (+document.getElementById('op_kgFinalCono3').value || 0) : 0;
   // Metros y diámetro calculados automáticamente
   p.metrosBobina = Math.round(calcMetrosBobina(p.kgPorBobina, p.ancho, p.espesor));
   p.diametroBobina = Math.round(calcDiametroBobina(p.kgPorBobina, p.ancho) * 10) / 10;
@@ -1775,13 +2034,15 @@ function generarOPpdf(id) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const W = 210, H = 297, M = 12;
 
-  // ============ COLORS ============
-  const C_PRIMARY = [37, 99, 235];
+  // ============ COLORS (paleta verde Winflex) ============
+  const C_PRIMARY = [22, 163, 74];      // green-600
+  const C_PRIMARY_DARK = [21, 128, 61]; // green-700
+  const C_PRIMARY_LIGHT = [220, 252, 231]; // green-100
   const C_DARK = [15, 23, 42];
   const C_GRAY = [107, 114, 128];
   const C_LIGHT = [243, 244, 246];
-  const C_GREEN = [5, 150, 105];
-  const C_AMBER = [217, 119, 6];
+  const C_ACCENT = [217, 119, 6];        // amber (receta)
+  const C_WARN = [220, 38, 38];          // red (indicaciones)
 
   // ============ HELPERS ============
   const setFill = (rgb) => doc.setFillColor(...rgb);
@@ -1806,23 +2067,34 @@ function generarOPpdf(id) {
   setFill(C_PRIMARY);
   doc.rect(0, 0, W, 32, 'F');
 
-  // Logo o placeholder
   const logoData = (DATA.config && DATA.config.logoBase64) || '';
   if (logoData) {
+    // Caja blanca contenedora del logo
+    setFill([255, 255, 255]);
+    doc.roundedRect(M, 5, 38, 22, 2, 2, 'F');
     try {
-      doc.addImage(logoData, 'PNG', M, 6, 30, 20, undefined, 'FAST');
+      // Calcular aspect ratio para no deformar
+      const props = doc.getImageProperties(logoData);
+      const ar = props.width / props.height;
+      const maxW = 34, maxH = 18;
+      let w = maxW, h = maxW / ar;
+      if (h > maxH) { h = maxH; w = maxH * ar; }
+      // Centrar dentro del recuadro 38×22
+      const offX = M + 2 + (34 - w) / 2;
+      const offY = 5 + 2 + (18 - h) / 2;
+      doc.addImage(logoData, undefined, offX, offY, w, h);
     } catch (e) {
-      console.warn('Logo error, fallback to text', e);
-      txt('WINFLEX', M, 16, { bold: true, size: 22, color: [255,255,255] });
+      console.warn('Logo error', e);
+      txt('WINFLEX', M + 4, 19, { bold: true, size: 16, color: C_PRIMARY });
     }
   } else {
     txt('WINFLEX', M, 16, { bold: true, size: 22, color: [255,255,255] });
-    txt('S.A.', M, 23, { size: 11, color: [219, 234, 254] });
+    txt('S.A.', M, 23, { size: 11, color: C_PRIMARY_LIGHT });
   }
 
   // Centro: título
   txt('ORDEN DE PRODUCCIÓN', W/2, 16, { bold: true, size: 18, align: 'center', color: [255,255,255] });
-  txt('Planta Chivilcoy', W/2, 23, { size: 10, align: 'center', color: [219, 234, 254] });
+  txt('Planta Chivilcoy', W/2, 23, { size: 10, align: 'center', color: C_PRIMARY_LIGHT });
 
   // Derecha: N° OP grande
   setFill([255, 255, 255]);
@@ -1848,14 +2120,14 @@ function generarOPpdf(id) {
 
   y += 18;
 
-  // ============ ESPECIFICACIONES (caja destacada en azul) ============
+  // ============ ESPECIFICACIONES TÉCNICAS ============
   setFill(C_PRIMARY);
   doc.roundedRect(M, y, W - 2*M, 8, 2, 2, 'F');
   txt('ESPECIFICACIONES TÉCNICAS', M + 3, y + 5.5, { bold: true, size: 10, color: [255,255,255] });
   y += 11;
 
   const espWidth = (W - 2*M) / 3;
-  // 3 cajas grandes: Ancho, Espesor, Color
+  // 3 cajas: Ancho, Espesor, Color
   roundedBox(M, y, espWidth - 2, 22);
   txt('ANCHO', M + 3, y + 6, { size: 8, color: C_GRAY });
   txt(`${p.ancho || 0}`, M + 3, y + 17, { bold: true, size: 20, color: C_PRIMARY });
@@ -1864,7 +2136,7 @@ function generarOPpdf(id) {
   roundedBox(M + espWidth, y, espWidth - 2, 22);
   txt('ESPESOR', M + espWidth + 3, y + 6, { size: 8, color: C_GRAY });
   txt(`${p.espesor || 0}`, M + espWidth + 3, y + 17, { bold: true, size: 20, color: C_PRIMARY });
-  txt('μm', M + espWidth + 3 + doc.getTextWidth(String(p.espesor||0)) * 1.8 + 4, y + 17, { size: 11, color: C_GRAY });
+  txt('mic', M + espWidth + 3 + doc.getTextWidth(String(p.espesor||0)) * 1.8 + 4, y + 17, { size: 11, color: C_GRAY });
 
   roundedBox(M + 2*espWidth, y, espWidth, 22);
   txt('COLOR', M + 2*espWidth + 3, y + 6, { size: 8, color: C_GRAY });
@@ -1872,12 +2144,22 @@ function generarOPpdf(id) {
 
   y += 26;
 
-  // Silicona + Producto + Destino (fila)
+  // ============ Silicona + Producto + Destino ============
+  // Lógica nueva de silicona:
+  //  SIN -> "SIN"
+  //  CON -> "CON  19%  ·  2 caras"
+  let siliconaText = '—';
+  if (p.silicona === 'SIN') siliconaText = 'SIN';
+  else if (p.silicona === 'CON') {
+    const pct = p.siliconaPct ? `${p.siliconaPct}%` : '';
+    const caras = p.siliconaCaras ? `${p.siliconaCaras} cara${p.siliconaCaras==2?'s':''}` : '';
+    siliconaText = `CON ${pct}${caras?'  ·  '+caras:''}`;
+  }
   const dest = (DATA.catalogos.destinos || []).find(d => d.codigo === p.destinoCodigo);
   const destNombre = dest ? dest.nombre : (p.destinoCodigo || '—');
   roundedBox(M, y, (W - 2*M)/3 - 2, 14);
   txt('SILICONA', M + 3, y + 5, { size: 8, color: C_GRAY });
-  txt(`${p.silicona || '—'}${p.siliconaGramosM2?'  '+p.siliconaGramosM2+' g/m²':''}`, M + 3, y + 11, { bold: true, size: 11 });
+  txt(siliconaText, M + 3, y + 11, { bold: true, size: 11 });
 
   roundedBox(M + (W-2*M)/3, y, (W-2*M)/3 - 2, 14);
   txt('PRODUCTO', M + (W-2*M)/3 + 3, y + 5, { size: 8, color: C_GRAY });
@@ -1889,18 +2171,18 @@ function generarOPpdf(id) {
 
   y += 18;
 
-  // ============ CANTIDAD A PRODUCIR (caja destacada verde) ============
-  setFill(C_GREEN);
+  // ============ CANTIDAD A PRODUCIR ============
+  setFill(C_PRIMARY_DARK);
   doc.roundedRect(M, y, W - 2*M, 26, 3, 3, 'F');
-  txt('CANTIDAD A PRODUCIR', M + 4, y + 7, { size: 9, color: [187, 247, 208], bold: true });
+  txt('CANTIDAD A PRODUCIR', M + 4, y + 7, { size: 9, color: C_PRIMARY_LIGHT, bold: true });
   txt(`${fmtNum(p.kgPedidos)}`, M + 4, y + 22, { bold: true, size: 28, color: [255,255,255] });
-  txt('kg', M + 4 + doc.getTextWidth(fmtNum(p.kgPedidos)) * 1.6 + 2, y + 22, { size: 14, color: [187, 247, 208] });
+  txt('kg', M + 4 + doc.getTextWidth(fmtNum(p.kgPedidos)) * 1.6 + 2, y + 22, { size: 14, color: C_PRIMARY_LIGHT });
 
   // Side panel: bobinas estimadas
   const bobEst = (p.kgPorBobina > 0) ? Math.ceil(p.kgPedidos/p.kgPorBobina) : 0;
-  txt('BOBINAS ESTIMADAS', W - M - 60, y + 7, { size: 8, color: [187, 247, 208] });
+  txt('BOBINAS ESTIMADAS', W - M - 60, y + 7, { size: 8, color: C_PRIMARY_LIGHT });
   txt(String(bobEst), W - M - 60, y + 22, { bold: true, size: 22, color: [255,255,255] });
-  txt(`× ${p.kgPorBobina || 0} kg`, W - M - 60 + doc.getTextWidth(String(bobEst)) * 1.8 + 4, y + 22, { size: 11, color: [187, 247, 208] });
+  txt(`× ${p.kgPorBobina || 0} kg`, W - M - 60 + doc.getTextWidth(String(bobEst)) * 1.8 + 4, y + 22, { size: 11, color: C_PRIMARY_LIGHT });
 
   y += 30;
 
@@ -1908,22 +2190,30 @@ function generarOPpdf(id) {
   const colW = (W - 2*M - 3) / 2;
   const yStartBoxes = y;
 
-  // Col izq: BOBINAS
+  // Col izq: BOBINAS (con info de cono)
   setFill(C_LIGHT);
   doc.roundedRect(M, y, colW, 8, 2, 2, 'F');
   txt('BOBINAS', M + 3, y + 5.5, { bold: true, size: 9, color: C_DARK });
   y += 10;
-  roundedBox(M, y, colW, 32, [255,255,255]);
-  const rowsLeft = [
-    ['Kg / bobina:', `${p.kgPorBobina || 0} kg`],
-    ['Metros / bobina:', `${p.metrosBobina || 0} m`],
-    ['Diámetro estimado:', `${p.diametroBobina || 0} cm`],
-    ['N° bobinas:', `1 a ${bobEst}`]
-  ];
+  // Altura mayor si es cono 3 (1 fila más)
+  const bobBoxH = p.conoTipo === '3' ? 39 : 32;
+  roundedBox(M, y, colW, bobBoxH, [255,255,255]);
+  const rowsLeft = [];
+  if (p.conoTipo === '3') {
+    rowsLeft.push(['Cono:', '6" → 3" (rebobinar en Lanús)']);
+    rowsLeft.push(['Kg/bobina cono 6:', `${p.kgPorBobina || 0} kg`]);
+    rowsLeft.push(['Kg final cono 3:', `${p.kgFinalCono3 || 0} kg`]);
+  } else {
+    rowsLeft.push(['Cono:', '6"']);
+    rowsLeft.push(['Kg / bobina:', `${p.kgPorBobina || 0} kg`]);
+  }
+  rowsLeft.push(['Metros / bobina:', `${p.metrosBobina || 0} m`]);
+  rowsLeft.push(['Diámetro estimado:', `${p.diametroBobina || 0} cm`]);
+  rowsLeft.push(['N° bobinas:', `1 a ${bobEst}`]);
   let ry = y + 6;
   rowsLeft.forEach(([k, v]) => {
     txt(k, M + 3, ry, { size: 9, color: C_GRAY });
-    txt(v, M + 35, ry, { bold: true, size: 10 });
+    txt(v, M + 38, ry, { bold: true, size: 10 });
     ry += 6.5;
   });
 
@@ -1933,7 +2223,7 @@ function generarOPpdf(id) {
   doc.roundedRect(M + colW + 3, y2, colW, 8, 2, 2, 'F');
   txt('CRONOGRAMA', M + colW + 6, y2 + 5.5, { bold: true, size: 9, color: C_DARK });
   y2 += 10;
-  roundedBox(M + colW + 3, y2, colW, 32, [255,255,255]);
+  roundedBox(M + colW + 3, y2, colW, bobBoxH, [255,255,255]);
   const dias = (p.kgPorHora > 0 && p.horasPorDia > 0) ? (p.kgPedidos / (p.kgPorHora * p.horasPorDia)) : 0;
   const rowsRight = [
     ['Kg / hora:', `${p.kgPorHora || 0}`],
@@ -1952,7 +2242,7 @@ function generarOPpdf(id) {
 
   // ============ RECETA / MEZCLA ============
   const rec = (DATA.catalogos.recetas || []).find(r => r.codigo === p.recetaCodigo);
-  setFill(C_AMBER);
+  setFill(C_ACCENT);
   doc.roundedRect(M, y, W - 2*M, 8, 2, 2, 'F');
   txt(`RECETA${p.recetaCodigo?'  '+p.recetaCodigo:''}${rec?'   ·   '+rec.tipo:''}`, M + 3, y + 5.5, { bold: true, size: 10, color: [255,255,255] });
   y += 11;
