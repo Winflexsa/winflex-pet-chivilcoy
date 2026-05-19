@@ -305,9 +305,20 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
   </header>
   <h2 class="section-title">OPs activas para producir</h2>
   <div id="opsList"></div>
-  <button class="btn-big btn-pri" style="margin-top:16px" onclick="cerrarPlanillaRegistros()">📊 Cerrar planilla de Registros (PDF)</button>
-  <button class="btn-big btn-success" style="margin-top:8px" onclick="cerrarPlanillaBobinas()">🎯 Cerrar planilla de Bobinas (PDF)</button>
-  <button class="btn-big btn-sec" style="margin-top:8px" onclick="cerrarTurnoSalir()">Salir sin cerrar planillas</button>
+
+  <div style="margin-top:20px;padding:14px;background:#f0fdf4;border-radius:10px;border:1px solid #86efac">
+    <div style="font-size:13px;font-weight:600;color:#15803d;margin-bottom:8px">📋 Cierres del turno (este turno solo)</div>
+    <button class="btn-big btn-pri" style="margin-top:4px" onclick="cerrarPlanillaRegistros()">📊 PDF de Registros — mi turno</button>
+    <button class="btn-big btn-success" style="margin-top:8px" onclick="cerrarPlanillaBobinas()">🎯 PDF de Bobinas — mi turno</button>
+  </div>
+
+  <div style="margin-top:14px;padding:14px;background:#fff;border-radius:10px;border:1px dashed #d1d5db">
+    <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:8px">📅 Consolidado del día (todos los turnos)</div>
+    <p style="font-size:11px;color:#6b7280;margin-bottom:8px">PDF con TODO lo cargado en el día separado por turno y operario. Para enviar al final del día a Agustín.</p>
+    <button class="btn-big btn-sec" style="margin-top:4px;background:#374151;color:white;border:none" onclick="cerrarConsolidadoDiario()">📅 PDF consolidado del día completo</button>
+  </div>
+
+  <button class="btn-big btn-sec" style="margin-top:14px;background:transparent;color:#6b7280;border:1px solid #d1d5db" onclick="cerrarTurnoSalir()">Salir sin cerrar nada</button>
 </div>
 
 <!-- OP DETAIL (Carga de bobinas) -->
@@ -518,6 +529,174 @@ function cerrarPlanillaBobinas() {
     console.error('PDF bobinas error:', e);
     alert('Error generando el PDF: ' + (e.message || e));
   }
+}
+
+function cerrarConsolidadoDiario() {
+  if (!ensureJsPDF()) return;
+  const today = new Date().toISOString().slice(0,10);
+  // TODOS los registros del día (cualquier turno, cualquier operario)
+  const registros = (DATA.registrosProduccion || []).filter(r => r.fecha === today);
+  const bobinas = (DATA.producciones || []).filter(b => b.fecha === today);
+  if (registros.length === 0 && bobinas.length === 0) {
+    alert('No hay cargas en el día de hoy.');
+    return;
+  }
+  // Resumen rápido
+  const turnos = [...new Set([...registros.map(r=>r.turno), ...bobinas.map(b=>b.turno)].filter(Boolean))];
+  const operarios = [...new Set([...registros.map(r=>r.operario), ...bobinas.map(b=>b.operario)].filter(Boolean))];
+  const totalKg = bobinas.reduce((s, b) => s + (+b.kg || 0), 0);
+  const msg = `¿Generar el PDF consolidado del día ${today}?\n\n• Turnos: ${turnos.join(', ') || '-'}\n• Operarios: ${operarios.length}\n• Total: ${registros.length} registros, ${bobinas.length} bobinas (${fmt(totalKg)} kg)\n\nSe genera un PDF separado por turno y operario para enviar a Agustín.`;
+  if (!confirm(msg)) return;
+  try {
+    generarPDFConsolidadoDiario(registros, bobinas, today);
+    toast('PDF consolidado generado', 'success');
+  } catch (e) {
+    console.error('PDF consolidado error:', e);
+    alert('Error generando el PDF: ' + (e.message || e));
+  }
+}
+
+function generarPDFConsolidadoDiario(registros, bobinas, fechaIso) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  const W = 297, H = 210, M = 8;
+  const C_PRI = [22, 163, 74], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
+  const C_DIA = [217, 119, 6], C_NOCHE = [55, 65, 81]; // colores por turno
+  const setFill = (rgb) => doc.setFillColor(...rgb);
+  const setText = (rgb) => doc.setTextColor(...rgb);
+  const txt = (s, x, y, opts={}) => {
+    doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+    doc.setFontSize(opts.size || 9);
+    setText(opts.color || C_DARK);
+    doc.text(safeStr(s), x, y, { align: opts.align || 'left' });
+  };
+
+  const fechaTxt = new Date(fechaIso).toLocaleDateString('es-AR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+  pdfHeader(doc, 'CONSOLIDADO DIARIO', 'Planta Chivilcoy · ' + fechaTxt);
+  let y = 30;
+
+  // Resumen del día
+  const totalKg = bobinas.reduce((s, b) => s + (+b.kg || 0), 0);
+  const turnos = [...new Set([...registros.map(r=>r.turno), ...bobinas.map(b=>b.turno)].filter(Boolean))];
+  const operarios = [...new Set([...registros.map(r=>r.operario), ...bobinas.map(b=>b.operario)].filter(Boolean))];
+  setFill(C_LIGHT); doc.roundedRect(M, y, W - 2*M, 16, 2, 2, 'F');
+  const colW = (W - 2*M) / 5;
+  txt('TOTAL KG', M + 3, y + 5, { size: 8, color: C_GRAY, bold: true });
+  txt(fmt(totalKg) + ' kg', M + 3, y + 12, { bold: true, size: 12, color: C_PRI });
+  txt('BOBINAS', M + colW + 3, y + 5, { size: 8, color: C_GRAY, bold: true });
+  txt(String(bobinas.length), M + colW + 3, y + 12, { bold: true, size: 12, color: C_PRI });
+  txt('REGISTROS', M + 2*colW + 3, y + 5, { size: 8, color: C_GRAY, bold: true });
+  txt(String(registros.length), M + 2*colW + 3, y + 12, { bold: true, size: 12, color: C_PRI });
+  txt('TURNOS', M + 3*colW + 3, y + 5, { size: 8, color: C_GRAY, bold: true });
+  txt(turnos.map(t => t.toUpperCase()).join(' + '), M + 3*colW + 3, y + 12, { bold: true, size: 10 });
+  txt('OPERARIOS', M + 4*colW + 3, y + 5, { size: 8, color: C_GRAY, bold: true });
+  txt(String(operarios.length), M + 4*colW + 3, y + 12, { bold: true, size: 12 });
+  y += 22;
+
+  // Recorrer cada turno (día primero, después noche)
+  const turnoOrden = ['dia', 'noche'].filter(t => turnos.includes(t));
+  turnoOrden.forEach(turno => {
+    const colTurno = turno === 'dia' ? C_DIA : C_NOCHE;
+    const lblTurno = turno === 'dia' ? 'TURNO DIA' : 'TURNO NOCHE';
+    const regsT = registros.filter(r => r.turno === turno);
+    const bobsT = bobinas.filter(b => b.turno === turno);
+    const opsT = [...new Set([...regsT.map(r=>r.operario), ...bobsT.map(b=>b.operario)].filter(Boolean))];
+
+    if (y > H - 40) { doc.addPage(); pdfHeader(doc, 'CONSOLIDADO DIARIO (cont.)', fechaTxt); y = 30; }
+    setFill(colTurno); doc.rect(M, y, W - 2*M, 9, 'F');
+    txt(lblTurno, M + 3, y + 6, { bold: true, size: 11, color: [255,255,255] });
+    txt('Operarios: ' + (opsT.join(', ') || '-'), M + 70, y + 6, { size: 9, color: [255,255,255] });
+    txt(`${regsT.length} registros · ${bobsT.length} bobinas · ${fmt(bobsT.reduce((s,b)=>s+(+b.kg||0),0))} kg`, W - M - 3, y + 6, { size: 9, color: [255,255,255], align: 'right' });
+    y += 11;
+
+    // Tabla registros del turno
+    if (regsT.length > 0) {
+      txt('Registro de Produccion (WEC001)', M + 3, y + 3, { bold: true, size: 9, color: colTurno });
+      y += 6;
+      const cols = [
+        { lbl: 'Hora', x: M+1, w: 12 },
+        { lbl: 'Bob', x: M+14, w: 9 },
+        { lbl: 'Partida', x: M+24, w: 22 },
+        { lbl: 'T.Ent', x: M+47, w: 11 },
+        { lbl: 'Kg/h', x: M+59, w: 11 },
+        { lbl: 'Vel', x: M+71, w: 10 },
+        { lbl: 'SP E', x: M+82, w: 10 },
+        { lbl: 'SP Av', x: M+93, w: 10 },
+        { lbl: 'Torq', x: M+104, w: 10 },
+        { lbl: 'P1', x: M+115, w: 10 },
+        { lbl: 'P2', x: M+126, w: 10 },
+        { lbl: 'P3', x: M+137, w: 10 },
+        { lbl: 'Vacc', x: M+148, w: 10 },
+        { lbl: 'Gap', x: M+159, w: 9 },
+        { lbl: 'Sil', x: M+169, w: 9 },
+        { lbl: 'Eizq', x: M+179, w: 9 },
+        { lbl: 'Ecen', x: M+189, w: 9 },
+        { lbl: 'Eder', x: M+199, w: 9 },
+        { lbl: 'Operario', x: M+209, w: 35 }
+      ];
+      setFill(C_LIGHT); doc.rect(M, y, W - 2*M, 6, 'F');
+      cols.forEach(c => txt(c.lbl, c.x + 1, y + 4, { bold: true, size: 7, color: C_DARK }));
+      y += 6;
+      const sorted = [...regsT].sort((a, b) => safeStr(a.hora).localeCompare(safeStr(b.hora)));
+      sorted.forEach((r, i) => {
+        if (y > H - 14) { doc.addPage(); pdfHeader(doc, 'CONSOLIDADO DIARIO (cont.)', fechaTxt); y = 30; setFill(C_LIGHT); doc.rect(M, y, W - 2*M, 6, 'F'); cols.forEach(c => txt(c.lbl, c.x + 1, y + 4, { bold: true, size: 7, color: C_DARK })); y += 6; }
+        if (i % 2 === 0) { setFill([249, 250, 251]); doc.rect(M, y, W - 2*M, 5, 'F'); }
+        const vals = [r.hora, r.nroBobina, r.partida, r.tempEntrada, r.kgH, r.velMin, r.spEspesor, r.spAvEspesor, r.torqueM, r.p1, r.p2, r.p3, r.vacc, r.gap, r.sil, r.eIzq, r.eCen, r.eDer, r.operario];
+        vals.forEach((v, j) => {
+          let s = (v === null || v === undefined || v === '') ? '-' : safeStr(v);
+          if (j === 18 && s.length > 16) s = s.substring(0, 16);
+          if (j === 2 && s.length > 11) s = s.substring(0, 11);
+          txt(s, cols[j].x + 1, y + 4, { size: 6.5 });
+        });
+        y += 5;
+      });
+      y += 4;
+    }
+
+    // Tabla bobinas del turno
+    if (bobsT.length > 0) {
+      if (y > H - 30) { doc.addPage(); pdfHeader(doc, 'CONSOLIDADO DIARIO (cont.)', fechaTxt); y = 30; }
+      txt('Produccion - Bobinas', M + 3, y + 3, { bold: true, size: 9, color: colTurno });
+      y += 6;
+      const cols2 = [
+        { lbl: 'Hora', x: M+1, w: 14 },
+        { lbl: 'OP', x: M+16, w: 14 },
+        { lbl: 'Partida', x: M+31, w: 26 },
+        { lbl: 'Bob#', x: M+58, w: 10 },
+        { lbl: 'Pallet', x: M+69, w: 11 },
+        { lbl: 'Ancho', x: M+81, w: 12 },
+        { lbl: 'Esp', x: M+94, w: 10 },
+        { lbl: 'Kg', x: M+105, w: 12 },
+        { lbl: 'Metros', x: M+118, w: 13 },
+        { lbl: 'Mezcla real', x: M+132, w: 48 },
+        { lbl: 'Observ', x: M+181, w: 30 },
+        { lbl: 'Operario', x: M+212, w: 32 }
+      ];
+      setFill(C_LIGHT); doc.rect(M, y, W - 2*M, 6, 'F');
+      cols2.forEach(c => txt(c.lbl, c.x + 1, y + 4, { bold: true, size: 7, color: C_DARK }));
+      y += 6;
+      const sorted2 = [...bobsT].sort((a, b) => safeStr(a.hora).localeCompare(safeStr(b.hora)));
+      sorted2.forEach((b, i) => {
+        if (y > H - 14) { doc.addPage(); pdfHeader(doc, 'CONSOLIDADO DIARIO (cont.)', fechaTxt); y = 30; setFill(C_LIGHT); doc.rect(M, y, W - 2*M, 6, 'F'); cols2.forEach(c => txt(c.lbl, c.x + 1, y + 4, { bold: true, size: 7, color: C_DARK })); y += 6; }
+        if (i % 2 === 0) { setFill([249, 250, 251]); doc.rect(M, y, W - 2*M, 5, 'F'); }
+        const ped = (DATA.pedidos || []).find(x => x.id === b.pedidoId);
+        const nopName = ped ? safeStr(ped.nroOP) : '-';
+        const vals = [b.hora, nopName, b.partida, b.nroBobina, b.nroPallet, b.ancho, b.espesor, fmt(b.kg || 0), b.metros, (b.mezclaReal || '').substring(0, 30), (b.observaciones || '').substring(0, 18), (b.operario || '').substring(0, 18)];
+        vals.forEach((v, j) => {
+          const s = (v === null || v === undefined || v === '') ? '-' : safeStr(v);
+          txt(s, cols2[j].x + 1, y + 4, { size: 6.5 });
+        });
+        y += 5;
+      });
+      y += 6;
+    }
+  });
+
+  setText(C_GRAY); doc.setFontSize(7);
+  doc.text('Winflex S.A. - Planta Chivilcoy - Consolidado diario de produccion', M, H - 4);
+
+  const fname = 'Consolidado_' + fechaIso.replace(/-/g,'') + '.pdf';
+  doc.save(fname);
 }
 
 function ensureJsPDF() {

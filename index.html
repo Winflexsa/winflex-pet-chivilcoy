@@ -264,7 +264,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
             <thead>
               <tr>
                 <th data-sort="fechaIngreso">Fecha</th>
-                <th data-sort="fechaDespacho">Despacho</th>
+                <th data-sort="fechaEntrega">Entrega</th>
                 <th data-sort="cliente">Cliente</th>
                 <th data-sort="oc">OC</th>
                 <th data-sort="op">OP</th>
@@ -627,8 +627,9 @@ function calcBobinas(p) {
   return kgB > 0 ? Math.round(kg / kgB) : 0;
 }
 function isVencido(p) {
-  if (!p.fechaDespacho) return false;
-  const d = new Date(p.fechaDespacho);
+  const fecha = p.fechaEntrega || p.fechaDespacho;
+  if (!fecha) return false;
+  const d = new Date(fecha);
   return d < new Date() && calcEstado(p) !== 'FINALIZADO';
 }
 function mesDe(fecha) {
@@ -686,47 +687,76 @@ function render() {
 }
 
 // --- DASHBOARD ---
+let dashYear = new Date().getFullYear(); // año actualmente seleccionado en dashboard
+
 function renderDashboard() {
   const peds = DATA.pedidos;
-  const totalPed = peds.length;
-  const totalKgPed = peds.reduce((s,p) => s + (+p.kgPedidos || 0), 0);
-  const totalKgReal = peds.reduce((s,p) => s + (+p.kgReales || 0), 0);
-  const totalPend = totalKgPed - totalKgReal;
-  const finalizados = peds.filter(p => calcEstado(p) === 'FINALIZADO').length;
-  const pendientes = peds.filter(p => ['PENDIENTE','PARCIAL'].includes(calcEstado(p))).length;
-  const vencidos = peds.filter(p => isVencido(p)).length;
-  const kgVencidos = peds.filter(p => isVencido(p)).reduce((s,p) => s + calcPendiente(p), 0);
+  // Filtrar pedidos del año actual del dashboard
+  const pedsAnio = peds.filter(p => {
+    if (!p.fechaIngreso) return false;
+    const d = new Date(p.fechaIngreso);
+    return d.getFullYear() === dashYear;
+  });
 
-  document.getElementById('kpiGrid').innerHTML = `
-    <div class="kpi"><div class="label">Pedidos totales</div><div class="val">${totalPed}</div></div>
-    <div class="kpi ok"><div class="label">Finalizados</div><div class="val">${finalizados}</div></div>
-    <div class="kpi warn"><div class="label">Pendientes</div><div class="val">${pendientes}</div></div>
-    <div class="kpi alert"><div class="label">Vencidos</div><div class="val">${vencidos}</div><div class="sub">${fmtNum(kgVencidos)} kg</div></div>
-    <div class="kpi"><div class="label">Kg pedidos</div><div class="val">${fmtNum(totalKgPed)}</div></div>
-    <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(totalKgReal)}</div></div>
-    <div class="kpi ${totalPend > 0 ? 'warn' : 'ok'}"><div class="label">Kg pendientes</div><div class="val">${fmtNum(Math.max(0,totalPend))}</div></div>
+  const totalPed = pedsAnio.length;
+  const totalKgPed = pedsAnio.reduce((s,p) => s + (+p.kgPedidos || 0), 0);
+  const totalKgReal = pedsAnio.reduce((s,p) => s + (+p.kgReales || 0), 0);
+  const totalPend = totalKgPed - totalKgReal;
+  const finalizados = pedsAnio.filter(p => calcEstado(p) === 'FINALIZADO').length;
+  const pendientes = pedsAnio.filter(p => ['PENDIENTE','PARCIAL'].includes(calcEstado(p))).length;
+  const vencidos = pedsAnio.filter(p => isVencido(p)).length;
+  const kgVencidos = pedsAnio.filter(p => isVencido(p)).reduce((s,p) => s + calcPendiente(p), 0);
+
+  // Selector de año
+  const aniosDisponibles = [...new Set(peds.map(p => {
+    if (!p.fechaIngreso) return null;
+    return new Date(p.fechaIngreso).getFullYear();
+  }).filter(Boolean))].sort((a,b) => b - a);
+  const yearSelector = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <label style="font-size:13px;color:#6b7280;font-weight:600">Año:</label>
+      <select onchange="dashYear = +this.value; renderDashboard()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-weight:600;color:#16a34a">
+        ${aniosDisponibles.map(y => `<option value="${y}" ${y===dashYear?'selected':''}>${y}</option>`).join('')}
+      </select>
+      <span style="font-size:12px;color:#9ca3af">${totalPed} pedidos en ${dashYear}</span>
+    </div>
   `;
 
-  // Tabla por mes
+  document.getElementById('kpiGrid').innerHTML = yearSelector + `
+    <div class="kpi-row">
+      <div class="kpi"><div class="label">Pedidos totales</div><div class="val">${totalPed}</div></div>
+      <div class="kpi ok"><div class="label">Finalizados</div><div class="val">${finalizados}</div></div>
+      <div class="kpi warn"><div class="label">Pendientes</div><div class="val">${pendientes}</div></div>
+      <div class="kpi alert"><div class="label">Vencidos</div><div class="val">${vencidos}</div><div class="sub">${fmtNum(kgVencidos)} kg</div></div>
+      <div class="kpi"><div class="label">Kg pedidos</div><div class="val">${fmtNum(totalKgPed)}</div></div>
+      <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(totalKgReal)}</div></div>
+      <div class="kpi ${totalPend > 0 ? 'warn' : 'ok'}"><div class="label">Kg pendientes</div><div class="val">${fmtNum(Math.max(0,totalPend))}</div></div>
+    </div>
+  `;
+
+  // Tabla por mes (solo del año seleccionado)
   const mesesData = {};
-  peds.forEach(p => {
-    // mes producción: usa primer registro del año actual o futuro
-    const mp = p.fechaIngreso ? mesDe(p.fechaIngreso) : null;
-    if (mp) {
-      if (!mesesData[mp]) mesesData[mp] = { kgPedidos: 0, kgReales: 0 };
-      mesesData[mp].kgPedidos += +p.kgPedidos || 0;
-      mesesData[mp].kgReales += +p.kgReales || 0;
-    }
+  pedsAnio.forEach(p => {
+    if (!p.fechaIngreso) return;
+    const d = new Date(p.fechaIngreso);
+    const m = d.getMonth(); // 0-11
+    if (!mesesData[m]) mesesData[m] = { kgPedidos: 0, kgReales: 0, cantidad: 0 };
+    mesesData[m].kgPedidos += +p.kgPedidos || 0;
+    mesesData[m].kgReales += +p.kgReales || 0;
+    mesesData[m].cantidad += 1;
   });
 
-  let html = `<thead><tr><th>Mes</th><th class="num">Kg pedidos</th><th class="num">Kg producidos</th><th class="num">Avance</th></tr></thead><tbody>`;
+  let html = `<thead><tr><th>Mes ${dashYear}</th><th class="num">Pedidos</th><th class="num">Kg pedidos</th><th class="num">Kg producidos</th><th class="num">Avance</th></tr></thead><tbody>`;
   MESES.forEach((m, idx) => {
-    const md = mesesData[m] || { kgPedidos: 0, kgReales: 0 };
-    if (md.kgPedidos > 0 || md.kgReales > 0) {
+    const md = mesesData[idx];
+    if (md && (md.kgPedidos > 0 || md.kgReales > 0)) {
       const avance = md.kgPedidos > 0 ? Math.round(md.kgReales/md.kgPedidos*100) : 0;
-      html += `<tr><td><b>${m}</b></td><td class="num">${fmtNum(md.kgPedidos)}</td><td class="num">${fmtNum(md.kgReales)}</td><td class="num">${avance}%</td></tr>`;
+      html += `<tr><td><b>${m}</b></td><td class="num">${md.cantidad}</td><td class="num">${fmtNum(md.kgPedidos)}</td><td class="num">${fmtNum(md.kgReales)}</td><td class="num">${avance}%</td></tr>`;
     }
   });
+  if (Object.keys(mesesData).length === 0) {
+    html += `<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:20px">No hay pedidos en ${dashYear}</td></tr>`;
+  }
   html += '</tbody>';
   document.getElementById('monthTable').innerHTML = html;
 }
@@ -771,7 +801,7 @@ function renderPedidos() {
     const pend = calcPendiente(p);
     return `<tr style="cursor:pointer" onclick="openPedidoDetail('${p.id}')">
       <td>${fmtFecha(p.fechaIngreso)}</td>
-      <td>${fmtFecha(p.fechaDespacho)}</td>
+      <td>${fmtFecha(p.fechaEntrega || p.fechaDespacho)}</td>
       <td><b>${p.cliente||''}</b></td>
       <td>${p.oc||''}</td>
       <td><code style="font-size:11px">${p.op||p.partida||''}</code></td>
@@ -1057,7 +1087,7 @@ function renderConsulta() {
     <div class="kpi"><div class="label">Pedidos</div><div class="val">${filtered.length}</div></div>
     <div class="kpi"><div class="label">Kg pedidos</div><div class="val">${fmtNum(kgPed)}</div></div>
     <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(kgReal)}</div></div>
-    <div class="kpi ${pend>0?'warn':'ok'}"><div class="label">Kg pendientes</div><div class="val">${pend > 0 ? fmtNum(pend) : 'FINALIZADO'}</div></div>
+    <div class="kpi ${pend>0?'warn':'ok'}"><div class="label">Kg pendientes</div><div class="val">${fmtNum(pend)}</div></div>
   `;
 
   let html = '<thead><tr><th>Fecha</th><th>Cliente</th><th>OC</th><th>OP</th><th>Medida</th><th class="num">Kg ped</th><th class="num">Kg real</th><th>Estado</th></tr></thead><tbody>';
