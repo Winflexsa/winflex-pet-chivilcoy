@@ -387,7 +387,7 @@ function clearCredentials() {
 // reales se leen siempre de localStorage via getCredentials()
 const CONFIG = { JSONBIN_BIN_ID: '', MASTER_KEY: '' };
 
-const LS_KEY = 'winflex_pet_chivilcoy_v36';
+const LS_KEY = 'winflex_pet_chivilcoy_v37';
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 // ============================================================
@@ -472,6 +472,8 @@ function migrateLegacyData(d) {
     if (p.diametroBobina === undefined) p.diametroBobina = 0;
     if (p.siliconaGramosM2 === undefined) p.siliconaGramosM2 = 0;
     if (p.fechaInicioProd === undefined) p.fechaInicioProd = '';
+    // fechaEntrega: si no existe, usar fechaDespacho viejo (migración)
+    if (p.fechaEntrega === undefined) p.fechaEntrega = p.fechaDespacho || '';
     if (p.fechaFinProd === undefined) p.fechaFinProd = '';
     // Migrar destino: M -> V (era Molinos = venta cliente)
     if (p.destinoCodigo === 'M') { p.destinoCodigo = 'V'; migrated++; }
@@ -876,6 +878,7 @@ function openPedidoModal(id) {
           </p>
           <div class="form-grid">
             <div class="field"><label>Fecha ingreso</label><input type="date" id="m_fechaIngreso" value="${p.fechaIngreso||''}"></div>
+            <div class="field"><label>Fecha entrega (aprox)</label><input type="date" id="m_fechaEntrega" value="${p.fechaEntrega||p.fechaDespacho||''}"><div class="hint">Fecha solicitada por el cliente / aproximada de referencia</div></div>
             <div class="field"><label>Cliente *</label>
               <input list="dl_clientes" id="m_cliente" value="${p.cliente||''}">
               <datalist id="dl_clientes">${clientes.map(c => `<option value="${c}">`).join('')}</datalist>
@@ -941,7 +944,8 @@ async function savePedido(id) {
   const data = {
     id: id || 'PED-' + String(Date.now()).slice(-6),
     fechaIngreso: document.getElementById('m_fechaIngreso').value,
-    fechaDespacho: existing ? (existing.fechaDespacho||'') : '', // se mantiene si ya existía
+    fechaEntrega: document.getElementById('m_fechaEntrega').value,
+    fechaDespacho: existing ? (existing.fechaDespacho||'') : '', // queda para compat, no se usa más
     cliente: document.getElementById('m_cliente').value.trim(),
     oc: document.getElementById('m_oc').value.trim(),
     ancho: +document.getElementById('m_ancho').value || 0,
@@ -1524,7 +1528,7 @@ function renderDetailBody(p, bobinas) {
           <div class="detail-field"><span class="lbl">OP (código partida)</span><span class="val"><code>${p.op||p.partida||'-'}</code></span></div>
           <div class="detail-field"><span class="lbl">Destino</span><span class="val">${destino ? destino.codigo + ' — ' + destino.nombre : (p.destinoCodigo||'-')}</span></div>
           <div class="detail-field"><span class="lbl">Fecha ingreso</span><span class="val">${fmtFecha(p.fechaIngreso)||'-'}</span></div>
-          <div class="detail-field"><span class="lbl">Fecha despacho</span><span class="val">${fmtFecha(p.fechaDespacho)||'-'}</span></div>
+          <div class="detail-field"><span class="lbl">Fecha entrega</span><span class="val">${fmtFecha(p.fechaEntrega || p.fechaDespacho)||'-'}</span></div>
         </div>
       </div>
       <div class="detail-section">
@@ -1584,13 +1588,16 @@ function renderDetailBody(p, bobinas) {
 
     // SECCIÓN 1: Enviar OC a Agustín (visible en estados OC, OP)
     if (estado === 'OC' || estado === 'OP') {
+      const emailJonathan = DATA.config.emailJonathan || '';
+      const ccJonathan = (p.conoTipo === '3' && emailJonathan);
       html += `
         <div class="detail-section">
           <h3>📧 Notificar a planta por la OC</h3>
-          <p style="font-size:13px;color:#6b7280;margin-bottom:12px">Envía un mail a Agustín avisándole que entró este pedido para que revise y emita la OP.</p>
-          <div class="detail-field" style="margin-bottom:12px"><span class="lbl">Email destino</span><span class="val" style="font-size:13px">${emailAgustin || '<span class="muted">Sin configurar (cargar en Configuración → email Agustín)</span>'}</span></div>
+          <p style="font-size:13px;color:#6b7280;margin-bottom:12px">Envía un mail a Agustín avisándole que entró este pedido para que revise y emita la OP.${ccJonathan ? ' <b>Como es cono 3, también se manda en copia a Jonathan.</b>' : ''}</p>
+          <div class="detail-field" style="margin-bottom:6px"><span class="lbl">Para</span><span class="val" style="font-size:13px">${emailAgustin || '<span class="muted">Sin configurar (cargar en Configuración → email Agustín)</span>'}</span></div>
+          ${ccJonathan ? `<div class="detail-field" style="margin-bottom:12px"><span class="lbl">CC (cono 3)</span><span class="val" style="font-size:13px">${emailJonathan}</span></div>` : ''}
           <div class="actions-row">
-            <button class="btn-action ${estado === 'OC' ? 'primary' : ''}" onclick="enviarOCmail('${p.id}')" ${!emailAgustin ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>📧 Enviar OC a Agustín</button>
+            <button class="btn-action ${estado === 'OC' ? 'primary' : ''}" onclick="enviarOCmail('${p.id}')" ${!emailAgustin ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>📧 Enviar OC a Agustín${ccJonathan ? ' + CC Jonathan' : ''}</button>
             <button class="btn-action" onclick="copiarTextoOC('${p.id}')">📋 Copiar texto</button>
           </div>
         </div>`;
@@ -1638,12 +1645,10 @@ function renderDetailBody(p, bobinas) {
           </div>
         </div>
         <div class="detail-section">
-          <h3>📄 PDF de OP para imprimir y enviar a planta</h3>
-          <p style="font-size:13px;color:#6b7280;margin-bottom:8px">PDF amigable para imprimir y entregar al operario.</p>
-          <div class="detail-field" style="margin-bottom:12px"><span class="lbl">Destinatarios mail (configurables)</span><span class="val" style="font-size:13px">${emailsPlanta || '<span class="muted">Sin configurar</span>'}</span></div>
+          <h3>📄 PDF de OP para imprimir y entregar al operario</h3>
+          <p style="font-size:13px;color:#6b7280;margin-bottom:8px">PDF con todos los datos técnicos. Imprimir y entregar en planta.</p>
           <div class="actions-row">
             <button class="btn-action primary" onclick="generarOPpdf('${p.id}')">📄 Descargar PDF</button>
-            <button class="btn-action" onclick="generarOPmailto('${p.id}')">📧 Abrir mail a planta</button>
           </div>
         </div>`;
     }
@@ -2077,19 +2082,28 @@ function calcDiametroBobina(kgBobina, anchoMm) {
 // MAIL OC a Agustín (interno, le avisa que entró un pedido)
 // ============================================================
 function buildOCBody(p) {
+  // Silicona pretty
+  let silTxt = p.silicona || '-';
+  if (p.silicona === 'CON') silTxt = `CON ${p.siliconaPct||0}%${p.siliconaCaras?' · '+p.siliconaCaras+(p.siliconaCaras==2?' caras':' cara'):''}`;
+  // Cono info
+  let conoTxt = (p.conoTipo||'6')==='3' ? 'Cono 3" (REBOBINAR en Lanús)' : 'Cono 6"';
+  let kgBobTxt = `${p.kgPorBobina6||p.kgPorBobina||0} kg`;
+  if (p.conoTipo === '3') kgBobTxt += ` (final cono 3: ${p.kgFinalCono3||0} kg)`;
   return `Hola Agustín,
 
 Entró el siguiente pedido:
 
-• Cliente:        ${p.cliente}
-• OC cliente:     ${p.oc || '-'}
-• Producto:       Lámina PET ${p.color || ''}
-• Ancho:          ${p.ancho || 0} mm
-• Espesor:        ${p.espesor || 0} micrones
-• Silicona:       ${p.silicona || '-'}
-• Cantidad:       ${fmtNum(p.kgPedidos)} kg
-• Fecha despacho: ${fmtFecha(p.fechaDespacho) || 'a confirmar'}
-${p.observaciones ? '\nObservaciones del pedido:\n' + p.observaciones + '\n' : ''}
+• Cliente:         ${p.cliente}
+• OC cliente:      ${p.oc || '-'}
+• Producto:        Lámina PET ${p.color || ''}
+• Ancho:           ${p.ancho || 0} mm
+• Espesor:         ${p.espesor || 0} mic
+• Silicona:        ${silTxt}
+• Cantidad:        ${fmtNum(p.kgPedidos)} kg
+• Cono:            ${conoTxt}
+• Kg / bobina:     ${kgBobTxt}
+• Fecha entrega:   ${fmtFecha(p.fechaEntrega) || 'a confirmar'}
+${p.observaciones ? '\nObservaciones del pedido:\n' + p.observaciones + '\n' : ''}${p.conoTipo === '3' ? '\n⚠️ Este pedido va en CONO 3 — se rebobina en Lanús (Jonathan en copia).\n' : ''}
 Por favor revisar y emitir la OP correspondiente.
 
 Saludos,
@@ -2106,9 +2120,13 @@ function enviarOCmail(id) {
     switchTab('config');
     return;
   }
-  const subject = `Nuevo pedido ${p.cliente}${p.oc?' · '+p.oc:''} — ${p.ancho||'-'}×${p.espesor||'-'} · ${fmtNum(p.kgPedidos)} kg`;
+  const subject = `Nuevo pedido ${p.cliente}${p.oc?' · '+p.oc:''} — ${p.ancho||'-'}×${p.espesor||'-'} · ${fmtNum(p.kgPedidos)} kg${p.conoTipo==='3'?' · CONO 3':''}`;
   const body = buildOCBody(p);
-  const href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  // Si cono 3, agregar CC a Jonathan
+  const ccJonathan = (p.conoTipo === '3' && DATA.config.emailJonathan) ? DATA.config.emailJonathan.trim() : '';
+  let href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`;
+  if (ccJonathan) href += `&cc=${encodeURIComponent(ccJonathan)}`;
+  href += `&body=${encodeURIComponent(body)}`;
   window.location.href = href;
 }
 
@@ -2353,7 +2371,7 @@ function generarOPpdf(id) {
     ['Kg / hora:', `${p.kgPorHora || 0}`],
     ['Horas / día:', `${p.horasPorDia || 0}`],
     ['Días estimados:', dias.toFixed(2)],
-    ['Despacho cliente:', fmtFecha(p.fechaDespacho)]
+    ['Entrega cliente:', fmtFecha(p.fechaEntrega || p.fechaDespacho)]
   ];
   let ry2 = y2 + 6;
   rowsRight.forEach(([k, v]) => {
@@ -2507,6 +2525,23 @@ function renderConfig() {
     </div>
 
     <div class="detail-section">
+      <h3>🔐 PINs de acceso</h3>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:14px">PIN de admin para la app PC y PIN general para abrir la tablet en planta. El PIN específico de cada operario está en Catálogos → Operarios.</p>
+      <div class="detail-grid">
+        <div class="detail-field">
+          <span class="lbl">PIN admin (app PC)</span>
+          <input type="text" id="cf_pinAdmin_top" value="${c.pinAdmin || '3080'}" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:16px;font-family:monospace;letter-spacing:4px;margin-top:4px">
+        </div>
+        <div class="detail-field">
+          <span class="lbl">🔑 PIN general fábrica (para abrir la tablet)</span>
+          <input type="text" id="cf_pinFabrica" value="${c.pinFabrica || '1234'}" style="padding:8px 12px;border:1px solid #16a34a;border-radius:6px;font-size:16px;font-family:monospace;letter-spacing:4px;margin-top:4px;background:#f0fdf4">
+          <div class="hint" style="font-size:11px;color:#16a34a;margin-top:4px"><b>Default: 1234</b> · Cambialo por uno propio de la fábrica</div>
+        </div>
+      </div>
+      <button class="btn btn-pri" style="margin-top:12px" onclick="savePINs()">💾 Guardar PINs</button>
+    </div>
+
+    <div class="detail-section">
       <h3>📧 Email de Agustín (para mail de OC ingresada)</h3>
       <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Cuando entra un pedido, se le envía un mail a Agustín avisándole para que revise y emita la OP.</p>
       <div style="display:flex;gap:8px;align-items:center">
@@ -2522,23 +2557,6 @@ function renderConfig() {
         <input type="email" id="cf_emailJonathan" value="${c.emailJonathan || ''}" placeholder="jonathan@winflex.com.ar" style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px">
         <button class="btn btn-pri" onclick="saveEmailJonathan()">💾 Guardar</button>
       </div>
-    </div>
-
-    <div class="detail-section">
-      <h3>📧 Otros emails de planta (para reenvíos de OP)</h3>
-      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Lista de destinatarios opcionales para el botón "Mail a planta" de la OP.</p>
-      <div id="emailsPlantaList">
-        ${emailsPlanta.length === 0 ? '<p class="muted">No hay emails cargados</p>' : emailsPlanta.map((e, i) => `
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-            <input type="email" value="${e}" id="ep_${i}" style="flex:1;padding:6px 10px;border:1px solid #d1d5db;border-radius:4px">
-            <button class="btn-ghost" onclick="removeEmailPlanta(${i})">🗑️</button>
-          </div>`).join('')}
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-        <input type="email" id="newEmailPlanta" placeholder="horacio@winflex.com.ar" style="flex:1;padding:6px 10px;border:1px solid #d1d5db;border-radius:4px">
-        <button class="btn btn-pri" onclick="addEmailPlanta()">+ Agregar</button>
-      </div>
-      <button class="btn btn-sec" style="margin-top:10px" onclick="saveEmailsPlanta()">💾 Guardar lista</button>
     </div>
 
     <div class="detail-section">
@@ -2583,11 +2601,6 @@ function renderConfig() {
           <input type="text" id="cf_pinAdmin" value="${c.pinAdmin || '3080'}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
         </div>
         <div class="detail-field">
-          <span class="lbl">PIN general fábrica (tablet)</span>
-          <input type="text" id="cf_pinFabrica" value="${c.pinFabrica || '1234'}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
-          <div class="hint" style="font-size:11px;color:#9ca3af;margin-top:2px">Para abrir la tablet en planta</div>
-        </div>
-        <div class="detail-field">
           <span class="lbl">Próximo N° OP</span>
           <input type="number" id="cf_proxOP" value="${c.proximoNroOP || 111}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
         </div>
@@ -2605,6 +2618,13 @@ async function saveEmailAgustin() {
   DATA.config.emailAgustin = document.getElementById('cf_emailAgustin').value.trim();
   await saveData();
   toast('Email de Agustín guardado', 'success');
+}
+
+async function savePINs() {
+  DATA.config.pinAdmin = (document.getElementById('cf_pinAdmin_top').value || '3080').trim();
+  DATA.config.pinFabrica = (document.getElementById('cf_pinFabrica').value || '1234').trim();
+  await saveData();
+  toast('PINs guardados', 'success');
 }
 
 async function saveEmailJonathan() {
