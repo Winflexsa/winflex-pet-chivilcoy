@@ -1,0 +1,3640 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Winflex PET Chivilcoy — Producción</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f3f4f6; color: #1f2937; font-size: 14px; }
+.hidden { display: none !important; }
+
+/* Login */
+#login { position: fixed; inset: 0; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.login-box { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 360px; }
+.login-box h1 { font-size: 22px; margin-bottom: 6px; color: #0f172a; }
+.login-box .sub { color: #6b7280; font-size: 13px; margin-bottom: 24px; }
+.pin-input { width: 100%; padding: 14px; font-size: 22px; text-align: center; letter-spacing: 8px; border: 2px solid #e5e7eb; border-radius: 8px; margin-bottom: 16px; }
+.pin-input:focus { outline: none; border-color: #2563eb; }
+.btn-primary { background: #2563eb; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; }
+.btn-primary:hover { background: #1d4ed8; }
+.login-err { color: #dc2626; font-size: 13px; margin-top: 8px; text-align: center; }
+
+/* Header */
+header { background: white; border-bottom: 1px solid #e5e7eb; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+header h1 { font-size: 16px; color: #0f172a; font-weight: 700; }
+header .sub { font-size: 12px; color: #6b7280; }
+header .right { display: flex; align-items: center; gap: 12px; }
+.sync-status { font-size: 12px; padding: 4px 10px; border-radius: 12px; background: #d1fae5; color: #065f46; }
+.sync-status.error { background: #fee2e2; color: #991b1b; }
+.sync-status.syncing { background: #fef3c7; color: #92400e; }
+.btn-icon { background: #f3f4f6; border: 1px solid #e5e7eb; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.btn-icon:hover { background: #e5e7eb; }
+
+/* Tabs */
+nav.tabs { background: white; border-bottom: 1px solid #e5e7eb; padding: 0 24px; display: flex; gap: 4px; overflow-x: auto; }
+.tab { padding: 12px 18px; cursor: pointer; border: none; background: none; font-size: 14px; color: #6b7280; font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap; }
+.tab:hover { color: #1f2937; }
+.tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+
+/* Content */
+main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
+.panel { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 16px; }
+.panel-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.panel-h h2 { font-size: 16px; font-weight: 700; color: #0f172a; }
+
+/* KPIs */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.kpi { background: white; padding: 16px; border-radius: 10px; border: 1px solid #e5e7eb; }
+.kpi .label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi .val { font-size: 24px; font-weight: 700; color: #0f172a; margin-top: 4px; }
+.kpi .sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+.kpi.alert .val { color: #dc2626; }
+.kpi.warn .val { color: #d97706; }
+.kpi.ok .val { color: #059669; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead { background: #f9fafb; }
+th { text-align: left; padding: 10px 8px; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; cursor: pointer; user-select: none; }
+th:hover { background: #f3f4f6; }
+td { padding: 8px; border-bottom: 1px solid #f3f4f6; }
+tbody tr:hover { background: #f9fafb; }
+.estado { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.estado-FINALIZADO { background: #d1fae5; color: #065f46; }
+.estado-PENDIENTE { background: #fef3c7; color: #92400e; }
+.estado-PARCIAL { background: #dbeafe; color: #1e40af; }
+.estado-VENCIDO { background: #fee2e2; color: #991b1b; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.muted { color: #9ca3af; }
+
+/* Filters */
+.filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; align-items: end; }
+.filter-group { display: flex; flex-direction: column; gap: 4px; }
+.filter-group label { font-size: 11px; color: #6b7280; text-transform: uppercase; }
+input[type=text], input[type=number], input[type=date], select, textarea { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; font-family: inherit; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+
+/* Buttons */
+.btn { padding: 8px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; border: 1px solid transparent; font-weight: 500; }
+.btn-pri { background: #2563eb; color: white; }
+.btn-pri:hover { background: #1d4ed8; }
+.btn-sec { background: white; color: #374151; border-color: #d1d5db; }
+.btn-sec:hover { background: #f9fafb; }
+.btn-danger { background: #dc2626; color: white; }
+.btn-danger:hover { background: #b91c1c; }
+.btn-ghost { background: transparent; color: #6b7280; padding: 4px 8px; font-size: 12px; }
+.btn-ghost:hover { color: #1f2937; background: #f3f4f6; }
+
+/* Modal */
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal { background: white; border-radius: 12px; max-width: 700px; width: 100%; max-height: 90vh; overflow-y: auto; }
+.modal-h { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+.modal-h h3 { font-size: 17px; font-weight: 700; }
+.modal-body { padding: 20px; }
+.modal-f { padding: 14px 20px; border-top: 1px solid #e5e7eb; display: flex; gap: 8px; justify-content: flex-end; background: #f9fafb; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-grid .full { grid-column: 1 / -1; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 12px; color: #4b5563; font-weight: 500; }
+.field .hint { font-size: 11px; color: #9ca3af; }
+
+/* Dashboard chart-like */
+.month-table th, .month-table td { padding: 6px 10px; }
+.month-table tbody tr { cursor: pointer; }
+
+/* Tag/chip */
+.chip { display: inline-block; padding: 2px 8px; background: #eff6ff; color: #1e40af; border-radius: 10px; font-size: 11px; margin: 2px; }
+
+/* Formula bar */
+.formula-bar { display: flex; height: 24px; border-radius: 4px; overflow: hidden; border: 1px solid #e5e7eb; }
+.formula-bar > div { display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: 600; }
+.f-preforma { background: #2563eb; }
+.f-scrap { background: #d97706; }
+.f-virgen { background: #059669; }
+.f-master { background: #7c3aed; }
+
+/* Loading */
+.loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: #6b7280; }
+.spinner { width: 30px; height: 30px; border: 3px solid #e5e7eb; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Toast */
+.toast { position: fixed; bottom: 20px; right: 20px; background: #1f2937; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); z-index: 2000; animation: slideIn 0.3s; }
+.toast.success { background: #059669; }
+.toast.error { background: #dc2626; }
+@keyframes slideIn { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div class="login-box">
+    <h1>Winflex PET Chivilcoy</h1>
+    <p class="sub">Gestión de producción · PC</p>
+    <input type="password" id="pinInput" class="pin-input" maxlength="6" placeholder="PIN" autofocus>
+    <button class="btn-primary" onclick="doLogin()">Ingresar</button>
+    <div id="loginErr" class="login-err"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <header>
+    <div>
+      <h1>Winflex PET — Chivilcoy</h1>
+      <div class="sub">Gestión de Producción · PC</div>
+    </div>
+    <div class="right">
+      <span id="syncStatus" class="sync-status">Listo</span>
+      <button class="btn-icon" onclick="syncNow()">↻ Sincronizar</button>
+      <button class="btn-icon" onclick="logout()">Salir</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
+    <button class="tab" data-tab="pedidos">📋 Pedidos</button>
+    <button class="tab" data-tab="consulta">🔍 Consulta</button>
+    <button class="tab" data-tab="producciones">⚙️ Producciones</button>
+    <button class="tab" data-tab="mp">📦 Materia Prima</button>
+    <button class="tab" data-tab="costos">💰 Costos Mensuales</button>
+    <button class="tab" data-tab="catalogos">📚 Catálogos</button>
+  </nav>
+
+  <main>
+    <!-- DASHBOARD -->
+    <div id="tab-dashboard" class="tab-content">
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="panel">
+        <div class="panel-h"><h2>Resumen por mes</h2></div>
+        <table class="month-table" id="monthTable"></table>
+      </div>
+    </div>
+
+    <!-- PEDIDOS -->
+    <div id="tab-pedidos" class="tab-content hidden">
+      <div class="panel">
+        <div class="panel-h">
+          <h2>Pedidos (<span id="pedCount">0</span>)</h2>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sec" onclick="exportPedidosCSV()">⬇ CSV</button>
+            <button class="btn btn-pri" onclick="openPedidoModal()">+ Nuevo pedido</button>
+          </div>
+        </div>
+        <div class="filters">
+          <div class="filter-group">
+            <label>Buscar</label>
+            <input type="text" id="fBuscar" placeholder="Cliente, OC, partida, medida...">
+          </div>
+          <div class="filter-group">
+            <label>Cliente</label>
+            <select id="fCliente"><option value="">Todos</option></select>
+          </div>
+          <div class="filter-group">
+            <label>Estado</label>
+            <select id="fEstado">
+              <option value="">Todos</option>
+              <option value="PENDIENTE">Pendiente</option>
+              <option value="PARCIAL">Parcial</option>
+              <option value="FINALIZADO">Finalizado</option>
+              <option value="VENCIDO">Vencido</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Mes pedido</label>
+            <select id="fMes"><option value="">Todos</option></select>
+          </div>
+          <button class="btn btn-ghost" onclick="clearFilters()">Limpiar</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table id="tablaPedidos">
+            <thead>
+              <tr>
+                <th data-sort="fechaIngreso">Fecha</th>
+                <th data-sort="fechaDespacho">Despacho</th>
+                <th data-sort="cliente">Cliente</th>
+                <th data-sort="oc">OC</th>
+                <th data-sort="medida">Medida</th>
+                <th data-sort="color">Color</th>
+                <th data-sort="partida">Partida</th>
+                <th class="num" data-sort="kgPedidos">Kg ped</th>
+                <th class="num" data-sort="kgReales">Kg real</th>
+                <th class="num">Pend</th>
+                <th class="num">Bob</th>
+                <th>Fórmula</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONSULTA -->
+    <div id="tab-consulta" class="tab-content hidden">
+      <div class="panel">
+        <div class="panel-h"><h2>Consulta de producción</h2></div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Cliente</label>
+            <select id="qCliente"><option value="">Todos</option></select>
+          </div>
+          <div class="field">
+            <label>OC</label>
+            <select id="qOc"><option value="">Todos</option></select>
+          </div>
+          <div class="field">
+            <label>Partida</label>
+            <select id="qPartida"><option value="">Todas</option></select>
+          </div>
+          <div class="field">
+            <label>Medida</label>
+            <select id="qMedida"><option value="">Todas</option></select>
+          </div>
+        </div>
+        <div class="kpi-grid" id="consultaKpis" style="margin-top:20px"></div>
+        <table id="consultaTabla"></table>
+      </div>
+    </div>
+
+    <!-- PRODUCCIONES -->
+    <div id="tab-producciones" class="tab-content hidden">
+      <div class="panel">
+        <div class="panel-h"><h2>Producciones diarias (cargadas por operarios desde tablet)</h2></div>
+        <div id="produccionesContent"></div>
+      </div>
+    </div>
+
+    <!-- MP -->
+    <div id="tab-mp" class="tab-content hidden">
+      <div class="panel">
+        <div class="panel-h">
+          <h2>Stock de Materia Prima</h2>
+          <button class="btn btn-pri" onclick="alert('Disponible en v2 cuando confirmemos catálogo de MP completo')">+ Ingreso MP</button>
+        </div>
+        <div id="mpContent"><p class="muted">Esta pestaña se completa en v2, una vez confirmados los catálogos de MP, proveedores y operarios.</p></div>
+      </div>
+    </div>
+
+    <!-- COSTOS -->
+    <div id="tab-costos" class="tab-content hidden">
+      <div class="panel">
+        <div class="panel-h">
+          <h2>Costos por mes</h2>
+          <button class="btn btn-pri" onclick="openCostoModal()">+ Cargar mes</button>
+        </div>
+        <table id="costosTabla"></table>
+      </div>
+    </div>
+
+    <!-- CATALOGOS -->
+    <div id="tab-catalogos" class="tab-content hidden">
+      <div class="panel">
+        <div class="panel-h"><h2>Catálogos</h2></div>
+        <div id="catalogosContent"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- MODALES -->
+<div id="modalContainer"></div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const CONFIG = {
+  // ⚠️ Configurar después de crear el bin en JSONBin Pro:
+  JSONBIN_BIN_ID: 'PEGAR_BIN_ID_AQUI',
+  JSONBIN_API_KEY: 'PEGAR_API_KEY_AQUI',
+  // ⚠️ Modo offline: si bin/key no están configurados, usa localStorage
+  MASTER_KEY: 'PEGAR_MASTER_KEY_AQUI'
+};
+
+const LS_KEY = 'winflex_pet_chivilcoy_v1';
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+// ============================================================
+// STATE
+// ============================================================
+let DATA = null;
+let currentTab = 'dashboard';
+let sortField = 'fechaIngreso';
+let sortDir = 'desc';
+let isDirty = false;
+
+// ============================================================
+// AUTH
+// ============================================================
+function doLogin() {
+  const pin = document.getElementById('pinInput').value;
+  if (!DATA) { loadData().then(() => doLogin()); return; }
+  if (pin === DATA.config.pinAdmin) {
+    document.getElementById('login').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    initApp();
+  } else {
+    document.getElementById('loginErr').textContent = 'PIN incorrecto';
+  }
+}
+document.getElementById('pinInput').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') doLogin();
+});
+function logout() {
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login').classList.remove('hidden');
+  document.getElementById('pinInput').value = '';
+  document.getElementById('loginErr').textContent = '';
+}
+
+// ============================================================
+// DATA LAYER
+// ============================================================
+async function loadData() {
+  setSyncStatus('Cargando...', 'syncing');
+  const cached = localStorage.getItem(LS_KEY);
+  const isConfigured = CONFIG.JSONBIN_BIN_ID && CONFIG.JSONBIN_BIN_ID !== 'PEGAR_BIN_ID_AQUI';
+
+  if (isConfigured) {
+    try {
+      const headers = { 'X-Master-Key': CONFIG.MASTER_KEY };
+      const r = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}/latest`, { headers });
+      if (r.ok) {
+        const j = await r.json();
+        DATA = j.record;
+        localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+        setSyncStatus('Sincronizado', 'ok');
+        return DATA;
+      }
+    } catch (e) { console.warn('JSONBin offline:', e); }
+  }
+
+  if (cached) {
+    DATA = JSON.parse(cached);
+    setSyncStatus(isConfigured ? 'Offline (cache)' : 'Sin bin configurado', isConfigured ? 'error' : 'syncing');
+    return DATA;
+  }
+
+  // Fallback: bootstrap with seed (loaded from inline)
+  DATA = SEED;
+  localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+  setSyncStatus('Datos locales iniciales', 'syncing');
+  return DATA;
+}
+
+async function saveData() {
+  DATA.lastUpdate = new Date().toISOString();
+  localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+  isDirty = true;
+  setSyncStatus('Guardado local · pendiente sync', 'syncing');
+
+  const isConfigured = CONFIG.JSONBIN_BIN_ID && CONFIG.JSONBIN_BIN_ID !== 'PEGAR_BIN_ID_AQUI';
+  if (!isConfigured) return;
+
+  try {
+    const headers = { 'Content-Type': 'application/json', 'X-Master-Key': CONFIG.MASTER_KEY };
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}`, {
+      method: 'PUT', headers, body: JSON.stringify(DATA)
+    });
+    if (r.ok) {
+      isDirty = false;
+      setSyncStatus('Sincronizado', 'ok');
+    } else {
+      setSyncStatus('Error sync', 'error');
+    }
+  } catch (e) {
+    setSyncStatus('Sin conexión', 'error');
+  }
+}
+
+async function syncNow() {
+  await saveData();
+  await loadData();
+  render();
+  toast('Sincronizado', 'success');
+}
+
+function setSyncStatus(text, cls) {
+  const el = document.getElementById('syncStatus');
+  el.textContent = text;
+  el.className = 'sync-status ' + (cls || '');
+}
+
+function toast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type || '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+// ============================================================
+// DERIVED CALCS
+// ============================================================
+function calcEstado(p) {
+  const kgPed = +p.kgPedidos || 0;
+  const kgReal = +p.kgReales || 0;
+  if (kgPed === 0) return 'PENDIENTE';
+  if (kgReal >= kgPed) return 'FINALIZADO';
+  if (kgReal > 0) return 'PARCIAL';
+  return 'PENDIENTE';
+}
+function calcPendiente(p) {
+  return Math.max(0, (+p.kgPedidos || 0) - (+p.kgReales || 0));
+}
+function calcBobinas(p) {
+  const kg = +p.kgReales || 0;
+  const kgB = +p.kgPorBobina || 0;
+  return kgB > 0 ? Math.round(kg / kgB) : 0;
+}
+function isVencido(p) {
+  if (!p.fechaDespacho) return false;
+  const d = new Date(p.fechaDespacho);
+  return d < new Date() && calcEstado(p) !== 'FINALIZADO';
+}
+function mesDe(fecha) {
+  if (!fecha) return null;
+  const d = new Date(fecha);
+  return MESES[d.getMonth()];
+}
+function mesKey(fecha) {
+  if (!fecha) return null;
+  const d = new Date(fecha);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function fmtNum(n) {
+  if (n === null || n === undefined || n === '' || isNaN(n)) return '';
+  return Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+}
+function fmtPct(n) {
+  if (n === null || n === undefined || isNaN(n)) return '';
+  return (n * 100).toFixed(1) + '%';
+}
+function fmtMoney(n) {
+  if (!n) return '';
+  return '$' + Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+}
+function fmtFecha(f) {
+  if (!f) return '';
+  const d = new Date(f);
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function initApp() {
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => switchTab(t.dataset.tab));
+  });
+  populateFilters();
+  render();
+}
+function switchTab(name) {
+  currentTab = name;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+  document.getElementById('tab-' + name).classList.remove('hidden');
+  render();
+}
+function render() {
+  if (currentTab === 'dashboard') renderDashboard();
+  else if (currentTab === 'pedidos') renderPedidos();
+  else if (currentTab === 'consulta') renderConsulta();
+  else if (currentTab === 'producciones') renderProducciones();
+  else if (currentTab === 'costos') renderCostos();
+  else if (currentTab === 'catalogos') renderCatalogos();
+}
+
+// --- DASHBOARD ---
+function renderDashboard() {
+  const peds = DATA.pedidos;
+  const totalPed = peds.length;
+  const totalKgPed = peds.reduce((s,p) => s + (+p.kgPedidos || 0), 0);
+  const totalKgReal = peds.reduce((s,p) => s + (+p.kgReales || 0), 0);
+  const totalPend = totalKgPed - totalKgReal;
+  const finalizados = peds.filter(p => calcEstado(p) === 'FINALIZADO').length;
+  const pendientes = peds.filter(p => ['PENDIENTE','PARCIAL'].includes(calcEstado(p))).length;
+  const vencidos = peds.filter(p => isVencido(p)).length;
+  const kgVencidos = peds.filter(p => isVencido(p)).reduce((s,p) => s + calcPendiente(p), 0);
+
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi"><div class="label">Pedidos totales</div><div class="val">${totalPed}</div></div>
+    <div class="kpi ok"><div class="label">Finalizados</div><div class="val">${finalizados}</div></div>
+    <div class="kpi warn"><div class="label">Pendientes</div><div class="val">${pendientes}</div></div>
+    <div class="kpi alert"><div class="label">Vencidos</div><div class="val">${vencidos}</div><div class="sub">${fmtNum(kgVencidos)} kg</div></div>
+    <div class="kpi"><div class="label">Kg pedidos</div><div class="val">${fmtNum(totalKgPed)}</div></div>
+    <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(totalKgReal)}</div></div>
+    <div class="kpi ${totalPend > 0 ? 'warn' : 'ok'}"><div class="label">Kg pendientes</div><div class="val">${fmtNum(Math.max(0,totalPend))}</div></div>
+  `;
+
+  // Tabla por mes
+  const mesesData = {};
+  peds.forEach(p => {
+    // mes producción: usa primer registro del año actual o futuro
+    const mp = p.fechaIngreso ? mesDe(p.fechaIngreso) : null;
+    if (mp) {
+      if (!mesesData[mp]) mesesData[mp] = { kgPedidos: 0, kgReales: 0 };
+      mesesData[mp].kgPedidos += +p.kgPedidos || 0;
+      mesesData[mp].kgReales += +p.kgReales || 0;
+    }
+  });
+
+  let html = `<thead><tr><th>Mes</th><th class="num">Kg pedidos</th><th class="num">Kg producidos</th><th class="num">Rendimiento</th><th class="num">Costo Energía/kg</th><th class="num">Costo MO/kg</th></tr></thead><tbody>`;
+  const yearActual = new Date().getFullYear();
+  MESES.forEach((m, idx) => {
+    const md = mesesData[m] || { kgPedidos: 0, kgReales: 0 };
+    const costoKey = `${yearActual}-${String(idx+1).padStart(2,'0')}`;
+    const cm = DATA.costosMensuales[costoKey];
+    let costoEn = '', costoMO = '', rend = '';
+    if (cm && md.kgReales > 0 && cm.tcProm > 0) {
+      costoEn = '$' + ((cm.energia / md.kgReales) / cm.tcProm).toFixed(3);
+      costoMO = '$' + ((cm.manoDeObra / md.kgReales) / cm.tcProm).toFixed(3);
+    }
+    if (cm && md.kgReales > 0) {
+      const kgTeoricos = cm.diasProduccion * cm.horasXDia * DATA.config.capacidadKgxHora;
+      if (kgTeoricos > 0) rend = fmtPct(md.kgReales / kgTeoricos);
+    }
+    if (md.kgPedidos > 0 || md.kgReales > 0) {
+      html += `<tr><td><b>${m}</b></td><td class="num">${fmtNum(md.kgPedidos)}</td><td class="num">${fmtNum(md.kgReales)}</td><td class="num">${rend}</td><td class="num">${costoEn}</td><td class="num">${costoMO}</td></tr>`;
+    }
+  });
+  html += '</tbody>';
+  document.getElementById('monthTable').innerHTML = html;
+}
+
+// --- PEDIDOS ---
+function renderPedidos() {
+  const filtros = getPedidosFilters();
+  let lista = DATA.pedidos.filter(p => {
+    if (filtros.buscar) {
+      const q = filtros.buscar.toLowerCase();
+      const blob = `${p.cliente} ${p.oc} ${p.partida} ${p.medida} ${p.color}`.toLowerCase();
+      if (!blob.includes(q)) return false;
+    }
+    if (filtros.cliente && p.cliente !== filtros.cliente) return false;
+    if (filtros.estado) {
+      const e = filtros.estado === 'VENCIDO' ? (isVencido(p) ? 'VENCIDO' : null) : calcEstado(p);
+      if (e !== filtros.estado) return false;
+    }
+    if (filtros.mes && mesDe(p.fechaIngreso) !== filtros.mes) return false;
+    return true;
+  });
+
+  // sort
+  lista.sort((a, b) => {
+    let va = a[sortField], vb = b[sortField];
+    if (sortField.startsWith('kg')) { va = +va || 0; vb = +vb || 0; }
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    return (va < vb ? -1 : va > vb ? 1 : 0) * (sortDir === 'asc' ? 1 : -1);
+  });
+
+  document.getElementById('pedCount').textContent = lista.length;
+
+  const tbody = document.querySelector('#tablaPedidos tbody');
+  tbody.innerHTML = lista.map(p => {
+    const estado = isVencido(p) ? 'VENCIDO' : calcEstado(p);
+    const pend = calcPendiente(p);
+    const bob = calcBobinas(p);
+    const f = p.formula || {};
+    const sumF = (+f.preforma||0) + (+f.scrap||0) + (+f.virgen||0) + (+f.master||0);
+    let formula = '<span class="muted">—</span>';
+    if (sumF > 0) {
+      formula = `<div class="formula-bar" title="P:${fmtPct(f.preforma)} S:${fmtPct(f.scrap)} V:${fmtPct(f.virgen)} M:${fmtPct(f.master)}">
+        ${f.preforma>0?`<div class="f-preforma" style="width:${f.preforma*100}%">P</div>`:''}
+        ${f.scrap>0?`<div class="f-scrap" style="width:${f.scrap*100}%">S</div>`:''}
+        ${f.virgen>0?`<div class="f-virgen" style="width:${f.virgen*100}%">V</div>`:''}
+        ${f.master>0?`<div class="f-master" style="width:${f.master*100}%">M</div>`:''}
+      </div>`;
+    }
+    return `<tr>
+      <td>${fmtFecha(p.fechaIngreso)}</td>
+      <td>${fmtFecha(p.fechaDespacho)}</td>
+      <td><b>${p.cliente||''}</b></td>
+      <td>${p.oc||''}</td>
+      <td>${p.medida||''}</td>
+      <td>${p.color||''}</td>
+      <td>${p.partida||''}</td>
+      <td class="num">${fmtNum(p.kgPedidos)}</td>
+      <td class="num">${fmtNum(p.kgReales)}</td>
+      <td class="num">${pend > 0 ? fmtNum(pend) : '<span class="muted">—</span>'}</td>
+      <td class="num">${bob || ''}</td>
+      <td style="min-width:120px">${formula}</td>
+      <td><span class="estado estado-${estado}">${estado}</span></td>
+      <td><button class="btn-ghost" onclick="openPedidoModal('${p.id}')">✏️</button> <button class="btn-ghost" onclick="deletePedido('${p.id}')">🗑️</button></td>
+    </tr>`;
+  }).join('');
+
+  if (lista.length === 0) tbody.innerHTML = '<tr><td colspan="14" class="muted" style="text-align:center;padding:30px">Sin resultados</td></tr>';
+}
+
+function getPedidosFilters() {
+  return {
+    buscar: document.getElementById('fBuscar').value,
+    cliente: document.getElementById('fCliente').value,
+    estado: document.getElementById('fEstado').value,
+    mes: document.getElementById('fMes').value
+  };
+}
+function clearFilters() {
+  ['fBuscar','fCliente','fEstado','fMes'].forEach(id => document.getElementById(id).value = '');
+  renderPedidos();
+}
+function populateFilters() {
+  const clientes = [...new Set(DATA.pedidos.map(p => p.cliente).filter(Boolean))].sort();
+  const fc = document.getElementById('fCliente');
+  fc.innerHTML = '<option value="">Todos</option>' + clientes.map(c => `<option value="${c}">${c}</option>`).join('');
+  const qc = document.getElementById('qCliente');
+  qc.innerHTML = '<option value="">Todos</option>' + clientes.map(c => `<option value="${c}">${c}</option>`).join('');
+
+  const fm = document.getElementById('fMes');
+  fm.innerHTML = '<option value="">Todos</option>' + MESES.map(m => `<option value="${m}">${m}</option>`).join('');
+
+  ['fBuscar','fCliente','fEstado','fMes'].forEach(id => {
+    document.getElementById(id).addEventListener('input', renderPedidos);
+    document.getElementById(id).addEventListener('change', renderPedidos);
+  });
+
+  document.querySelectorAll('#tablaPedidos th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const f = th.dataset.sort;
+      if (sortField === f) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      else { sortField = f; sortDir = 'asc'; }
+      renderPedidos();
+    });
+  });
+
+  ['qCliente','qOc','qPartida','qMedida'].forEach(id => {
+    document.getElementById(id).addEventListener('change', renderConsulta);
+  });
+}
+
+// --- MODAL PEDIDO ---
+function openPedidoModal(id) {
+  const p = id ? DATA.pedidos.find(x => x.id === id) : {
+    id: 'PED-' + String(Date.now()).slice(-6),
+    fechaIngreso: new Date().toISOString().slice(0,10),
+    fechaDespacho: '', cliente: '', oc: '', medida: '', color: 'Cristal',
+    partida: '', kgPedidos: 0, kgReales: 0, kgPorBobina: 80,
+    formula: { preforma: 0, scrap: 0, virgen: 0, master: 0 },
+    confeccion: '', observaciones: ''
+  };
+
+  const clientes = DATA.catalogos.clientes;
+  const colores = DATA.catalogos.colores;
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-h">
+          <h3>${id ? 'Editar pedido' : 'Nuevo pedido'} — ${p.id}</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="field"><label>Fecha ingreso</label><input type="date" id="m_fechaIngreso" value="${p.fechaIngreso||''}"></div>
+            <div class="field"><label>Fecha despacho</label><input type="date" id="m_fechaDespacho" value="${p.fechaDespacho||''}"></div>
+            <div class="field"><label>Cliente</label>
+              <input list="dl_clientes" id="m_cliente" value="${p.cliente||''}">
+              <datalist id="dl_clientes">${clientes.map(c => `<option value="${c}">`).join('')}</datalist>
+            </div>
+            <div class="field"><label>OC</label><input type="text" id="m_oc" value="${p.oc||''}"></div>
+            <div class="field"><label>Medida (ancho × largo mm)</label><input type="text" id="m_medida" value="${p.medida||''}" placeholder="500x200"></div>
+            <div class="field"><label>Color</label>
+              <select id="m_color">${colores.map(c => `<option value="${c}" ${c===p.color?'selected':''}>${c}</option>`).join('')}</select>
+            </div>
+            <div class="field"><label>Partida</label><input type="text" id="m_partida" value="${p.partida||''}" placeholder="1126PC-1VX"></div>
+            <div class="field"><label>Kg / Bobina</label><input type="number" id="m_kgBobina" value="${p.kgPorBobina||80}" min="0"></div>
+            <div class="field"><label>Kg pedidos</label><input type="number" id="m_kgPed" value="${p.kgPedidos||0}" min="0"></div>
+            <div class="field"><label>Kg producidos</label><input type="number" id="m_kgReal" value="${p.kgReales||0}" min="0" ${id?'':'readonly title="Se actualiza con cargas de operarios"'}></div>
+            <div class="full">
+              <label style="font-size:12px;color:#4b5563;font-weight:500;display:block;margin-bottom:6px">Fórmula de mezcla (debe sumar 100%)</label>
+              <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr 1fr">
+                <div class="field"><label>Preforma %</label><input type="number" step="0.01" id="m_fPreforma" value="${p.formula?.preforma||0}" min="0" max="1"></div>
+                <div class="field"><label>Scrap %</label><input type="number" step="0.01" id="m_fScrap" value="${p.formula?.scrap||0}" min="0" max="1"></div>
+                <div class="field"><label>Virgen %</label><input type="number" step="0.01" id="m_fVirgen" value="${p.formula?.virgen||0}" min="0" max="1"></div>
+                <div class="field"><label>Master %</label><input type="number" step="0.01" id="m_fMaster" value="${p.formula?.master||0}" min="0" max="1"></div>
+              </div>
+              <div class="hint" id="m_sumaFormula">Suma: <b id="m_sumaVal">0%</b></div>
+            </div>
+            <div class="field full"><label>Confección</label><input type="text" id="m_confeccion" value="${p.confeccion||''}"></div>
+            <div class="field full"><label>Observaciones</label><textarea id="m_obs" rows="2">${p.observaciones||''}</textarea></div>
+          </div>
+        </div>
+        <div class="modal-f">
+          ${id ? `<button class="btn btn-danger" onclick="deletePedido('${id}', true)">Eliminar</button>` : ''}
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="savePedido('${id||''}')">Guardar</button>
+        </div>
+      </div>
+    </div>`;
+
+  // suma fórmula en vivo
+  ['m_fPreforma','m_fScrap','m_fVirgen','m_fMaster'].forEach(id => {
+    document.getElementById(id).addEventListener('input', updateSumaFormula);
+  });
+  updateSumaFormula();
+}
+function updateSumaFormula() {
+  const s = ['m_fPreforma','m_fScrap','m_fVirgen','m_fMaster'].reduce((a,id) => a + (+document.getElementById(id).value || 0), 0);
+  const el = document.getElementById('m_sumaVal');
+  el.textContent = (s*100).toFixed(1) + '%';
+  el.style.color = Math.abs(s - 1) < 0.001 ? '#059669' : (s > 0 ? '#dc2626' : '#9ca3af');
+}
+function closeModal() {
+  document.getElementById('modalContainer').innerHTML = '';
+}
+async function savePedido(id) {
+  const data = {
+    id: id || 'PED-' + String(Date.now()).slice(-6),
+    fechaIngreso: document.getElementById('m_fechaIngreso').value,
+    fechaDespacho: document.getElementById('m_fechaDespacho').value,
+    cliente: document.getElementById('m_cliente').value.trim(),
+    oc: document.getElementById('m_oc').value.trim(),
+    medida: document.getElementById('m_medida').value.trim(),
+    color: document.getElementById('m_color').value,
+    partida: document.getElementById('m_partida').value.trim(),
+    kgPorBobina: +document.getElementById('m_kgBobina').value || 0,
+    kgPedidos: +document.getElementById('m_kgPed').value || 0,
+    kgReales: +document.getElementById('m_kgReal').value || 0,
+    formula: {
+      preforma: +document.getElementById('m_fPreforma').value || 0,
+      scrap: +document.getElementById('m_fScrap').value || 0,
+      virgen: +document.getElementById('m_fVirgen').value || 0,
+      master: +document.getElementById('m_fMaster').value || 0
+    },
+    confeccion: document.getElementById('m_confeccion').value,
+    observaciones: document.getElementById('m_obs').value
+  };
+  if (!data.cliente || !data.kgPedidos) { alert('Cliente y kg pedidos son obligatorios'); return; }
+
+  if (id) {
+    const idx = DATA.pedidos.findIndex(p => p.id === id);
+    DATA.pedidos[idx] = data;
+  } else {
+    DATA.pedidos.push(data);
+    if (!DATA.catalogos.clientes.includes(data.cliente)) {
+      DATA.catalogos.clientes.push(data.cliente);
+      DATA.catalogos.clientes.sort();
+    }
+  }
+  closeModal();
+  await saveData();
+  populateFilters();
+  render();
+  toast('Pedido guardado', 'success');
+}
+async function deletePedido(id, fromModal) {
+  if (!confirm('¿Eliminar este pedido?')) return;
+  DATA.pedidos = DATA.pedidos.filter(p => p.id !== id);
+  if (fromModal) closeModal();
+  await saveData();
+  render();
+  toast('Pedido eliminado', 'success');
+}
+
+// --- CONSULTA ---
+function renderConsulta() {
+  // popular dropdowns dependientes
+  const sel = {
+    cliente: document.getElementById('qCliente').value,
+    oc: document.getElementById('qOc').value,
+    partida: document.getElementById('qPartida').value,
+    medida: document.getElementById('qMedida').value
+  };
+  const filtered = DATA.pedidos.filter(p =>
+    (!sel.cliente || p.cliente === sel.cliente) &&
+    (!sel.oc || p.oc === sel.oc) &&
+    (!sel.partida || p.partida === sel.partida) &&
+    (!sel.medida || p.medida === sel.medida)
+  );
+
+  const ocs = [...new Set(DATA.pedidos.filter(p => !sel.cliente || p.cliente === sel.cliente).map(p => p.oc).filter(Boolean))].sort();
+  const parts = [...new Set(filtered.map(p => p.partida).filter(Boolean))].sort();
+  const meds = [...new Set(filtered.map(p => p.medida).filter(Boolean))].sort();
+
+  const repop = (id, items, val) => {
+    document.getElementById(id).innerHTML = '<option value="">Todos</option>' + items.map(x => `<option value="${x}" ${x===val?'selected':''}>${x}</option>`).join('');
+  };
+  repop('qOc', ocs, sel.oc);
+  repop('qPartida', parts, sel.partida);
+  repop('qMedida', meds, sel.medida);
+
+  const kgPed = filtered.reduce((s,p) => s + (+p.kgPedidos || 0), 0);
+  const kgReal = filtered.reduce((s,p) => s + (+p.kgReales || 0), 0);
+  const pend = Math.max(0, kgPed - kgReal);
+
+  document.getElementById('consultaKpis').innerHTML = `
+    <div class="kpi"><div class="label">Pedidos</div><div class="val">${filtered.length}</div></div>
+    <div class="kpi"><div class="label">Kg pedidos</div><div class="val">${fmtNum(kgPed)}</div></div>
+    <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(kgReal)}</div></div>
+    <div class="kpi ${pend>0?'warn':'ok'}"><div class="label">Kg pendientes</div><div class="val">${pend > 0 ? fmtNum(pend) : 'FINALIZADO'}</div></div>
+  `;
+
+  let html = '<thead><tr><th>Fecha</th><th>Cliente</th><th>OC</th><th>Partida</th><th>Medida</th><th class="num">Kg ped</th><th class="num">Kg real</th><th>Estado</th></tr></thead><tbody>';
+  filtered.sort((a,b) => (a.fechaIngreso||'') > (b.fechaIngreso||'') ? -1 : 1);
+  filtered.forEach(p => {
+    const e = isVencido(p) ? 'VENCIDO' : calcEstado(p);
+    html += `<tr><td>${fmtFecha(p.fechaIngreso)}</td><td>${p.cliente}</td><td>${p.oc}</td><td>${p.partida}</td><td>${p.medida}</td><td class="num">${fmtNum(p.kgPedidos)}</td><td class="num">${fmtNum(p.kgReales)}</td><td><span class="estado estado-${e}">${e}</span></td></tr>`;
+  });
+  html += '</tbody>';
+  document.getElementById('consultaTabla').innerHTML = html;
+}
+
+// --- PRODUCCIONES ---
+function renderProducciones() {
+  const c = document.getElementById('produccionesContent');
+  if (!DATA.producciones || DATA.producciones.length === 0) {
+    c.innerHTML = '<p class="muted">Todavía no hay producciones cargadas. Los operarios las cargan desde la app tablet. Esta pestaña se completa en v2.</p>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Operario</th><th>Pedido</th><th class="num">Kg</th><th class="num">Bobinas</th><th>Observaciones</th></tr></thead><tbody>';
+  [...DATA.producciones].reverse().forEach(p => {
+    const ped = DATA.pedidos.find(x => x.id === p.pedidoId);
+    html += `<tr><td>${fmtFecha(p.fecha)}</td><td>${p.turno||''}</td><td>${p.operario||''}</td><td>${ped ? ped.cliente + ' · ' + ped.partida : p.pedidoId}</td><td class="num">${fmtNum(p.kgProducidos)}</td><td class="num">${p.bobinas||''}</td><td>${p.observaciones||''}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  c.innerHTML = html;
+}
+
+// --- COSTOS ---
+function renderCostos() {
+  let html = '<thead><tr><th>Mes</th><th class="num">Días prod</th><th class="num">Horas/día</th><th class="num">Energía</th><th class="num">MO</th><th class="num">TC Prom</th><th class="num">Kg Teóricos</th><th></th></tr></thead><tbody>';
+  const keys = Object.keys(DATA.costosMensuales).sort();
+  keys.forEach(k => {
+    const c = DATA.costosMensuales[k];
+    const kgTeo = c.diasProduccion * c.horasXDia * DATA.config.capacidadKgxHora;
+    const [y,m] = k.split('-');
+    const mesNombre = MESES[+m-1];
+    html += `<tr>
+      <td><b>${mesNombre} ${y}</b></td>
+      <td class="num">${c.diasProduccion||0}</td>
+      <td class="num">${c.horasXDia||0}</td>
+      <td class="num">${fmtMoney(c.energia)}</td>
+      <td class="num">${fmtMoney(c.manoDeObra)}</td>
+      <td class="num">${c.tcProm||''}</td>
+      <td class="num">${fmtNum(kgTeo)}</td>
+      <td><button class="btn-ghost" onclick="openCostoModal('${k}')">✏️</button></td>
+    </tr>`;
+  });
+  html += '</tbody>';
+  document.getElementById('costosTabla').innerHTML = html;
+}
+function openCostoModal(key) {
+  const c = key ? DATA.costosMensuales[key] : { diasProduccion: 21, horasXDia: 17, energia: 0, manoDeObra: 0, tcProm: 1400 };
+  const today = new Date();
+  const defKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-h"><h3>${key ? 'Editar' : 'Cargar'} costos mensuales</h3><button class="btn-ghost" onclick="closeModal()">✕</button></div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="field"><label>Mes (YYYY-MM)</label><input type="text" id="c_key" value="${key||defKey}" ${key?'readonly':''}></div>
+            <div class="field"><label>TC Promedio (ARS/USD)</label><input type="number" id="c_tc" value="${c.tcProm||1400}"></div>
+            <div class="field"><label>Días producción</label><input type="number" id="c_dias" value="${c.diasProduccion||21}"></div>
+            <div class="field"><label>Horas / día</label><input type="number" id="c_horas" value="${c.horasXDia||17}"></div>
+            <div class="field"><label>Energía (ARS)</label><input type="number" id="c_energia" value="${c.energia||0}"></div>
+            <div class="field"><label>Mano de obra (ARS)</label><input type="number" id="c_mo" value="${c.manoDeObra||0}"></div>
+          </div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="saveCosto('${key||''}')">Guardar</button>
+        </div>
+      </div>
+    </div>`;
+}
+async function saveCosto(key) {
+  const k = document.getElementById('c_key').value || key;
+  DATA.costosMensuales[k] = {
+    diasProduccion: +document.getElementById('c_dias').value || 0,
+    horasXDia: +document.getElementById('c_horas').value || 0,
+    energia: +document.getElementById('c_energia').value || 0,
+    manoDeObra: +document.getElementById('c_mo').value || 0,
+    tcProm: +document.getElementById('c_tc').value || 0
+  };
+  closeModal();
+  await saveData();
+  render();
+  toast('Costos guardados', 'success');
+}
+
+// --- CATALOGOS ---
+function renderCatalogos() {
+  const c = DATA.catalogos;
+  let html = `
+    <div class="form-grid">
+      <div class="field"><label>Clientes (${c.clientes.length})</label><div>${c.clientes.map(x => `<span class="chip">${x}</span>`).join('')}</div></div>
+      <div class="field"><label>Colores</label><div>${c.colores.map(x => `<span class="chip">${x}</span>`).join('')}</div></div>
+      <div class="field"><label>Materias primas</label><div>${c.materiasPrimas.map(x => `<span class="chip">${x}</span>`).join('')}</div></div>
+      <div class="field"><label>Proveedores por MP</label><div>${Object.entries(c.proveedoresMP).map(([k,v]) => `<div style="margin:4px 0"><b>${k}:</b> ${v.map(p => `<span class="chip">${p}</span>`).join('')}</div>`).join('')}</div></div>
+      <div class="field full"><label>Operarios (${c.operarios.length})</label><div>${c.operarios.length===0 ? '<span class="muted">Pendiente — se carga en v2</span>' : c.operarios.map(x => `<span class="chip">${x.nombre}</span>`).join('')}</div></div>
+    </div>
+    <p class="muted" style="margin-top:20px">Para editar catálogos en v2 (ABM completo). Por ahora se sincronizan automáticamente cuando agregás un cliente nuevo desde un pedido.</p>
+  `;
+  document.getElementById('catalogosContent').innerHTML = html;
+}
+
+// --- EXPORT CSV ---
+function exportPedidosCSV() {
+  const rows = [['Fecha','Despacho','Cliente','OC','Medida','Color','Partida','KgPed','KgReal','Pend','Estado']];
+  DATA.pedidos.forEach(p => {
+    rows.push([p.fechaIngreso, p.fechaDespacho, p.cliente, p.oc, p.medida, p.color, p.partida, p.kgPedidos, p.kgReales, calcPendiente(p), isVencido(p) ? 'VENCIDO' : calcEstado(p)]);
+  });
+  const csv = rows.map(r => r.map(c => `"${(c||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `pedidos_PET_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+loadData().then(() => {
+  setTimeout(() => document.getElementById('pinInput').focus(), 100);
+});
+
+// SEED se inyecta acá abajo en la próxima línea ⤵
+const SEED = {
+  "pedidos": [
+    {
+      "id": "PED-0001",
+      "fechaIngreso": "2025-01-13",
+      "fechaDespacho": "2026-01-23",
+      "cliente": "Molinos",
+      "oc": "OC 2211",
+      "medida": "500x200",
+      "color": "Cristal",
+      "partida": "1126PC-1VX",
+      "kgPedidos": 1700,
+      "kgReales": 1775,
+      "kgPorBobina": 80,
+      "formula": {
+        "preforma": 0.45,
+        "scrap": 0.55,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0002",
+      "fechaIngreso": "2025-09-15",
+      "fechaDespacho": "2026-03-19",
+      "cliente": "Dantelli",
+      "oc": "OC 180925",
+      "medida": "380x300",
+      "color": "Negro",
+      "partida": "23225SCN-1VX",
+      "kgPedidos": 1000,
+      "kgReales": 1170,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0.585,
+        "scrap": 0.4,
+        "virgen": 0,
+        "master": 0.015
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0003",
+      "fechaIngreso": "2025-12-02",
+      "fechaDespacho": "2026-01-28",
+      "cliente": "Rojo",
+      "oc": "OC",
+      "medida": "510x600",
+      "color": "Cristal",
+      "partida": "28825S-1V2",
+      "kgPedidos": 250,
+      "kgReales": 268,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.4,
+        "virgen": 0.6,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0004",
+      "fechaIngreso": "2025-12-04",
+      "fechaDespacho": "2026-01-19",
+      "cliente": "Bligraf",
+      "oc": "OC 4543",
+      "medida": "540x400",
+      "color": "Cristal",
+      "partida": "1026C1-3V2",
+      "kgPedidos": 1700,
+      "kgReales": 1847,
+      "kgPorBobina": 65,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 1,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0005",
+      "fechaIngreso": "2025-12-10",
+      "fechaDespacho": "2026-01-28",
+      "cliente": "Blibox",
+      "oc": "OC 2157",
+      "medida": "470x500",
+      "color": "Cristal",
+      "partida": "1626S-1V2",
+      "kgPedidos": 1000,
+      "kgReales": 1106,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.4,
+        "virgen": 0.6,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0006",
+      "fechaIngreso": "2025-12-10",
+      "fechaDespacho": "2026-02-13",
+      "cliente": "Blibox",
+      "oc": "OC 2155",
+      "medida": "540x250",
+      "color": "Cristal",
+      "partida": "2826S-1V2",
+      "kgPedidos": 1000,
+      "kgReales": 1105,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0.6,
+        "scrap": 0.4,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0007",
+      "fechaIngreso": "2025-12-11",
+      "fechaDespacho": "2026-01-26",
+      "cliente": "Bioprotece",
+      "oc": "OC 111225",
+      "medida": "510x600",
+      "color": "Azulino",
+      "partida": "1326AZ-1V1",
+      "kgPedidos": 500,
+      "kgReales": 525,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.285,
+        "virgen": 0,
+        "master": 0.015
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0008",
+      "fechaIngreso": "2025-12-11",
+      "fechaDespacho": "2026-01-28",
+      "cliente": "Rojo",
+      "oc": "OC",
+      "medida": "510x600",
+      "color": "Azulino",
+      "partida": "1426AZ-2V2",
+      "kgPedidos": 250,
+      "kgReales": 318,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.4,
+        "virgen": 0.585,
+        "master": 0.015
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0009",
+      "fechaIngreso": "2025-12-12",
+      "fechaDespacho": "2026-01-06",
+      "cliente": "Molinos",
+      "oc": "OC 5576",
+      "medida": "500x200",
+      "color": "Cristal",
+      "partida": "29225PC-1VX",
+      "kgPedidos": 3000,
+      "kgReales": 3131,
+      "kgPorBobina": 80,
+      "formula": {
+        "preforma": 0.3,
+        "scrap": 0.7,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0010",
+      "fechaIngreso": "2025-12-23",
+      "fechaDespacho": "2026-01-19",
+      "cliente": "Dantelli",
+      "oc": "OC 231225",
+      "medida": "380x300",
+      "color": "Cristal",
+      "partida": "726S-1VX",
+      "kgPedidos": 1600,
+      "kgReales": 1674,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0.4,
+        "scrap": 0.6,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0011",
+      "fechaIngreso": "2025-12-23",
+      "fechaDespacho": "2026-03-13",
+      "cliente": "Dantelli",
+      "oc": "OC 231225",
+      "medida": "380x300",
+      "color": "Cristal",
+      "partida": "726S-1VX",
+      "kgPedidos": 400,
+      "kgReales": 459,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.4,
+        "virgen": 0.6,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0012",
+      "fechaIngreso": "2025-12-23",
+      "fechaDespacho": "2026-01-19",
+      "cliente": "Blibox",
+      "oc": "OC 2161",
+      "medida": "540x400",
+      "color": "Cristal",
+      "partida": "926S-1V2",
+      "kgPedidos": 1500,
+      "kgReales": 1664,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0013",
+      "fechaIngreso": "2025-12-24",
+      "fechaDespacho": "2026-01-06",
+      "cliente": "Smams",
+      "oc": "OC241225",
+      "medida": "550x200",
+      "color": "Cristal",
+      "partida": "226S-1VX",
+      "kgPedidos": 1100,
+      "kgReales": 1208,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0.3,
+        "scrap": 0.7,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0014",
+      "fechaIngreso": "2025-12-26",
+      "fechaDespacho": "2026-01-08",
+      "cliente": "Bligraf",
+      "oc": "OC 4584",
+      "medida": "640x550",
+      "color": "Cristal",
+      "partida": "326S-1V2",
+      "kgPedidos": 1200,
+      "kgReales": 1361,
+      "kgPorBobina": 65,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0015",
+      "fechaIngreso": "2025-12-26",
+      "fechaDespacho": "2026-01-08",
+      "cliente": "Bligraf",
+      "oc": "OC 4584",
+      "medida": "540x550",
+      "color": "Cristal",
+      "partida": "426S-1V2",
+      "kgPedidos": 550,
+      "kgReales": 630,
+      "kgPorBobina": 65,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0016",
+      "fechaIngreso": "2025-12-26",
+      "fechaDespacho": "2026-01-13",
+      "cliente": "El Artesano",
+      "oc": "OC 261225",
+      "medida": "450x250",
+      "color": "Cristal",
+      "partida": "126S-1VX",
+      "kgPedidos": 1100,
+      "kgReales": 1232,
+      "kgPorBobina": 75,
+      "formula": {
+        "preforma": 0.55,
+        "scrap": 0.45,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0017",
+      "fechaIngreso": "2025-12-26",
+      "fechaDespacho": "2026-01-19",
+      "cliente": "Bligraf",
+      "oc": "OC 4582",
+      "medida": "540x390",
+      "color": "Cristal",
+      "partida": "826S-1V2",
+      "kgPedidos": 700,
+      "kgReales": 781,
+      "kgPorBobina": 130,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0018",
+      "fechaIngreso": "2025-12-26",
+      "fechaDespacho": "2026-01-26",
+      "cliente": "Ikazcjik",
+      "oc": "OC 261225",
+      "medida": "450x800",
+      "color": "Cristal",
+      "partida": "1226S-1VX",
+      "kgPedidos": 500,
+      "kgReales": 561,
+      "kgPorBobina": 60,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.3,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0019",
+      "fechaIngreso": "2025-12-30",
+      "fechaDespacho": "2026-01-13",
+      "cliente": "E900",
+      "oc": "OC xxxx",
+      "medida": "640x500",
+      "color": "Cristal",
+      "partida": "626S-1T2",
+      "kgPedidos": 4500,
+      "kgReales": 5140,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.6,
+        "scrap": 0.4,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0020",
+      "fechaIngreso": "2025-12-30",
+      "fechaDespacho": "2026-01-09",
+      "cliente": "T900",
+      "oc": "OC xxxx",
+      "medida": "640x350",
+      "color": "Cristal",
+      "partida": "526S-1T1",
+      "kgPedidos": 4200,
+      "kgReales": 5735,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.6,
+        "scrap": 0.4,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0021",
+      "fechaIngreso": "2026-01-08",
+      "fechaDespacho": "2026-02-03",
+      "cliente": "Bligraf",
+      "oc": "OC 4597",
+      "medida": "540x400",
+      "color": "Cristal",
+      "partida": "2126C1-3VX",
+      "kgPedidos": 500,
+      "kgReales": 525,
+      "kgPorBobina": 130,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 1,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0022",
+      "fechaIngreso": "2026-01-14",
+      "fechaDespacho": "2026-02-24",
+      "cliente": "Blibox",
+      "oc": "OC 2145",
+      "medida": "540x450",
+      "color": "Negro",
+      "partida": "3526SCN-1V2",
+      "kgPedidos": 500,
+      "kgReales": 551,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0.15,
+        "scrap": 0.84,
+        "virgen": 0,
+        "master": 0.01
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0023",
+      "fechaIngreso": "2026-01-14",
+      "fechaDespacho": "2026-02-24",
+      "cliente": "Blibox",
+      "oc": "OC 2152",
+      "medida": "540x650",
+      "color": "Negro",
+      "partida": "3726SCN-1V2",
+      "kgPedidos": 500,
+      "kgReales": 835,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0.15,
+        "scrap": 0.84,
+        "virgen": 0,
+        "master": 0.01
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0024",
+      "fechaIngreso": "2026-01-14",
+      "fechaDespacho": "2026-03-06",
+      "cliente": "Blibox",
+      "oc": "OC 2151",
+      "medida": "630x650",
+      "color": "Cristal",
+      "partida": "4026S-1VX",
+      "kgPedidos": 1000,
+      "kgReales": 1082,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0025",
+      "fechaIngreso": "2026-01-14",
+      "fechaDespacho": "2026-03-03",
+      "cliente": "Dantelli",
+      "oc": "OC 130126",
+      "medida": "380x300",
+      "color": "Cristal",
+      "partida": "4726S-1VX",
+      "kgPedidos": 500,
+      "kgReales": 550,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0026",
+      "fechaIngreso": "2026-01-14",
+      "fechaDespacho": "2026-03-19",
+      "cliente": "Dantelli",
+      "oc": "OC 130126",
+      "medida": "380x300",
+      "color": "Negro",
+      "partida": "6523SCN-1VX",
+      "kgPedidos": 500,
+      "kgReales": 640,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0.35,
+        "scrap": 0.638,
+        "virgen": 0,
+        "master": 0.012
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0027",
+      "fechaIngreso": "2026-01-19",
+      "fechaDespacho": "2026-02-11",
+      "cliente": "D. Godoy",
+      "oc": "OC",
+      "medida": "510x200",
+      "color": "Cristal",
+      "partida": "2326S-1V2",
+      "kgPedidos": 1000,
+      "kgReales": 1074,
+      "kgPorBobina": 70,
+      "formula": {
+        "preforma": 0.55,
+        "scrap": 0.45,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0028",
+      "fechaIngreso": "2026-01-21",
+      "fechaDespacho": "2026-02-03",
+      "cliente": "Molinos",
+      "oc": "OC 9635",
+      "medida": "500x200",
+      "color": "Cristal",
+      "partida": "2026PC-1VX",
+      "kgPedidos": 2300,
+      "kgReales": 2362,
+      "kgPorBobina": 80,
+      "formula": {
+        "preforma": 0.45,
+        "scrap": 0.55,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0029",
+      "fechaIngreso": "2026-01-26",
+      "fechaDespacho": "2026-02-03",
+      "cliente": "Blibox",
+      "oc": "OC 2166",
+      "medida": "540x350",
+      "color": "Cristal",
+      "partida": "1926S-1V2",
+      "kgPedidos": 2000,
+      "kgReales": 2198,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0.6,
+        "scrap": 0.4,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0030",
+      "fechaIngreso": "2026-01-26",
+      "fechaDespacho": "2026-03-13",
+      "cliente": "Blibox",
+      "oc": "OC 2167",
+      "medida": "540x350",
+      "color": "Cristal",
+      "partida": "3026S-1V2",
+      "kgPedidos": 2000,
+      "kgReales": 2200,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.4,
+        "virgen": 0.6,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0031",
+      "fechaIngreso": "2026-01-27",
+      "fechaDespacho": "2026-01-27",
+      "cliente": "T900",
+      "oc": "OC xxxx",
+      "medida": "640x350",
+      "color": "Cristal",
+      "partida": "1526S-1T1",
+      "kgPedidos": 2500,
+      "kgReales": 2876,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.6,
+        "scrap": 0.4,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0032",
+      "fechaIngreso": "2026-01-27",
+      "fechaDespacho": "2026-01-30",
+      "cliente": "T900",
+      "oc": "OC xxxx",
+      "medida": "640x350",
+      "color": "Cristal",
+      "partida": "1726S-1T1",
+      "kgPedidos": 2400,
+      "kgReales": 2768,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.4,
+        "virgen": 0.6,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0033",
+      "fechaIngreso": "2026-01-27",
+      "fechaDespacho": "2026-01-30",
+      "cliente": "E900",
+      "oc": "OC xxxx",
+      "medida": "640x500",
+      "color": "Cristal",
+      "partida": "1826S-1T2",
+      "kgPedidos": 2800,
+      "kgReales": 2883,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.4,
+        "virgen": 0.6,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0034",
+      "fechaIngreso": "2026-01-27",
+      "fechaDespacho": "2026-02-06",
+      "cliente": "E900",
+      "oc": "OC xxxx",
+      "medida": "640x500",
+      "color": "Cristal",
+      "partida": "1826S-1T2",
+      "kgPedidos": 4600,
+      "kgReales": 4646,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.35,
+        "scrap": 0.65,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0035",
+      "fechaIngreso": "2026-01-29",
+      "fechaDespacho": "2026-02-13",
+      "cliente": "Decorate",
+      "oc": "OC 290126",
+      "medida": "550x400",
+      "color": "Cristal",
+      "partida": "2926S-1V2",
+      "kgPedidos": 1000,
+      "kgReales": 1040,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.55,
+        "scrap": 0.45,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0036",
+      "fechaIngreso": "2026-01-29",
+      "fechaDespacho": "2026-02-13",
+      "cliente": "Decorate",
+      "oc": "OC 290126",
+      "medida": "450x400",
+      "color": "Cristal",
+      "partida": "2726S-1V2",
+      "kgPedidos": 700,
+      "kgReales": 729,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.55,
+        "scrap": 0.45,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0037",
+      "fechaIngreso": "2026-01-29",
+      "fechaDespacho": "2026-03-04",
+      "cliente": "Decorate",
+      "oc": "OC 290126",
+      "medida": "450x400",
+      "color": "Cristal",
+      "partida": "2726S-1V2",
+      "kgPedidos": 1300,
+      "kgReales": 1364,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.25,
+        "virgen": 0.75,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0038",
+      "fechaIngreso": "2026-01-29",
+      "fechaDespacho": "2026-03-04",
+      "cliente": "Decorate",
+      "oc": "OC 290126",
+      "medida": "450x700",
+      "color": "Cristal",
+      "partida": "4626S-1V2",
+      "kgPedidos": 250,
+      "kgReales": 313,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0039",
+      "fechaIngreso": "2026-01-30",
+      "fechaDespacho": "2026-02-13",
+      "cliente": "Laboreau",
+      "oc": "OC 310126",
+      "medida": "510x300",
+      "color": "Cristal",
+      "partida": "2426S-1V2",
+      "kgPedidos": 200,
+      "kgReales": 208,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.55,
+        "scrap": 0.45,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0040",
+      "fechaIngreso": "2026-01-30",
+      "fechaDespacho": "2026-02-13",
+      "cliente": "Laboreau",
+      "oc": "OC 310126",
+      "medida": "460x300",
+      "color": "Cristal",
+      "partida": "2526S-1V2",
+      "kgPedidos": 200,
+      "kgReales": 212,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.55,
+        "scrap": 0.45,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0041",
+      "fechaIngreso": "2026-01-30",
+      "fechaDespacho": "2026-02-13",
+      "cliente": "Laboreau",
+      "oc": "OC 310126",
+      "medida": "420x300",
+      "color": "Cristal",
+      "partida": "2626S-1V2",
+      "kgPedidos": 200,
+      "kgReales": 210,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.55,
+        "scrap": 0.45,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0042",
+      "fechaIngreso": "2026-01-30",
+      "fechaDespacho": "2026-02-18",
+      "cliente": "Trigger",
+      "oc": "OC 290126",
+      "medida": "580x300",
+      "color": "Cristal",
+      "partida": "3326S-1V2",
+      "kgPedidos": 2000,
+      "kgReales": 2054,
+      "kgPorBobina": 125,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0043",
+      "fechaIngreso": "2026-01-30",
+      "fechaDespacho": "2026-03-06",
+      "cliente": "Colgate",
+      "oc": "PO4505322168",
+      "medida": "460x500",
+      "color": "Cristal",
+      "partida": "3426S-1VX",
+      "kgPedidos": 2500,
+      "kgReales": 2891,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0044",
+      "fechaIngreso": "2026-02-02",
+      "fechaDespacho": null,
+      "cliente": "E900",
+      "oc": "OC xxxx",
+      "medida": "640x500",
+      "color": "Cristal",
+      "partida": "2226S-1T2",
+      "kgPedidos": 4500,
+      "kgReales": 4735,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0045",
+      "fechaIngreso": "2026-02-02",
+      "fechaDespacho": null,
+      "cliente": "E900",
+      "oc": "OC xxxx",
+      "medida": "640x500",
+      "color": "Cristal",
+      "partida": "3226S-1T2",
+      "kgPedidos": 4500,
+      "kgReales": 5664,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0046",
+      "fechaIngreso": "2026-02-04",
+      "fechaDespacho": null,
+      "cliente": "T900",
+      "oc": "OC xxxx",
+      "medida": "640x350",
+      "color": "Cristal",
+      "partida": "3126S-1T1",
+      "kgPedidos": 4200,
+      "kgReales": 4575,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0047",
+      "fechaIngreso": "2026-02-05",
+      "fechaDespacho": "2026-02-24",
+      "cliente": "Blibox",
+      "oc": "OC 2169",
+      "medida": "540x450",
+      "color": "Negro",
+      "partida": "3626SCN-1V2",
+      "kgPedidos": 1000,
+      "kgReales": 1109,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0.15,
+        "scrap": 0.84,
+        "virgen": 0,
+        "master": 0.01
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0048",
+      "fechaIngreso": "2026-02-05",
+      "fechaDespacho": "2026-03-17",
+      "cliente": "Bligraf",
+      "oc": "OC 4658",
+      "medida": "295x500",
+      "color": "Cristal",
+      "partida": "5826S-1VX",
+      "kgPedidos": 1000,
+      "kgReales": 1106,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 1,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0049",
+      "fechaIngreso": "2026-02-10",
+      "fechaDespacho": "2026-02-26",
+      "cliente": "Mendía",
+      "oc": "OC 100226",
+      "medida": "350x250",
+      "color": "Cristal",
+      "partida": "3826S-1VX",
+      "kgPedidos": 4053,
+      "kgReales": 4053,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0050",
+      "fechaIngreso": "2026-02-11",
+      "fechaDespacho": "2026-03-04",
+      "cliente": "Bligraf",
+      "oc": "OC 4650",
+      "medida": "540x600",
+      "color": "Cristal",
+      "partida": "3926C1-3VX",
+      "kgPedidos": 800,
+      "kgReales": 871,
+      "kgPorBobina": 130,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 1,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0051",
+      "fechaIngreso": "2026-02-12",
+      "fechaDespacho": "2026-03-13",
+      "cliente": "Bligraf",
+      "oc": "OC 4672",
+      "medida": "540x350",
+      "color": "Blanco",
+      "partida": "5626SB1V2",
+      "kgPedidos": 500,
+      "kgReales": 537,
+      "kgPorBobina": 130,
+      "formula": {
+        "preforma": 0.58,
+        "scrap": 0.4,
+        "virgen": 0,
+        "master": 0.02
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0052",
+      "fechaIngreso": "2026-02-13",
+      "fechaDespacho": "2026-03-11",
+      "cliente": "Blibox",
+      "oc": "OC 2176",
+      "medida": "540x400",
+      "color": "Cristal",
+      "partida": "5226S-1V2",
+      "kgPedidos": 1000,
+      "kgReales": 1103,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0053",
+      "fechaIngreso": "2026-02-13",
+      "fechaDespacho": "2026-03-11",
+      "cliente": "Blibox",
+      "oc": "OC 2177",
+      "medida": "540x500",
+      "color": "Cristal",
+      "partida": "5426S-1V2",
+      "kgPedidos": 500,
+      "kgReales": 559,
+      "kgPorBobina": 0,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0054",
+      "fechaIngreso": "2026-02-18",
+      "fechaDespacho": "2026-03-11",
+      "cliente": "El Artesano",
+      "oc": "OC 180226",
+      "medida": "450x200",
+      "color": "Cristal",
+      "partida": "5126S-1VX",
+      "kgPedidos": 1100,
+      "kgReales": 1162,
+      "kgPorBobina": 75,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.25,
+        "virgen": 0.75,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0055",
+      "fechaIngreso": "2026-02-25",
+      "fechaDespacho": "2026-03-05",
+      "cliente": "Trigger",
+      "oc": "OC 250226",
+      "medida": "580x300",
+      "color": "Cristal",
+      "partida": "4826S-1V2",
+      "kgPedidos": 3500,
+      "kgReales": 3669,
+      "kgPorBobina": 125,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.25,
+        "virgen": 0.75,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0056",
+      "fechaIngreso": "2026-02-25",
+      "fechaDespacho": "2026-03-13",
+      "cliente": "Laboreau",
+      "oc": "OC 260226",
+      "medida": "510x300",
+      "color": "Cristal",
+      "partida": "5026S-1V2",
+      "kgPedidos": 200,
+      "kgReales": 309,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.25,
+        "virgen": 0.75,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0057",
+      "fechaIngreso": "2026-02-25",
+      "fechaDespacho": "2026-03-04",
+      "cliente": "Decorate",
+      "oc": "OC 240226",
+      "medida": "450x500",
+      "color": "Cristal",
+      "partida": "4526S-1V2",
+      "kgPedidos": 250,
+      "kgReales": 311,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0058",
+      "fechaIngreso": "2026-02-26",
+      "fechaDespacho": "2026-03-30",
+      "cliente": "Food Solution",
+      "oc": "OC 8627",
+      "medida": "665x1000",
+      "color": "Cristal",
+      "partida": "5926PC-1V2",
+      "kgPedidos": 1000,
+      "kgReales": 1038,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.4,
+        "virgen": 0.6,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0059",
+      "fechaIngreso": "2026-02-26",
+      "fechaDespacho": "2026-03-06",
+      "cliente": "Blibox",
+      "oc": "OC 2182",
+      "medida": "630x650",
+      "color": "Cristal",
+      "partida": "4126S-1VX",
+      "kgPedidos": 500,
+      "kgReales": 546,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0060",
+      "fechaIngreso": "2026-02-26",
+      "fechaDespacho": "2026-03-13",
+      "cliente": "Rojo",
+      "oc": "OC 260226",
+      "medida": "510x400",
+      "color": "Cristal",
+      "partida": "5326S-1V2",
+      "kgPedidos": 300,
+      "kgReales": 315,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.25,
+        "virgen": 0.75,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0061",
+      "fechaIngreso": "2026-02-27",
+      "fechaDespacho": "2026-03-11",
+      "cliente": "E900",
+      "oc": "OC 270226T",
+      "medida": "640x500",
+      "color": "Cristal",
+      "partida": "4226S-1T2",
+      "kgPedidos": 4600,
+      "kgReales": 5354,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0062",
+      "fechaIngreso": "2026-03-01",
+      "fechaDespacho": "2026-03-27",
+      "cliente": "T900",
+      "oc": "OC 280226T",
+      "medida": "640x350",
+      "color": "Cristal",
+      "partida": "4426S-1T1",
+      "kgPedidos": 4400,
+      "kgReales": 4940,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0063",
+      "fechaIngreso": "2026-03-03",
+      "fechaDespacho": "2026-03-19",
+      "cliente": "Barielpack",
+      "oc": "OC 030326",
+      "medida": "550x350",
+      "color": "Cristal",
+      "partida": "5726S-1VX",
+      "kgPedidos": 2200,
+      "kgReales": 2205,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0064",
+      "fechaIngreso": "2026-03-03",
+      "fechaDespacho": "2026-03-27",
+      "cliente": "MFA",
+      "oc": "OC 020326",
+      "medida": "500x250",
+      "color": "Cristal",
+      "partida": "6226S-1VX",
+      "kgPedidos": 200,
+      "kgReales": 203,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.25,
+        "virgen": 0.75,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0065",
+      "fechaIngreso": "2026-03-04",
+      "fechaDespacho": "2026-03-27",
+      "cliente": "T900",
+      "oc": "OC 040326T",
+      "medida": "640x350",
+      "color": "Cristal",
+      "partida": "4926S-1T1",
+      "kgPedidos": 4600,
+      "kgReales": 4938,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0066",
+      "fechaIngreso": "2026-03-05",
+      "fechaDespacho": "2026-04-06",
+      "cliente": "Blibox",
+      "oc": "OC 2184",
+      "medida": "540x650",
+      "color": "Cristal",
+      "partida": "6026S-1V2",
+      "kgPedidos": 1000,
+      "kgReales": 1106,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.35,
+        "virgen": 0.65,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0067",
+      "fechaIngreso": "2026-03-06",
+      "fechaDespacho": "2026-03-17",
+      "cliente": "Coop. Repost",
+      "oc": "OC 060326",
+      "medida": "550x400",
+      "color": "Cristal",
+      "partida": "5526S-1V2",
+      "kgPedidos": 1000,
+      "kgReales": 1107,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0068",
+      "fechaIngreso": "2026-03-06",
+      "fechaDespacho": "2026-03-27",
+      "cliente": "Huertas",
+      "oc": "OC 060326",
+      "medida": "430x400",
+      "color": "Cristal",
+      "partida": "6326S-1VX",
+      "kgPedidos": 1200,
+      "kgReales": 1218,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0069",
+      "fechaIngreso": "2026-03-10",
+      "fechaDespacho": "2026-03-30",
+      "cliente": "Alglo",
+      "oc": "OC 110326",
+      "medida": "660x200",
+      "color": "Cristal",
+      "partida": "6826S1V2",
+      "kgPedidos": 500,
+      "kgReales": 536,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.3,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0070",
+      "fechaIngreso": "2026-03-10",
+      "fechaDespacho": "2026-03-17",
+      "cliente": "Decorate",
+      "oc": "OC 100326",
+      "medida": "550x1000",
+      "color": "Cristal",
+      "partida": "6126S-1V2",
+      "kgPedidos": 500,
+      "kgReales": 560,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.35,
+        "virgen": 0.65,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0074",
+      "fechaIngreso": "2026-03-06",
+      "fechaDespacho": "2026-03-17",
+      "cliente": "E900",
+      "oc": "OC 020326T",
+      "medida": "640x500",
+      "color": "Cristal",
+      "partida": "4326S-1V2",
+      "kgPedidos": 4600,
+      "kgReales": 6377,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.4,
+        "virgen": 0.6,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0075",
+      "fechaIngreso": "2026-03-12",
+      "fechaDespacho": "2026-03-27",
+      "cliente": "EVEL",
+      "oc": "OC 120326",
+      "medida": "450x350",
+      "color": "Cristal",
+      "partida": "6426S-1VX",
+      "kgPedidos": 550,
+      "kgReales": 607,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0076",
+      "fechaIngreso": "2026-03-12",
+      "fechaDespacho": "2026-03-30",
+      "cliente": "Exp. Grafica",
+      "oc": "OC 120326",
+      "medida": "510x200",
+      "color": "Cristal",
+      "partida": "7026S-1V1",
+      "kgPedidos": 500,
+      "kgReales": 517,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0077",
+      "fechaIngreso": "2026-03-11",
+      "fechaDespacho": "2026-03-30",
+      "cliente": "JC Packing",
+      "oc": "OC 110326B",
+      "medida": "450x300",
+      "color": "Blanco",
+      "partida": "7326SB-1V2",
+      "kgPedidos": 550,
+      "kgReales": 579,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.635,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0.015
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0078",
+      "fechaIngreso": "2026-03-20",
+      "fechaDespacho": "2026-03-25",
+      "cliente": "E900",
+      "oc": "OC 200326T",
+      "medida": "640x500",
+      "color": "Cristal",
+      "partida": "6626S-1T2",
+      "kgPedidos": 8600,
+      "kgReales": 9112,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.6,
+        "scrap": 0.4,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0079",
+      "fechaIngreso": "2026-03-19",
+      "fechaDespacho": "2026-03-30",
+      "cliente": "Mendía",
+      "oc": "OC 190326",
+      "medida": "350x300",
+      "color": "Cristal",
+      "partida": "7526S-1VX",
+      "kgPedidos": 2200,
+      "kgReales": 2241,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0.6,
+        "scrap": 0.4,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0080",
+      "fechaIngreso": "2026-03-19",
+      "fechaDespacho": "2026-04-16",
+      "cliente": "Decorate",
+      "oc": "OC 180326",
+      "medida": "550x400",
+      "color": "Cristal",
+      "partida": "8226S-1V2",
+      "kgPedidos": 500,
+      "kgReales": 527,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0081",
+      "fechaIngreso": "2026-03-19",
+      "fechaDespacho": "2026-03-27",
+      "cliente": "Decorate",
+      "oc": "OC 180326",
+      "medida": "450x400",
+      "color": "Cristal",
+      "partida": "7226S-1V2",
+      "kgPedidos": 500,
+      "kgReales": 521,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0082",
+      "fechaIngreso": "2026-03-19",
+      "fechaDespacho": "2026-03-30",
+      "cliente": "Arias",
+      "oc": "OC 180326B",
+      "medida": "500x400",
+      "color": "Blanco",
+      "partida": "7426SB-1V2",
+      "kgPedidos": 500,
+      "kgReales": 531,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.635,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0.015
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0083",
+      "fechaIngreso": "2026-03-19",
+      "fechaDespacho": "2026-04-06",
+      "cliente": "D. Godoy",
+      "oc": "OC 190326V",
+      "medida": "510x200",
+      "color": "Cristal",
+      "partida": "7126S-1V2",
+      "kgPedidos": 2000,
+      "kgReales": 2091,
+      "kgPorBobina": 70,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0084",
+      "fechaIngreso": "2026-03-24",
+      "fechaDespacho": "2026-04-08",
+      "cliente": "Don Yeyo",
+      "oc": "OC 240326M",
+      "medida": "670x250",
+      "color": "Cristal",
+      "partida": "6726S-1VX",
+      "kgPedidos": 500,
+      "kgReales": 546,
+      "kgPorBobina": 180,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.3,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0085",
+      "fechaIngreso": "2026-03-24",
+      "fechaDespacho": "2026-03-30",
+      "cliente": "T900",
+      "oc": "OC 240326T",
+      "medida": "640x350",
+      "color": "Cristal",
+      "partida": "6926S-1T1",
+      "kgPedidos": 2900,
+      "kgReales": 2970,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.3,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0086",
+      "fechaIngreso": "2026-03-27",
+      "fechaDespacho": "2026-04-06",
+      "cliente": "Don Yeyo",
+      "oc": "OC 270326",
+      "medida": "350x250",
+      "color": "Cristal",
+      "partida": "7626S-1VX",
+      "kgPedidos": 3300,
+      "kgReales": 3362,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0087",
+      "fechaIngreso": "2026-04-01",
+      "fechaDespacho": "2026-04-20",
+      "cliente": "Coop. Repost",
+      "oc": "OC 010426",
+      "medida": "550x400",
+      "color": "Cristal",
+      "partida": "8326S-1V2",
+      "kgPedidos": 300,
+      "kgReales": 331,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0088",
+      "fechaIngreso": "2026-03-27",
+      "fechaDespacho": "2026-04-09",
+      "cliente": "Don Yeyo",
+      "oc": "OC 270326",
+      "medida": "350x250",
+      "color": "Cristal",
+      "partida": "7626S-1VX",
+      "kgPedidos": 4000,
+      "kgReales": 5386,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0089",
+      "fechaIngreso": "2026-04-07",
+      "fechaDespacho": "2026-04-13",
+      "cliente": "Dantelli",
+      "oc": "OC 260326",
+      "medida": "380x300",
+      "color": "Cristal",
+      "partida": "7726S-1VX",
+      "kgPedidos": 2150,
+      "kgReales": 2194,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0090",
+      "fechaIngreso": "2026-04-07",
+      "fechaDespacho": "2026-04-29",
+      "cliente": "Dantelli",
+      "oc": "OC 260326",
+      "medida": "380x300",
+      "color": "Negro",
+      "partida": "9426SCN-1VX",
+      "kgPedidos": 900,
+      "kgReales": 908,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.99,
+        "virgen": 0,
+        "master": 0.01
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0091",
+      "fechaIngreso": "2026-04-07",
+      "fechaDespacho": "2026-04-09",
+      "cliente": "Colgate",
+      "oc": "OC 4505421363",
+      "medida": "460x500 ",
+      "color": "Cristal",
+      "partida": "7826S-1VX",
+      "kgPedidos": 2800,
+      "kgReales": 2847,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0092",
+      "fechaIngreso": "2026-04-07",
+      "fechaDespacho": "2026-04-16",
+      "cliente": "El Artesano",
+      "oc": "OC 003173",
+      "medida": "450x200",
+      "color": "Cristal",
+      "partida": "8526S-1VX",
+      "kgPedidos": 1300,
+      "kgReales": 1355,
+      "kgPorBobina": 75,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0093",
+      "fechaIngreso": "2026-04-08",
+      "fechaDespacho": "2026-04-28",
+      "cliente": "Trigger",
+      "oc": "OC 080426",
+      "medida": "640x300",
+      "color": "Negro",
+      "partida": "9326SCN-1V2",
+      "kgPedidos": 1100,
+      "kgReales": 1143,
+      "kgPorBobina": 125,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0.99,
+        "virgen": 0,
+        "master": 0.01
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0094",
+      "fechaIngreso": "2026-04-09",
+      "fechaDespacho": "2026-04-13",
+      "cliente": "E900",
+      "oc": "OC 090426",
+      "medida": "640x500",
+      "color": "Cristal",
+      "partida": "8026S-1T2",
+      "kgPedidos": 4600,
+      "kgReales": 4939,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.3,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0095",
+      "fechaIngreso": "2026-04-09",
+      "fechaDespacho": "2026-04-01",
+      "cliente": "Don Yeyo",
+      "oc": "OC 270326",
+      "medida": "350x250",
+      "color": "Cristal",
+      "partida": "7926S-1VX",
+      "kgPedidos": 2700,
+      "kgReales": 2764,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0096",
+      "fechaIngreso": "2026-04-07",
+      "fechaDespacho": "2026-04-28",
+      "cliente": "T900",
+      "oc": "OC 100426",
+      "medida": "640x350",
+      "color": "Cristal",
+      "partida": "8126S-1T2",
+      "kgPedidos": 4600,
+      "kgReales": 5143,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.3,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0097",
+      "fechaIngreso": "2026-04-14",
+      "fechaDespacho": "2026-04-16",
+      "cliente": "Bligraf",
+      "oc": "OC 4770",
+      "medida": "484x290",
+      "color": "Cristal",
+      "partida": "8426S-1VX",
+      "kgPedidos": 800,
+      "kgReales": 849,
+      "kgPorBobina": 120,
+      "formula": {
+        "preforma": 0.45,
+        "scrap": 0.55,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0098",
+      "fechaIngreso": "2026-04-13",
+      "fechaDespacho": "2026-04-16",
+      "cliente": "La Italiana",
+      "oc": "OC 14715",
+      "medida": "450x300",
+      "color": "Cristal",
+      "partida": "8626S-1VX",
+      "kgPedidos": 5500,
+      "kgReales": 5739,
+      "kgPorBobina": 80,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.3,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0099",
+      "fechaIngreso": "2026-04-13",
+      "fechaDespacho": "2026-04-21",
+      "cliente": "La Italiana",
+      "oc": "OC 14715",
+      "medida": "450x450",
+      "color": "Cristal",
+      "partida": "8726S-1VX",
+      "kgPedidos": 5500,
+      "kgReales": 5857,
+      "kgPorBobina": 80,
+      "formula": {
+        "preforma": 0.6,
+        "scrap": 0.4,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0100",
+      "fechaIngreso": "2026-04-13",
+      "fechaDespacho": "2026-04-28",
+      "cliente": "Bligraf",
+      "oc": "OC 4770",
+      "medida": "370x250",
+      "color": "Cristal",
+      "partida": "8826S-1VX",
+      "kgPedidos": 1700,
+      "kgReales": 1763,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.3,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0101",
+      "fechaIngreso": "2026-04-13",
+      "fechaDespacho": "2026-04-29",
+      "cliente": "Blibox",
+      "oc": "OC 2188",
+      "medida": "540x400",
+      "color": "Cristal",
+      "partida": "9226S-1V2",
+      "kgPedidos": 1000,
+      "kgReales": 1116,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0.6,
+        "scrap": 0.4,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0102",
+      "fechaIngreso": "2026-04-13",
+      "fechaDespacho": null,
+      "cliente": "Blibox",
+      "oc": "OC 2189",
+      "medida": "540x500",
+      "color": "Blanco",
+      "partida": "",
+      "kgPedidos": 1000,
+      "kgReales": 0,
+      "kgPorBobina": 0,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0103",
+      "fechaIngreso": "2026-04-17",
+      "fechaDespacho": "2026-04-29",
+      "cliente": "Mendía",
+      "oc": "OC 170426",
+      "medida": "350x300",
+      "color": "Cristal",
+      "partida": "8926S-1VX",
+      "kgPedidos": 7000,
+      "kgReales": 7736,
+      "kgPorBobina": 0,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.3,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0104",
+      "fechaIngreso": "2026-04-20",
+      "fechaDespacho": "2026-04-28",
+      "cliente": "T900",
+      "oc": "OC 200426T",
+      "medida": "640x350",
+      "color": "Cristal",
+      "partida": "9026S-1T1",
+      "kgPedidos": 7800,
+      "kgReales": 7802,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.65,
+        "scrap": 0.35,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0105",
+      "fechaIngreso": "2026-04-21",
+      "fechaDespacho": "2026-04-30",
+      "cliente": "E900",
+      "oc": "OC 210426T",
+      "medida": "640x500",
+      "color": "Cristal",
+      "partida": "9126S-1T2",
+      "kgPedidos": 3900,
+      "kgReales": 3915,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.3,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0106",
+      "fechaIngreso": "2026-04-27",
+      "fechaDespacho": "2026-04-30",
+      "cliente": "Blibox",
+      "oc": "OC 2196",
+      "medida": "540x300",
+      "color": "Cristal",
+      "partida": "9526S-1V2",
+      "kgPedidos": 2000,
+      "kgReales": 2063,
+      "kgPorBobina": 70,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0107",
+      "fechaIngreso": "2026-04-27",
+      "fechaDespacho": null,
+      "cliente": "Blibox",
+      "oc": "OC 2196",
+      "medida": "540x300",
+      "color": "Cristal",
+      "partida": "9526S-1V2",
+      "kgPedidos": 2000,
+      "kgReales": 2205,
+      "kgPorBobina": 50,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0108",
+      "fechaIngreso": "2026-04-20",
+      "fechaDespacho": "2026-05-05",
+      "cliente": "Bandex",
+      "oc": "OC 200426V",
+      "medida": "690x320",
+      "color": "Cristal",
+      "partida": "9626S-1V1",
+      "kgPedidos": 15000,
+      "kgReales": 15408,
+      "kgPorBobina": 300,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0109",
+      "fechaIngreso": "2026-03-09",
+      "fechaDespacho": "2026-05-07",
+      "cliente": "Don Yeyo",
+      "oc": "OC 270326",
+      "medida": "350x250",
+      "color": "Cristal",
+      "partida": "7926S-1VX",
+      "kgPedidos": 6000,
+      "kgReales": 4402,
+      "kgPorBobina": 90,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0110",
+      "fechaIngreso": "2026-04-20",
+      "fechaDespacho": "2026-05-12",
+      "cliente": "Molinos",
+      "oc": "OC 4500220465",
+      "medida": "450x450",
+      "color": "Cristal",
+      "partida": "9726PC-1VX",
+      "kgPedidos": 15000,
+      "kgReales": 14777,
+      "kgPorBobina": 110,
+      "formula": {
+        "preforma": 0.5,
+        "scrap": 0.5,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0111",
+      "fechaIngreso": "2026-05-06",
+      "fechaDespacho": "2026-05-14",
+      "cliente": "Bligraf",
+      "oc": "OC 4799",
+      "medida": "540x290",
+      "color": "Cristal",
+      "partida": "9826S-1V2",
+      "kgPedidos": 500,
+      "kgReales": 561,
+      "kgPorBobina": 65,
+      "formula": {
+        "preforma": 0.52,
+        "scrap": 0.48,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0112",
+      "fechaIngreso": "2026-05-06",
+      "fechaDespacho": null,
+      "cliente": "Bligraf",
+      "oc": "OC 4799",
+      "medida": "540x290",
+      "color": "Cristal",
+      "partida": "9926S-1V2",
+      "kgPedidos": 500,
+      "kgReales": 569,
+      "kgPorBobina": 65,
+      "formula": {
+        "preforma": 0.52,
+        "scrap": 0.48,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0113",
+      "fechaIngreso": "2026-04-15",
+      "fechaDespacho": "2026-05-14",
+      "cliente": "Decorate",
+      "oc": "OC 150426",
+      "medida": "450x400",
+      "color": "Cristal",
+      "partida": "10226S-1V2",
+      "kgPedidos": 500,
+      "kgReales": 528,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.52,
+        "scrap": 0.48,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0114",
+      "fechaIngreso": "2026-05-07",
+      "fechaDespacho": null,
+      "cliente": "Bligraf",
+      "oc": "OC 4825",
+      "medida": "450x450",
+      "color": "Cristal",
+      "partida": "10126S-1V2",
+      "kgPedidos": 1000,
+      "kgReales": 1070,
+      "kgPorBobina": 130,
+      "formula": {
+        "preforma": 0.52,
+        "scrap": 0.48,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0115",
+      "fechaIngreso": "2026-05-07",
+      "fechaDespacho": null,
+      "cliente": "JC Packing",
+      "oc": "OC 070526",
+      "medida": "450x200",
+      "color": "Cristal",
+      "partida": "10326S-1V1",
+      "kgPedidos": 250,
+      "kgReales": 263,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.52,
+        "scrap": 0.48,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0116",
+      "fechaIngreso": "2026-05-06",
+      "fechaDespacho": "2026-05-14",
+      "cliente": "Bligraf",
+      "oc": "OC 4799",
+      "medida": "540x250",
+      "color": "Cristal",
+      "partida": "10026S-1V2",
+      "kgPedidos": 500,
+      "kgReales": 513,
+      "kgPorBobina": 130,
+      "formula": {
+        "preforma": 0.52,
+        "scrap": 0.48,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0117",
+      "fechaIngreso": "2026-05-12",
+      "fechaDespacho": null,
+      "cliente": "Huertas",
+      "oc": "OC 120526",
+      "medida": "430x400",
+      "color": "Cristal",
+      "partida": "10526S-1VX",
+      "kgPedidos": 500,
+      "kgReales": 613,
+      "kgPorBobina": 100,
+      "formula": {
+        "preforma": 0.52,
+        "scrap": 0.48,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0118",
+      "fechaIngreso": "2026-05-13",
+      "fechaDespacho": null,
+      "cliente": "T900",
+      "oc": "OC 130526T",
+      "medida": "640x350",
+      "color": "Cristal",
+      "partida": "10626S-1T1",
+      "kgPedidos": 2600,
+      "kgReales": 2670,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0.7,
+        "scrap": 0.3,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0119",
+      "fechaIngreso": "2026-05-14",
+      "fechaDespacho": null,
+      "cliente": "E900",
+      "oc": "OC 140526T",
+      "medida": "640x500",
+      "color": "Cristal",
+      "partida": "10726S-1T2",
+      "kgPedidos": 4200,
+      "kgReales": 0,
+      "kgPorBobina": 200,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0120",
+      "fechaIngreso": "2026-04-21",
+      "fechaDespacho": null,
+      "cliente": "El Artesano",
+      "oc": "OC 3190",
+      "medida": "450x200",
+      "color": "Cristal",
+      "partida": "10826S-1VX",
+      "kgPedidos": 1300,
+      "kgReales": 0,
+      "kgPorBobina": 75,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0121",
+      "fechaIngreso": "2026-05-14",
+      "fechaDespacho": null,
+      "cliente": "El Artesano",
+      "oc": "OC 3190",
+      "medida": "450x200",
+      "color": "Cristal",
+      "partida": "10926S-1VX",
+      "kgPedidos": 1300,
+      "kgReales": 0,
+      "kgPorBobina": 75,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0122",
+      "fechaIngreso": "2026-04-30",
+      "fechaDespacho": null,
+      "cliente": "Bligraf",
+      "oc": "OC 4819",
+      "medida": "484x290",
+      "color": "Cristal",
+      "partida": "10426S-1VX",
+      "kgPedidos": 900,
+      "kgReales": 0,
+      "kgPorBobina": 120,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0123",
+      "fechaIngreso": "2025-04-20",
+      "fechaDespacho": null,
+      "cliente": "Molinos",
+      "oc": "OC 4500220465",
+      "medida": "500x200",
+      "color": "Cristal",
+      "partida": "11026PC-1VX",
+      "kgPedidos": 4000,
+      "kgReales": 0,
+      "kgPorBobina": 80,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    },
+    {
+      "id": "PED-0124",
+      "fechaIngreso": "2026-05-06",
+      "fechaDespacho": null,
+      "cliente": "Bligraf",
+      "oc": "OC 4799",
+      "medida": "540x250",
+      "color": "Cristal",
+      "partida": "11126S-1VX",
+      "kgPedidos": 1000,
+      "kgReales": 0,
+      "kgPorBobina": 65,
+      "formula": {
+        "preforma": 0,
+        "scrap": 0,
+        "virgen": 0,
+        "master": 0
+      },
+      "confeccion": "",
+      "observaciones": ""
+    }
+  ],
+  "producciones": [],
+  "ingresosMP": [],
+  "egresosMP": [],
+  "costosMensuales": {
+    "2026-01": {
+      "diasProduccion": 21,
+      "horasXDia": 12,
+      "energia": 8836149.18,
+      "manoDeObra": 9603488.23,
+      "tcProm": 1450
+    },
+    "2026-02": {
+      "diasProduccion": 18,
+      "horasXDia": 17,
+      "energia": 8497409.64,
+      "manoDeObra": 9552078.1,
+      "tcProm": 1420
+    },
+    "2026-03": {
+      "diasProduccion": 22,
+      "horasXDia": 17,
+      "energia": 10730130.53,
+      "manoDeObra": 11616512.06,
+      "tcProm": 1415
+    },
+    "2026-04": {
+      "diasProduccion": 20,
+      "horasXDia": 17,
+      "energia": 12294816.59,
+      "manoDeObra": 11582911.99,
+      "tcProm": 1400
+    },
+    "2026-05": {
+      "diasProduccion": 0,
+      "horasXDia": 17,
+      "energia": 11787239.24,
+      "manoDeObra": 0,
+      "tcProm": 0
+    }
+  },
+  "catalogos": {
+    "clientes": [
+      "Alglo",
+      "Arias",
+      "Bandex",
+      "Barielpack",
+      "Bioprotece",
+      "Blibox",
+      "Bligraf",
+      "Colgate",
+      "Coop. Repost",
+      "D. Godoy",
+      "Dantelli",
+      "Decorate",
+      "Don Yeyo",
+      "E900",
+      "EVEL",
+      "El Artesano",
+      "Exp. Grafica",
+      "Food Solution",
+      "Huertas",
+      "Ikazcjik",
+      "JC Packing",
+      "La Italiana",
+      "Laboreau",
+      "MFA",
+      "Mendía",
+      "Molinos",
+      "Rojo",
+      "Smams",
+      "T900",
+      "Trigger"
+    ],
+    "colores": [
+      "Cristal",
+      "Cristal AB",
+      "Negro",
+      "Blanco",
+      "Blanco AB",
+      "Azulino",
+      "Gris"
+    ],
+    "materiasPrimas": [
+      "Preforma",
+      "Virgen",
+      "Scrap C",
+      "Scrap B",
+      "Scrap N",
+      "Master"
+    ],
+    "proveedoresMP": {
+      "Preforma": [
+        "Reciclar",
+        "Ecopek"
+      ],
+      "Virgen": [
+        "Alpek"
+      ],
+      "Scrap C": [
+        "WinC",
+        "WinL"
+      ],
+      "Scrap B": [
+        "WinC",
+        "WinL"
+      ],
+      "Scrap N": [
+        "WinC",
+        "WinL"
+      ],
+      "Master": [
+        "Ampacet",
+        "Arcolor"
+      ]
+    },
+    "operarios": []
+  },
+  "config": {
+    "pinAdmin": "3080",
+    "pinOperarios": "8376",
+    "capacidadKgxHora": 300,
+    "horasTurnoStandard": 17,
+    "diasSemana": 5
+  },
+  "lastUpdate": "2026-05-18T21:03:01.448989"
+};
+</script>
+</body>
+</html>
