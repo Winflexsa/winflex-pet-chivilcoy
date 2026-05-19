@@ -370,7 +370,7 @@ const CONFIG = {
   MASTER_KEY: 'PEGAR_MASTER_KEY_AQUI'
 };
 
-const LS_KEY = 'winflex_pet_chivilcoy_v3';
+const LS_KEY = 'winflex_pet_chivilcoy_v31';
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 // ============================================================
@@ -792,22 +792,18 @@ function populateFilters() {
   });
 }
 
-// --- MODAL PEDIDO ---
+// --- MODAL PEDIDO (datos generales solamente) ---
 function openPedidoModal(id) {
   let p = id ? DATA.pedidos.find(x => x.id === id) : null;
   if (p && !p.op && p.partida) p.op = p.partida;
   if (!p) {
-    // Auto-asignar próximo N° OP y N° Solicitud
-    const today = new Date();
-    const mmaa = String(today.getMonth()+1).padStart(2,'0') + String(today.getFullYear()).slice(-2);
     p = {
       id: 'PED-' + String(Date.now()).slice(-6),
-      fechaIngreso: today.toISOString().slice(0,10),
+      fechaIngreso: new Date().toISOString().slice(0,10),
       fechaDespacho: '', cliente: '', oc: '',
       ancho: 0, espesor: 0, color: 'Cristal',
       op: '', silicona: '',
-      nroOP: String(DATA.config.proximoNroOP || 111),
-      nroSolicitud: String(DATA.config.proximoNroSolicitud || 1).padStart(2,'0') + '-' + mmaa,
+      nroOP: '', nroSolicitud: '',
       producto: 'Lamina r-PET FDA',
       codigoProducto: '',
       kgPorHora: DATA.config.kgPorHoraDefault || 300,
@@ -828,117 +824,46 @@ function openPedidoModal(id) {
 
   const clientes = DATA.catalogos.clientes;
   const colores = DATA.catalogos.colores;
-  const mezclas = DATA.catalogos.mezclasTeoricas || [];
-  const recetas = DATA.catalogos.recetas || [];
-  const productos = DATA.catalogos.productos || [];
-  const destinos = DATA.catalogos.destinos || [];
 
   document.getElementById('modalContainer').innerHTML = `
     <div class="modal-bg" onclick="if(event.target===this)closeModal()">
-      <div class="modal detail-modal">
+      <div class="modal">
         <div class="modal-h">
           <h3>${id ? 'Editar pedido' : 'Nuevo pedido'} — ${p.id}</h3>
           <button class="btn-ghost" onclick="closeModal()">✕</button>
         </div>
         <div class="modal-body">
-          <div class="detail-section">
-            <h3>Datos generales</h3>
-            <div class="form-grid">
-              <div class="field"><label>Fecha ingreso</label><input type="date" id="m_fechaIngreso" value="${p.fechaIngreso||''}"></div>
-              <div class="field"><label>Fecha despacho</label><input type="date" id="m_fechaDespacho" value="${p.fechaDespacho||''}"></div>
-              <div class="field"><label>Cliente *</label>
-                <input list="dl_clientes" id="m_cliente" value="${p.cliente||''}">
-                <datalist id="dl_clientes">${clientes.map(c => `<option value="${c}">`).join('')}</datalist>
-              </div>
-              <div class="field"><label>OC cliente</label><input type="text" id="m_oc" value="${p.oc||''}" placeholder="OC 2211"></div>
-              <div class="field"><label>N° OP</label><input type="text" id="m_nroOP" value="${p.nroOP||''}" placeholder="110"></div>
-              <div class="field"><label>N° Solicitud</label><input type="text" id="m_nroSolicitud" value="${p.nroSolicitud||''}" placeholder="15-0526"></div>
-              <div class="field"><label>OP (código partida)</label><input type="text" id="m_op" value="${p.op||p.partida||''}" placeholder="1126PC-1VX"></div>
-              <div class="field"><label>Estado</label>
-                <select id="m_estado">
-                  ${['Borrador','Confirmada','En producción','Despachada','Facturada','Cancelada'].map(e =>
-                    `<option value="${e}" ${e===(p.estadoWorkflow||'Borrador')?'selected':''}>${e}</option>`).join('')}
-                </select>
-              </div>
+          <p style="font-size:12px;color:#6b7280;margin-bottom:14px;padding:8px 12px;background:#f9fafb;border-radius:6px;border-left:3px solid #2563eb">
+            💡 Cargá los datos generales del pedido. Los datos técnicos (receta, cronograma, etc.) los agregás después emitiendo la OP desde la vista detalle.
+          </p>
+          <div class="form-grid">
+            <div class="field"><label>Fecha ingreso</label><input type="date" id="m_fechaIngreso" value="${p.fechaIngreso||''}"></div>
+            <div class="field"><label>Fecha despacho</label><input type="date" id="m_fechaDespacho" value="${p.fechaDespacho||''}"></div>
+            <div class="field"><label>Cliente *</label>
+              <input list="dl_clientes" id="m_cliente" value="${p.cliente||''}">
+              <datalist id="dl_clientes">${clientes.map(c => `<option value="${c}">`).join('')}</datalist>
             </div>
-          </div>
-
-          <div class="detail-section">
-            <h3>Producto y especificaciones</h3>
-            <div class="form-grid">
-              <div class="field"><label>Producto</label>
-                <select id="m_producto">${productos.map(pr => `<option value="${pr.nombre}" ${pr.nombre===p.producto?'selected':''}>${pr.nombre}</option>`).join('')}</select>
-              </div>
-              <div class="field"><label>Color</label>
-                <select id="m_color">${colores.map(c => `<option value="${c}" ${c===p.color?'selected':''}>${c}</option>`).join('')}</select>
-              </div>
-              <div class="field"><label>Ancho (mm) *</label><input type="number" id="m_ancho" value="${p.ancho||''}" placeholder="500" oninput="updateCodigoProd()"></div>
-              <div class="field"><label>Espesor (μm) *</label><input type="number" id="m_espesor" value="${p.espesor||''}" placeholder="200" oninput="updateCodigoProd()"></div>
-              <div class="field"><label>Código producto</label><input type="text" id="m_codigoProducto" value="${p.codigoProducto||''}" readonly style="background:#f9fafb"></div>
-              <div class="field"><label>Silicona</label>
-                <select id="m_silicona" onchange="updateSiliconaGM2()">
-                  <option value="" ${!p.silicona?'selected':''}>—</option>
-                  <option value="SIN" ${p.silicona==='SIN'?'selected':''}>SIN (0.10 g/m²)</option>
-                  <option value="CON" ${p.silicona==='CON'?'selected':''}>CON (0.05 g/m²)</option>
-                </select>
-              </div>
-              <div class="field"><label>Silicona g/m²</label><input type="number" step="0.001" id="m_siliconaGM2" value="${p.siliconaGramosM2||0}" readonly style="background:#f9fafb"></div>
-              <div class="field"><label>Destino</label>
-                <select id="m_destinoCodigo">${destinos.map(d => `<option value="${d.codigo}" ${d.codigo===p.destinoCodigo?'selected':''}>${d.codigo} — ${d.nombre}</option>`).join('')}</select>
-              </div>
+            <div class="field"><label>OC cliente</label><input type="text" id="m_oc" value="${p.oc||''}" placeholder="OC 2211"></div>
+            <div class="field"><label>Ancho (mm) *</label><input type="number" id="m_ancho" value="${p.ancho||''}" placeholder="500"></div>
+            <div class="field"><label>Espesor (μm) *</label><input type="number" id="m_espesor" value="${p.espesor||''}" placeholder="200"></div>
+            <div class="field"><label>Color</label>
+              <select id="m_color">${colores.map(c => `<option value="${c}" ${c===p.color?'selected':''}>${c}</option>`).join('')}</select>
             </div>
-          </div>
-
-          <div class="detail-section">
-            <h3>Cantidades y bobinas</h3>
-            <div class="form-grid">
-              <div class="field"><label>Kg pedidos *</label><input type="number" id="m_kgPed" value="${p.kgPedidos||0}" min="0" oninput="updateCalculados()"></div>
-              <div class="field"><label>Kg producidos</label><input type="number" id="m_kgReal" value="${p.kgReales||0}" min="0" title="Se actualiza con cargas de operarios"></div>
-              <div class="field"><label>Kg / Bobina</label><input type="number" id="m_kgBobina" value="${p.kgPorBobina||80}" min="0" oninput="updateCalculados()"></div>
-              <div class="field"><label>Bobinas estimadas</label><input type="text" id="m_bobinasEst" readonly style="background:#f9fafb"></div>
-              <div class="field"><label>Metros por bobina</label><input type="number" id="m_metrosBobina" value="${p.metrosBobina||0}" min="0"></div>
-              <div class="field"><label>Diámetro (mm)</label><input type="number" id="m_diametro" value="${p.diametroBobina||0}" min="0"></div>
+            <div class="field"><label>Silicona</label>
+              <select id="m_silicona">
+                <option value="" ${!p.silicona?'selected':''}>—</option>
+                <option value="SIN" ${p.silicona==='SIN'?'selected':''}>SIN</option>
+                <option value="CON" ${p.silicona==='CON'?'selected':''}>CON</option>
+              </select>
             </div>
-          </div>
-
-          <div class="detail-section">
-            <h3>Cronograma de producción</h3>
-            <div class="form-grid">
-              <div class="field"><label>Kg / Hora</label><input type="number" id="m_kgPorHora" value="${p.kgPorHora||300}" oninput="updateCalculados()"></div>
-              <div class="field"><label>Horas / día</label><input type="number" id="m_horasPorDia" value="${p.horasPorDia||11}" oninput="updateCalculados()"></div>
-              <div class="field"><label>Scrap teórico (0-1)</label><input type="number" step="0.01" id="m_scrapTeorico" value="${p.scrapTeorico||0.2}" min="0" max="1" oninput="updateCalculados()"></div>
-              <div class="field"><label>Días estimados</label><input type="text" id="m_diasEst" readonly style="background:#f9fafb"></div>
-              <div class="field"><label>Fecha inicio</label><input type="date" id="m_fechaInicio" value="${p.fechaInicioProd||''}"></div>
-              <div class="field"><label>Fecha fin estimada</label><input type="date" id="m_fechaFin" value="${p.fechaFinProd||''}"></div>
+            <div class="field"><label>Kg pedidos *</label><input type="number" id="m_kgPed" value="${p.kgPedidos||0}" min="0"></div>
+            <div class="field"><label>Estado</label>
+              <select id="m_estado">
+                ${['Borrador','Confirmada','En producción','Despachada','Facturada','Cancelada'].map(e =>
+                  `<option value="${e}" ${e===(p.estadoWorkflow||'Borrador')?'selected':''}>${e}</option>`).join('')}
+              </select>
             </div>
-          </div>
-
-          <div class="detail-section">
-            <h3>Receta (mezcla teórica)</h3>
-            <div class="form-grid">
-              <div class="field full"><label>Receta codificada</label>
-                <select id="m_recetaCodigo" onchange="aplicarReceta()">
-                  <option value="">— Sin receta codificada —</option>
-                  ${recetas.map(r => {
-                    const comp = Object.entries(r.componentes).map(([k,v]) => `${(v*100).toFixed(0)}% ${k}`).join(' + ');
-                    return `<option value="${r.codigo}" ${r.codigo===p.recetaCodigo?'selected':''}>${r.codigo} (${r.tipo}) — ${comp}</option>`;
-                  }).join('')}
-                </select>
-              </div>
-              <div class="field full"><label>Mezcla teórica (texto que va en la OP)</label>
-                <input list="dl_mezclas" id="m_mezclaTexto" value="${p.mezclaTeoricaTexto||''}" placeholder="Ej: 50% Pref. Cristal / 50% Scrap">
-                <datalist id="dl_mezclas">${mezclas.map(m => `<option value="${m}">`).join('')}</datalist>
-              </div>
-            </div>
-            <div id="recetaPreview" style="margin-top:10px"></div>
-          </div>
-
-          <div class="detail-section">
-            <h3>Confección y observaciones</h3>
-            <div class="form-grid">
-              <div class="field full"><label>Confección</label><input type="text" id="m_confeccion" value="${p.confeccion||''}"></div>
-              <div class="field full"><label>Observaciones</label><textarea id="m_obs" rows="2">${p.observaciones||''}</textarea></div>
-            </div>
+            <div class="field full"><label>Observaciones</label><textarea id="m_obs" rows="2">${p.observaciones||''}</textarea></div>
           </div>
         </div>
         <div class="modal-f">
@@ -948,54 +873,6 @@ function openPedidoModal(id) {
         </div>
       </div>
     </div>`;
-
-  updateCodigoProd();
-  updateSiliconaGM2();
-  updateCalculados();
-  aplicarReceta(false);
-}
-
-function updateCodigoProd() {
-  const a = +document.getElementById('m_ancho').value || 0;
-  const e = +document.getElementById('m_espesor').value || 0;
-  document.getElementById('m_codigoProducto').value = (a && e) ? `${a}${e}` : '';
-}
-function updateSiliconaGM2() {
-  const s = document.getElementById('m_silicona').value;
-  const gm2 = s === 'SIN' ? 0.10 : (s === 'CON' ? 0.05 : 0);
-  document.getElementById('m_siliconaGM2').value = gm2;
-}
-function updateCalculados() {
-  const kgPed = +document.getElementById('m_kgPed').value || 0;
-  const kgBob = +document.getElementById('m_kgBobina').value || 0;
-  const kgH = +document.getElementById('m_kgPorHora').value || 0;
-  const hD = +document.getElementById('m_horasPorDia').value || 0;
-  const bob = kgBob > 0 ? Math.ceil(kgPed/kgBob) : 0;
-  document.getElementById('m_bobinasEst').value = bob ? bob + ' bobinas' : '';
-  const dias = (kgH > 0 && hD > 0) ? (kgPed / (kgH * hD)) : 0;
-  document.getElementById('m_diasEst').value = dias ? dias.toFixed(2) + ' días' : '';
-}
-function aplicarReceta(autoApplyMezcla = true) {
-  const code = document.getElementById('m_recetaCodigo').value;
-  const r = (DATA.catalogos.recetas || []).find(x => x.codigo === code);
-  const prev = document.getElementById('recetaPreview');
-  if (!r) { prev.innerHTML = ''; return; }
-  const kgPed = +document.getElementById('m_kgPed').value || 0;
-  const scrap = +document.getElementById('m_scrapTeorico').value || 0;
-  const kgMP = kgPed * (1 + scrap); // se carga 20% extra por scrap
-  let html = `<div style="background:#f0f9ff;padding:12px;border-radius:6px;border:1px solid #bae6fd"><b>${r.codigo}</b> — ${r.tipo}<br>`;
-  html += `<table style="margin-top:8px;width:100%;font-size:13px"><thead><tr><th>Componente</th><th class="num">%</th><th class="num">Kg (con ${(scrap*100).toFixed(0)}% scrap)</th></tr></thead><tbody>`;
-  let txt = [];
-  Object.entries(r.componentes).forEach(([mp, pct]) => {
-    const kg = kgMP * pct;
-    html += `<tr><td>${mp}</td><td class="num">${(pct*100).toFixed(1)}%</td><td class="num"><b>${fmtNum(kg)}</b> kg</td></tr>`;
-    txt.push(`${(pct*100).toFixed(0)}% ${mp}`);
-  });
-  html += `</tbody></table></div>`;
-  prev.innerHTML = html;
-  if (autoApplyMezcla && txt.length > 0) {
-    document.getElementById('m_mezclaTexto').value = txt.join(' / ');
-  }
 }
 function updateSumaFormula() {
   const s = ['m_fPreforma','m_fScrap','m_fVirgen','m_fMaster'].reduce((a,id) => a + (+document.getElementById(id).value || 0), 0);
@@ -1007,7 +884,8 @@ function closeModal() {
   document.getElementById('modalContainer').innerHTML = '';
 }
 async function savePedido(id) {
-  const isNew = !id;
+  const existing = id ? DATA.pedidos.find(p => p.id === id) : null;
+  // Datos generales del pedido
   const data = {
     id: id || 'PED-' + String(Date.now()).slice(-6),
     fechaIngreso: document.getElementById('m_fechaIngreso').value,
@@ -1018,65 +896,45 @@ async function savePedido(id) {
     espesor: +document.getElementById('m_espesor').value || 0,
     color: document.getElementById('m_color').value,
     silicona: document.getElementById('m_silicona').value,
-    op: document.getElementById('m_op').value.trim(),
-    nroOP: document.getElementById('m_nroOP').value.trim(),
-    nroSolicitud: document.getElementById('m_nroSolicitud').value.trim(),
-    producto: document.getElementById('m_producto').value,
-    codigoProducto: document.getElementById('m_codigoProducto').value,
-    siliconaGramosM2: +document.getElementById('m_siliconaGM2').value || 0,
-    kgPorBobina: +document.getElementById('m_kgBobina').value || 0,
     kgPedidos: +document.getElementById('m_kgPed').value || 0,
-    kgReales: +document.getElementById('m_kgReal').value || 0,
-    metrosBobina: +document.getElementById('m_metrosBobina').value || 0,
-    diametroBobina: +document.getElementById('m_diametro').value || 0,
-    kgPorHora: +document.getElementById('m_kgPorHora').value || 300,
-    horasPorDia: +document.getElementById('m_horasPorDia').value || 11,
-    scrapTeorico: +document.getElementById('m_scrapTeorico').value || 0.20,
-    recetaCodigo: document.getElementById('m_recetaCodigo').value,
-    fechaInicioProd: document.getElementById('m_fechaInicio').value,
-    fechaFinProd: document.getElementById('m_fechaFin').value,
-    destinoCodigo: document.getElementById('m_destinoCodigo').value,
-    mezclaTeoricaTexto: document.getElementById('m_mezclaTexto').value.trim(),
     estadoWorkflow: document.getElementById('m_estado').value,
-    confeccion: document.getElementById('m_confeccion').value,
     observaciones: document.getElementById('m_obs').value,
-    formula: { preforma: 0, scrap: 0, virgen: 0, master: 0 }
+    // Auto: código de producto
+    codigoProducto: ''
   };
-  // Derive formula from receta if present
-  const rec = (DATA.catalogos.recetas || []).find(r => r.codigo === data.recetaCodigo);
-  if (rec) {
-    const c = rec.componentes;
-    data.formula.preforma = (c['Pref. Cristal'] || 0) + (c['Pref. Azul'] || 0);
-    data.formula.scrap = (c['Scrap'] || 0) + (c['Scrap Sil'] || 0) + (c['Scrap Blanco'] || 0) + (c['Scrap Color'] || 0);
-    data.formula.virgen = (c['Clase 1'] || 0) + (c['Clase 2'] || 0);
-    data.formula.master = (c['Recorte'] || 0);
-  }
+  data.codigoProducto = (data.ancho && data.espesor) ? `${data.ancho}${data.espesor}` : '';
+  // Silicona g/m² auto
+  data.siliconaGramosM2 = data.silicona === 'SIN' ? 0.10 : (data.silicona === 'CON' ? 0.05 : 0);
+
   if (!data.cliente || !data.kgPedidos) { alert('Cliente y kg pedidos son obligatorios'); return; }
 
-  if (id) {
+  if (existing) {
+    // Preservar campos técnicos (OP) si ya existen
+    const techFields = ['nroOP','nroSolicitud','producto','kgPorHora','horasPorDia','scrapTeorico','recetaCodigo','kgReales','kgPorBobina','metrosBobina','diametroBobina','mezclaTeoricaTexto','fechaInicioProd','fechaFinProd','destinoCodigo','confeccion','formula','op','partida'];
+    techFields.forEach(f => { if (existing[f] !== undefined) data[f] = existing[f]; });
     const idx = DATA.pedidos.findIndex(p => p.id === id);
     DATA.pedidos[idx] = data;
   } else {
+    // Defaults para campos técnicos
+    data.nroOP = ''; data.nroSolicitud = '';
+    data.producto = 'Lamina r-PET FDA';
+    data.kgPorHora = DATA.config.kgPorHoraDefault || 300;
+    data.horasPorDia = DATA.config.horasPorDiaDefault || 11;
+    data.scrapTeorico = DATA.config.scrapTeoricoDefault || 0.20;
+    data.recetaCodigo = '';
+    data.kgReales = 0; data.kgPorBobina = 80;
+    data.metrosBobina = 0; data.diametroBobina = 0;
+    data.mezclaTeoricaTexto = '';
+    data.fechaInicioProd = ''; data.fechaFinProd = '';
+    data.destinoCodigo = 'T';
+    data.confeccion = '';
+    data.formula = { preforma: 0, scrap: 0, virgen: 0, master: 0 };
+    data.op = '';
     DATA.pedidos.push(data);
     if (!DATA.catalogos.clientes.includes(data.cliente)) {
       DATA.catalogos.clientes.push(data.cliente);
       DATA.catalogos.clientes.sort();
     }
-    // Auto-increment próximo N° OP y solicitud
-    const nroOPnum = parseInt(data.nroOP);
-    if (nroOPnum && nroOPnum >= (DATA.config.proximoNroOP || 0)) {
-      DATA.config.proximoNroOP = nroOPnum + 1;
-    }
-    const solMatch = data.nroSolicitud.match(/^(\d+)-(\d{4})$/);
-    if (solMatch) {
-      const num = parseInt(solMatch[1]);
-      if (num >= (DATA.config.proximoNroSolicitud || 0)) {
-        DATA.config.proximoNroSolicitud = num + 1;
-      }
-    }
-  }
-  if (data.mezclaTeoricaTexto && !DATA.catalogos.mezclasTeoricas.includes(data.mezclaTeoricaTexto)) {
-    DATA.catalogos.mezclasTeoricas.push(data.mezclaTeoricaTexto);
   }
   closeModal();
   await saveData();
@@ -1320,7 +1178,7 @@ function renderPedidoDetail() {
         </div>
         <div class="detail-tabs">
           <button class="detail-tab ${currentDetailTab==='info'?'active':''}" onclick="setDetailTab('info')">📋 Información</button>
-          <button class="detail-tab ${currentDetailTab==='acciones'?'active':''}" onclick="setDetailTab('acciones')">📧 OC / OP</button>
+          <button class="detail-tab ${currentDetailTab==='acciones'?'active':''}" onclick="setDetailTab('acciones')">📄 OP</button>
           <button class="detail-tab ${currentDetailTab==='bobinas'?'active':''}" onclick="setDetailTab('bobinas')">⚙️ Bobinas (${bobinasDelPedido.length})</button>
         </div>
         <div class="detail-body" id="detailBody"></div>
@@ -1409,34 +1267,46 @@ function renderDetailBody(p, bobinas) {
       ${p.observaciones ? `<div class="detail-section"><h3>Observaciones</h3><p style="white-space:pre-wrap">${p.observaciones}</p></div>` : ''}
     `;
   } else if (currentDetailTab === 'acciones') {
-    const emailCliente = (DATA.catalogos.emailsCliente || {})[p.cliente] || '';
     const emailsPlanta = (DATA.config.emailsPlanta || []).join(', ');
-    body.innerHTML = `
-      <div class="detail-section">
-        <h3>📧 Confirmación al cliente (OC)</h3>
-        <p style="font-size:13px;color:#6b7280;margin-bottom:12px">Abre tu cliente de mail con un borrador de confirmación de recepción de la OC.</p>
-        <div class="detail-grid">
-          <div class="detail-field"><span class="lbl">Cliente</span><span class="val">${p.cliente}</span></div>
-          <div class="detail-field">
-            <span class="lbl">Email destino</span>
-            <input type="email" id="detEmailCliente" value="${emailCliente}" placeholder="cliente@empresa.com" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px">
+    const tieneOP = !!(p.nroOP && p.recetaCodigo);
+    const rec = (DATA.catalogos.recetas || []).find(r => r.codigo === p.recetaCodigo);
+    if (!tieneOP) {
+      body.innerHTML = `
+        <div class="detail-section" style="text-align:center;padding:30px 20px">
+          <p style="font-size:15px;color:#6b7280;margin-bottom:8px">Este pedido todavía no tiene OP emitida.</p>
+          <p style="font-size:13px;color:#9ca3af;margin-bottom:24px">Cargá los datos técnicos (N° OP, receta, cronograma, etc.) para poder generar el PDF y enviar a planta.</p>
+          <button class="btn-action primary" style="padding:14px 28px;font-size:14px" onclick="openOPModal('${p.id}')">📝 Emitir OP</button>
+        </div>`;
+    } else {
+      const bobEst = (p.kgPorBobina > 0) ? Math.ceil(p.kgPedidos/p.kgPorBobina) : 0;
+      const dias = (p.kgPorHora > 0 && p.horasPorDia > 0) ? (p.kgPedidos/(p.kgPorHora*p.horasPorDia)).toFixed(2) : '-';
+      body.innerHTML = `
+        <div class="detail-section">
+          <h3>OP emitida — N° ${p.nroOP}</h3>
+          <div class="detail-grid">
+            <div class="detail-field"><span class="lbl">N° OP</span><span class="val big">${p.nroOP}</span></div>
+            <div class="detail-field"><span class="lbl">N° Solicitud</span><span class="val">${p.nroSolicitud||'-'}</span></div>
+            <div class="detail-field"><span class="lbl">Producto</span><span class="val">${p.producto||'-'}</span></div>
+            <div class="detail-field"><span class="lbl">Receta</span><span class="val"><code>${p.recetaCodigo||'-'}</code>${rec?` — ${rec.tipo}`:''}</span></div>
+            <div class="detail-field"><span class="lbl">Kg / hora</span><span class="val">${p.kgPorHora}</span></div>
+            <div class="detail-field"><span class="lbl">Días estimados</span><span class="val">${dias}</span></div>
+            <div class="detail-field"><span class="lbl">Inicio</span><span class="val">${fmtFecha(p.fechaInicioProd)||'-'}</span></div>
+            <div class="detail-field"><span class="lbl">Fin estimado</span><span class="val">${fmtFecha(p.fechaFinProd)||'-'}</span></div>
+          </div>
+          <div class="actions-row" style="margin-top:14px">
+            <button class="btn-action" onclick="openOPModal('${p.id}')">✏️ Editar OP</button>
           </div>
         </div>
-        <div class="actions-row">
-          <button class="btn-action primary" onclick="generarOCmailto('${p.id}')">📧 Abrir mail (mailto)</button>
-          <button class="btn-action" onclick="copiarTextoOC('${p.id}')">📋 Copiar texto al portapapeles</button>
-        </div>
-      </div>
-      <div class="detail-section">
-        <h3>📄 Orden de Producción (OP) — PDF</h3>
-        <p style="font-size:13px;color:#6b7280;margin-bottom:12px">Genera un PDF con los datos técnicos para enviar a planta.</p>
-        <div class="detail-field" style="margin-bottom:12px"><span class="lbl">Destinatarios planta (configurables en Configuración)</span><span class="val" style="font-size:13px">${emailsPlanta || '<span class="muted">Sin configurar</span>'}</span></div>
-        <div class="actions-row">
-          <button class="btn-action primary" onclick="generarOPpdf('${p.id}')">📄 Descargar PDF</button>
-          <button class="btn-action" onclick="generarOPmailto('${p.id}')">📧 Abrir mail (adjuntás el PDF aparte)</button>
-        </div>
-      </div>
-    `;
+        <div class="detail-section">
+          <h3>📄 Generar PDF y enviar a planta</h3>
+          <p style="font-size:13px;color:#6b7280;margin-bottom:8px">El PDF contiene todos los datos técnicos formateados como tu OP actual de Excel.</p>
+          <div class="detail-field" style="margin-bottom:12px"><span class="lbl">Destinatarios planta</span><span class="val" style="font-size:13px">${emailsPlanta || '<span class="muted">Sin configurar — Configuración</span>'}</span></div>
+          <div class="actions-row">
+            <button class="btn-action primary" onclick="generarOPpdf('${p.id}')">📄 Descargar PDF</button>
+            <button class="btn-action" onclick="generarOPmailto('${p.id}')">📧 Abrir mail a planta</button>
+          </div>
+        </div>`;
+    }
   } else if (currentDetailTab === 'bobinas') {
     if (bobinas.length === 0) {
       body.innerHTML = `<p class="muted" style="padding:30px;text-align:center">Todavía no se cargaron bobinas para este pedido.<br>Los operarios las cargan desde la app tablet (próxima v3).</p>`;
@@ -1474,49 +1344,228 @@ async function advanceWorkflow(id, nuevoEstado) {
 }
 
 // ============================================================
-// GENERACIÓN OC (mailto) y OP (PDF)
+// MODAL OP - DATOS TÉCNICOS (se emite sobre un pedido existente)
 // ============================================================
-function buildOCBody(p) {
-  return `Estimados de ${p.cliente},
-
-Confirmamos recepción de su orden de compra ${p.oc || ''} con las siguientes especificaciones de producción:
-
-• Producto:       Lámina PET ${p.color || ''}
-• Dimensiones:    ${p.ancho||'-'} mm de ancho × ${p.espesor||'-'} micrones de espesor
-• Silicona:       ${p.silicona || '-'}
-• Cantidad:       ${fmtNum(p.kgPedidos)} kg
-• Fecha estimada de entrega: ${fmtFecha(p.fechaDespacho) || 'a confirmar'}
-
-Quedamos atentos a cualquier consulta.
-
-Saludos cordiales,
-Winflex S.A.`;
-}
-
-function generarOCmailto(id) {
-  const p = DATA.pedidos.find(x => x.id === id);
+function openOPModal(pedidoId) {
+  const p = DATA.pedidos.find(x => x.id === pedidoId);
   if (!p) return;
-  const emailInput = document.getElementById('detEmailCliente');
-  const to = emailInput ? emailInput.value.trim() : '';
-  // Guardar el email en el catálogo
-  if (to) {
-    DATA.catalogos.emailsCliente = DATA.catalogos.emailsCliente || {};
-    DATA.catalogos.emailsCliente[p.cliente] = to;
-    saveData();
+
+  // Si es la primera vez (no tiene N° OP), asignar próximos correlativos
+  if (!p.nroOP) {
+    const today = new Date();
+    const mmaa = String(today.getMonth()+1).padStart(2,'0') + String(today.getFullYear()).slice(-2);
+    p._nuevoNroOP = String(DATA.config.proximoNroOP || 111);
+    p._nuevoNroSolicitud = String(DATA.config.proximoNroSolicitud || 1).padStart(2,'0') + '-' + mmaa;
   }
-  const subject = `Confirmación pedido ${p.oc || p.op || ''} - ${p.cliente}`;
-  const body = buildOCBody(p);
-  const href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  window.location.href = href;
+
+  const mezclas = DATA.catalogos.mezclasTeoricas || [];
+  const recetas = DATA.catalogos.recetas || [];
+  const productos = DATA.catalogos.productos || [];
+  const destinos = DATA.catalogos.destinos || [];
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal detail-modal">
+        <div class="modal-h">
+          <h3>${p.nroOP ? 'Editar OP' : 'Emitir OP'} — Pedido ${p.cliente} · ${p.ancho||'-'}×${p.espesor||'-'}</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:12px;color:#6b7280;margin-bottom:14px;padding:8px 12px;background:#eff6ff;border-radius:6px;border-left:3px solid #2563eb">
+            📝 Cargá los datos técnicos para emitir la OP. Cuando guardes, el pedido pasa a estado "Confirmada" si todavía estaba en "Borrador".
+          </p>
+
+          <div class="detail-section">
+            <h3>Identificadores</h3>
+            <div class="form-grid">
+              <div class="field"><label>N° OP</label><input type="text" id="op_nroOP" value="${p.nroOP || p._nuevoNroOP || ''}" placeholder="111"></div>
+              <div class="field"><label>N° Solicitud</label><input type="text" id="op_nroSolicitud" value="${p.nroSolicitud || p._nuevoNroSolicitud || ''}" placeholder="15-0526"></div>
+              <div class="field full"><label>OP (código partida — opcional)</label><input type="text" id="op_op" value="${p.op||p.partida||''}" placeholder="1126PC-1VX"></div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h3>Producto</h3>
+            <div class="form-grid">
+              <div class="field"><label>Producto</label>
+                <select id="op_producto">${productos.map(pr => `<option value="${pr.nombre}" ${pr.nombre===p.producto?'selected':''}>${pr.nombre}</option>`).join('')}</select>
+              </div>
+              <div class="field"><label>Código producto (auto)</label><input type="text" id="op_codigoProducto" value="${p.codigoProducto||(p.ancho&&p.espesor?p.ancho+''+p.espesor:'')}" readonly style="background:#f9fafb"></div>
+              <div class="field"><label>Destino</label>
+                <select id="op_destinoCodigo">${destinos.map(d => `<option value="${d.codigo}" ${d.codigo===(p.destinoCodigo||'T')?'selected':''}>${d.codigo} — ${d.nombre}</option>`).join('')}</select>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h3>Bobinas</h3>
+            <div class="form-grid">
+              <div class="field"><label>Kg / Bobina</label><input type="number" id="op_kgBobina" value="${p.kgPorBobina||80}" min="0" oninput="updateOpCalc()"></div>
+              <div class="field"><label>Bobinas estimadas</label><input type="text" id="op_bobinasEst" readonly style="background:#f9fafb"></div>
+              <div class="field"><label>Metros por bobina</label><input type="number" id="op_metrosBobina" value="${p.metrosBobina||0}" min="0"></div>
+              <div class="field"><label>Diámetro (mm)</label><input type="number" id="op_diametro" value="${p.diametroBobina||0}" min="0"></div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h3>Cronograma</h3>
+            <div class="form-grid">
+              <div class="field"><label>Kg / Hora</label><input type="number" id="op_kgPorHora" value="${p.kgPorHora||DATA.config.kgPorHoraDefault||300}" oninput="updateOpCalc()"></div>
+              <div class="field"><label>Horas / día</label><input type="number" id="op_horasPorDia" value="${p.horasPorDia||DATA.config.horasPorDiaDefault||11}" oninput="updateOpCalc()"></div>
+              <div class="field"><label>Scrap teórico (0-1)</label><input type="number" step="0.01" id="op_scrapTeorico" value="${p.scrapTeorico||DATA.config.scrapTeoricoDefault||0.2}" min="0" max="1" oninput="updateOpCalc(); aplicarRecetaOp()"></div>
+              <div class="field"><label>Días estimados</label><input type="text" id="op_diasEst" readonly style="background:#f9fafb"></div>
+              <div class="field"><label>Fecha inicio</label><input type="date" id="op_fechaInicio" value="${p.fechaInicioProd||''}"></div>
+              <div class="field"><label>Fecha fin estimada</label><input type="date" id="op_fechaFin" value="${p.fechaFinProd||''}"></div>
+            </div>
+          </div>
+
+          <div class="detail-section">
+            <h3>Receta (mezcla teórica)</h3>
+            <div class="form-grid">
+              <div class="field full"><label>Receta codificada *</label>
+                <select id="op_recetaCodigo" onchange="aplicarRecetaOp()">
+                  <option value="">— Seleccionar receta —</option>
+                  ${recetas.map(r => {
+                    const comp = Object.entries(r.componentes).map(([k,v]) => `${(v*100).toFixed(0)}% ${k}`).join(' + ');
+                    return `<option value="${r.codigo}" ${r.codigo===p.recetaCodigo?'selected':''}>${r.codigo} (${r.tipo}) — ${comp}</option>`;
+                  }).join('')}
+                </select>
+              </div>
+              <div class="field full"><label>Mezcla teórica (texto que va en el PDF)</label>
+                <input list="dl_mezclas_op" id="op_mezclaTexto" value="${p.mezclaTeoricaTexto||''}" placeholder="Ej: 50% Pref. Cristal / 50% Scrap">
+                <datalist id="dl_mezclas_op">${mezclas.map(m => `<option value="${m}">`).join('')}</datalist>
+              </div>
+            </div>
+            <div id="recetaPreviewOp" style="margin-top:10px"></div>
+          </div>
+
+          <div class="detail-section">
+            <h3>Confección</h3>
+            <div class="field full"><label>Indicaciones de confección</label><input type="text" id="op_confeccion" value="${p.confeccion||''}" placeholder="Ej: corte automático, sin bordes"></div>
+          </div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="saveOP('${pedidoId}')">${p.nroOP ? 'Guardar cambios' : 'Emitir OP'}</button>
+        </div>
+      </div>
+    </div>`;
+
+  updateOpCalc();
+  aplicarRecetaOp(false);
 }
 
-function copiarTextoOC(id) {
-  const p = DATA.pedidos.find(x => x.id === id);
+function updateOpCalc() {
+  const p = DATA.pedidos.find(x => x.id === currentDetailPedidoId);
   if (!p) return;
-  const text = buildOCBody(p);
-  navigator.clipboard.writeText(text).then(() => toast('Texto OC copiado', 'success'));
+  const kgBob = +document.getElementById('op_kgBobina').value || 0;
+  const kgH = +document.getElementById('op_kgPorHora').value || 0;
+  const hD = +document.getElementById('op_horasPorDia').value || 0;
+  const bob = kgBob > 0 ? Math.ceil(p.kgPedidos/kgBob) : 0;
+  document.getElementById('op_bobinasEst').value = bob ? bob + ' bobinas' : '';
+  const dias = (kgH > 0 && hD > 0) ? (p.kgPedidos / (kgH * hD)) : 0;
+  document.getElementById('op_diasEst').value = dias ? dias.toFixed(2) + ' días' : '';
 }
 
+function aplicarRecetaOp(autoApplyMezcla = true) {
+  const p = DATA.pedidos.find(x => x.id === currentDetailPedidoId);
+  if (!p) return;
+  const code = document.getElementById('op_recetaCodigo').value;
+  const r = (DATA.catalogos.recetas || []).find(x => x.codigo === code);
+  const prev = document.getElementById('recetaPreviewOp');
+  if (!r) { prev.innerHTML = ''; return; }
+  const scrap = +document.getElementById('op_scrapTeorico').value || 0;
+  const kgMP = p.kgPedidos * (1 + scrap);
+  let html = `<div style="background:#f0f9ff;padding:12px;border-radius:6px;border:1px solid #bae6fd"><b>${r.codigo}</b> — ${r.tipo}<br>`;
+  html += `<table style="margin-top:8px;width:100%;font-size:13px"><thead><tr><th>Componente</th><th class="num">%</th><th class="num">Kg (con ${(scrap*100).toFixed(0)}% scrap)</th></tr></thead><tbody>`;
+  let txt = [];
+  Object.entries(r.componentes).forEach(([mp, pct]) => {
+    const kg = kgMP * pct;
+    html += `<tr><td>${mp}</td><td class="num">${(pct*100).toFixed(1)}%</td><td class="num"><b>${fmtNum(kg)}</b> kg</td></tr>`;
+    txt.push(`${(pct*100).toFixed(0)}% ${mp}`);
+  });
+  html += `</tbody></table></div>`;
+  prev.innerHTML = html;
+  if (autoApplyMezcla && txt.length > 0) {
+    document.getElementById('op_mezclaTexto').value = txt.join(' / ');
+  }
+}
+
+async function saveOP(pedidoId) {
+  const p = DATA.pedidos.find(x => x.id === pedidoId);
+  if (!p) return;
+  const nroOP = document.getElementById('op_nroOP').value.trim();
+  const recetaCodigo = document.getElementById('op_recetaCodigo').value;
+  if (!nroOP || !recetaCodigo) { alert('N° OP y Receta son obligatorios'); return; }
+
+  const eraNuevoOP = !p.nroOP;
+  // Asignar campos técnicos
+  p.nroOP = nroOP;
+  p.nroSolicitud = document.getElementById('op_nroSolicitud').value.trim();
+  p.op = document.getElementById('op_op').value.trim();
+  p.producto = document.getElementById('op_producto').value;
+  p.codigoProducto = document.getElementById('op_codigoProducto').value;
+  p.destinoCodigo = document.getElementById('op_destinoCodigo').value;
+  p.kgPorBobina = +document.getElementById('op_kgBobina').value || 0;
+  p.metrosBobina = +document.getElementById('op_metrosBobina').value || 0;
+  p.diametroBobina = +document.getElementById('op_diametro').value || 0;
+  p.kgPorHora = +document.getElementById('op_kgPorHora').value || 300;
+  p.horasPorDia = +document.getElementById('op_horasPorDia').value || 11;
+  p.scrapTeorico = +document.getElementById('op_scrapTeorico').value || 0.20;
+  p.fechaInicioProd = document.getElementById('op_fechaInicio').value;
+  p.fechaFinProd = document.getElementById('op_fechaFin').value;
+  p.recetaCodigo = recetaCodigo;
+  p.mezclaTeoricaTexto = document.getElementById('op_mezclaTexto').value.trim();
+  p.confeccion = document.getElementById('op_confeccion').value;
+
+  // Derive formula from receta
+  const rec = (DATA.catalogos.recetas || []).find(r => r.codigo === recetaCodigo);
+  if (rec) {
+    const c = rec.componentes;
+    p.formula = {
+      preforma: (c['Pref. Cristal'] || 0) + (c['Pref. Azul'] || 0),
+      scrap: (c['Scrap'] || 0) + (c['Scrap Sil'] || 0) + (c['Scrap Blanco'] || 0) + (c['Scrap Color'] || 0),
+      virgen: (c['Clase 1'] || 0) + (c['Clase 2'] || 0),
+      master: (c['Recorte'] || 0)
+    };
+  }
+
+  // Auto-incrementar correlativos si era una OP nueva
+  if (eraNuevoOP) {
+    const nroOPnum = parseInt(nroOP);
+    if (nroOPnum && nroOPnum >= (DATA.config.proximoNroOP || 0)) {
+      DATA.config.proximoNroOP = nroOPnum + 1;
+    }
+    const solMatch = p.nroSolicitud.match(/^(\d+)-(\d{4})$/);
+    if (solMatch) {
+      const num = parseInt(solMatch[1]);
+      if (num >= (DATA.config.proximoNroSolicitud || 0)) {
+        DATA.config.proximoNroSolicitud = num + 1;
+      }
+    }
+    // Si estaba en Borrador, pasa a Confirmada
+    if (p.estadoWorkflow === 'Borrador') p.estadoWorkflow = 'Confirmada';
+  }
+
+  // Catalogar mezcla si es nueva
+  if (p.mezclaTeoricaTexto && !DATA.catalogos.mezclasTeoricas.includes(p.mezclaTeoricaTexto)) {
+    DATA.catalogos.mezclasTeoricas.push(p.mezclaTeoricaTexto);
+  }
+
+  delete p._nuevoNroOP;
+  delete p._nuevoNroSolicitud;
+
+  closeModal();
+  await saveData();
+  // Reabrir vista detalle del pedido
+  currentDetailTab = 'acciones';
+  renderPedidoDetail();
+  toast(eraNuevoOP ? 'OP emitida' : 'OP actualizada', 'success');
+}
+
+// ============================================================
+// GENERACIÓN DE OP (mailto a planta + PDF)
+// ============================================================
 function generarOPpdf(id) {
   const p = DATA.pedidos.find(x => x.id === id);
   if (!p) return;
@@ -1756,8 +1805,6 @@ Saludos.`;
 function renderConfig() {
   const c = DATA.config;
   const emailsPlanta = c.emailsPlanta || [];
-  const emailsCliente = DATA.catalogos.emailsCliente || {};
-  const clientes = DATA.catalogos.clientes;
 
   document.getElementById('configContent').innerHTML = `
     <div class="detail-section">
@@ -1778,34 +1825,35 @@ function renderConfig() {
     </div>
 
     <div class="detail-section">
-      <h3>📧 Emails por cliente (para enviar confirmación de OC)</h3>
-      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Estos mails se autocargan al abrir la acción "Generar OC" en el detalle de un pedido.</p>
-      <table>
-        <thead><tr><th>Cliente</th><th>Email</th><th></th></tr></thead>
-        <tbody>
-          ${clientes.map(cli => `<tr>
-            <td><b>${cli}</b></td>
-            <td><input type="email" id="ec_${btoa(cli).replace(/[^A-Za-z0-9]/g,'')}" value="${emailsCliente[cli] || ''}" placeholder="contacto@${cli.toLowerCase().replace(/\s+/g,'')}.com" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px"></td>
-            <td><button class="btn-ghost" onclick="saveEmailCliente('${cli}')">💾</button></td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="detail-section">
-      <h3>⚙️ Otros parámetros</h3>
+      <h3>⚙️ Parámetros de producción</h3>
       <div class="detail-grid">
         <div class="detail-field">
-          <span class="lbl">Capacidad nominal (kg/hora)</span>
+          <span class="lbl">Kg / hora default</span>
+          <input type="number" id="cf_kgh" value="${c.kgPorHoraDefault || 300}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
+        </div>
+        <div class="detail-field">
+          <span class="lbl">Horas / día default</span>
+          <input type="number" id="cf_horas" value="${c.horasPorDiaDefault || 11}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
+        </div>
+        <div class="detail-field">
+          <span class="lbl">Scrap teórico default (0-1)</span>
+          <input type="number" step="0.01" id="cf_scrap" value="${c.scrapTeoricoDefault || 0.20}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
+        </div>
+        <div class="detail-field">
+          <span class="lbl">Capacidad nominal (kg/h)</span>
           <input type="number" id="cf_capacidad" value="${c.capacidadKgxHora || 300}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
         </div>
         <div class="detail-field">
-          <span class="lbl">PIN admin</span>
+          <span class="lbl">PIN admin (app PC)</span>
           <input type="text" id="cf_pinAdmin" value="${c.pinAdmin || '3080'}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
         </div>
         <div class="detail-field">
-          <span class="lbl">PIN operarios (tablet)</span>
-          <input type="text" id="cf_pinOp" value="${c.pinOperarios || '8376'}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
+          <span class="lbl">Próximo N° OP</span>
+          <input type="number" id="cf_proxOP" value="${c.proximoNroOP || 111}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
+        </div>
+        <div class="detail-field">
+          <span class="lbl">Próximo N° Solicitud (mes)</span>
+          <input type="number" id="cf_proxSol" value="${c.proximoNroSolicitud || 1}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
         </div>
       </div>
       <button class="btn btn-pri" style="margin-top:12px" onclick="saveConfigParams()">💾 Guardar parámetros</button>
@@ -1841,22 +1889,20 @@ async function saveEmailsPlanta() {
   toast('Lista guardada', 'success');
 }
 
-async function saveEmailCliente(cliente) {
-  const sanitized = btoa(cliente).replace(/[^A-Za-z0-9]/g,'');
-  const val = document.getElementById('ec_' + sanitized).value.trim();
-  DATA.catalogos.emailsCliente = DATA.catalogos.emailsCliente || {};
-  DATA.catalogos.emailsCliente[cliente] = val;
-  await saveData();
-  toast(`Email de ${cliente} guardado`, 'success');
-}
-
 async function saveConfigParams() {
+  DATA.config.kgPorHoraDefault = +document.getElementById('cf_kgh').value || 300;
+  DATA.config.horasPorDiaDefault = +document.getElementById('cf_horas').value || 11;
+  DATA.config.scrapTeoricoDefault = +document.getElementById('cf_scrap').value || 0.20;
   DATA.config.capacidadKgxHora = +document.getElementById('cf_capacidad').value || 300;
   DATA.config.pinAdmin = document.getElementById('cf_pinAdmin').value || '3080';
-  DATA.config.pinOperarios = document.getElementById('cf_pinOp').value || '8376';
+  DATA.config.proximoNroOP = +document.getElementById('cf_proxOP').value || 111;
+  DATA.config.proximoNroSolicitud = +document.getElementById('cf_proxSol').value || 1;
   await saveData();
   toast('Parámetros guardados', 'success');
 }
+
+// Función legacy - emailsCliente ya no se usa pero la dejo por si hay datos viejos
+async function saveEmailCliente(cliente) { /* deprecated */ }
 
 // --- EXPORT CSV ---
 function exportPedidosCSV() {

@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Winflex PET — Tablet operarios</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --success: #059669;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --bg: #f3f4f6;
+  --surface: #ffffff;
+  --border: #e5e7eb;
+  --text: #0f172a;
+  --text-muted: #6b7280;
+}
+html, body { height: 100%; overflow-x: hidden; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 16px; touch-action: manipulation; }
+
+.screen { min-height: 100vh; padding: 16px; max-width: 900px; margin: 0 auto; }
+.hidden { display: none !important; }
+
+/* Header tablet */
+header {
+  background: var(--surface);
+  padding: 14px 18px;
+  margin: -16px -16px 16px -16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 50;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+header .titulo { font-size: 18px; font-weight: 700; }
+header .info { font-size: 13px; color: var(--text-muted); }
+header .right { display: flex; align-items: center; gap: 10px; }
+
+.sync { font-size: 11px; padding: 4px 10px; border-radius: 12px; background: #d1fae5; color: #065f46; }
+.sync.err { background: #fee2e2; color: #991b1b; }
+.sync.warn { background: #fef3c7; color: #92400e; }
+
+/* LOGIN */
+#screenLogin {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+  min-height: 100vh;
+  padding: 20px;
+}
+.login-box {
+  background: white;
+  padding: 28px 24px;
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  width: 100%; max-width: 360px;
+  text-align: center;
+}
+.login-box h1 { font-size: 22px; margin-bottom: 4px; color: var(--text); }
+.login-box .sub { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; }
+.pin-display {
+  font-size: 36px; font-weight: 700; color: var(--primary);
+  letter-spacing: 14px; min-height: 50px;
+  border-bottom: 3px solid var(--border);
+  margin-bottom: 18px; padding-bottom: 8px;
+}
+.keypad {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+}
+.key {
+  background: #f9fafb; border: 1px solid var(--border);
+  font-size: 22px; font-weight: 600; color: var(--text);
+  padding: 18px 0; border-radius: 12px;
+  cursor: pointer; transition: all 0.05s;
+}
+.key:active { background: var(--primary); color: white; transform: scale(0.97); }
+.key.del { background: #fef2f2; color: var(--danger); }
+.key.ok { background: var(--success); color: white; grid-column: 3; }
+.login-err { color: var(--danger); font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+/* App screens */
+.card {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+h2.section-title { font-size: 18px; margin-bottom: 14px; color: var(--text); }
+h3.card-title { font-size: 17px; margin-bottom: 8px; }
+
+/* Big buttons */
+.btn-big {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%;
+  padding: 18px;
+  font-size: 18px;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.05s;
+}
+.btn-big:active { transform: scale(0.98); }
+.btn-pri { background: var(--primary); color: white; }
+.btn-pri:hover { background: var(--primary-dark); }
+.btn-success { background: var(--success); color: white; }
+.btn-warning { background: var(--warning); color: white; }
+.btn-danger { background: var(--danger); color: white; }
+.btn-sec { background: #f3f4f6; color: var(--text); border: 1px solid var(--border); }
+
+.btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* Turno selection */
+.turno-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; }
+.turno-btn {
+  padding: 30px 20px; font-size: 20px; font-weight: 700;
+  border-radius: 16px; border: 2px solid var(--border);
+  background: white; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.turno-btn .icon { font-size: 40px; }
+.turno-btn.dia { color: #d97706; border-color: #fed7aa; }
+.turno-btn.dia:active { background: #fff7ed; }
+.turno-btn.noche { color: #4f46e5; border-color: #c7d2fe; }
+.turno-btn.noche:active { background: #eef2ff; }
+
+/* OP list */
+.op-card {
+  background: white;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.op-card:active { background: #eff6ff; border-color: var(--primary); }
+.op-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px; }
+.op-nro { font-size: 22px; font-weight: 700; color: var(--primary); }
+.op-cliente { font-size: 16px; font-weight: 600; }
+.op-specs { font-size: 14px; color: var(--text-muted); margin-bottom: 8px; }
+.op-progress {
+  height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin: 8px 0;
+}
+.op-progress-bar { height: 100%; background: var(--success); transition: width 0.3s; }
+.op-stats { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); }
+.op-stats b { color: var(--text); }
+
+.badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-confirmada { background: #dbeafe; color: #1e40af; }
+.badge-enproduccion { background: #fef3c7; color: #92400e; }
+
+/* OP detail (carga de bobinas) */
+.op-detail-header {
+  background: linear-gradient(135deg, #2563eb 0%, #1e3a8a 100%);
+  color: white;
+  padding: 18px;
+  border-radius: 14px;
+  margin-bottom: 14px;
+}
+.op-detail-header h2 { font-size: 22px; margin-bottom: 4px; }
+.op-detail-header .sub { font-size: 14px; opacity: 0.9; }
+.op-detail-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.op-stat { background: rgba(255,255,255,0.15); padding: 10px; border-radius: 8px; text-align: center; }
+.op-stat .val { font-size: 22px; font-weight: 700; }
+.op-stat .lbl { font-size: 11px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Bobinas list */
+.bobina-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 14px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+.bobina-info { flex: 1; }
+.bobina-nro { font-size: 17px; font-weight: 700; color: var(--primary); }
+.bobina-detail { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.bobina-actions { display: flex; gap: 4px; }
+.bobina-btn { background: transparent; border: none; font-size: 18px; padding: 8px 10px; cursor: pointer; border-radius: 6px; }
+.bobina-btn:active { background: #f3f4f6; }
+
+/* Modal for bobina */
+.modal-bg {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,0.7);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 100;
+  padding: 0;
+}
+.modal {
+  background: white;
+  border-radius: 18px 18px 0 0;
+  width: 100%;
+  max-width: 700px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 20px;
+  animation: slideUp 0.25s;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.modal h3 { font-size: 20px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
+.modal h3 .close { background: #f3f4f6; border: none; font-size: 18px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.field input, .field select, .field textarea {
+  width: 100%;
+  padding: 14px 12px;
+  font-size: 17px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: inherit;
+  background: white;
+}
+.field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--primary); }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.field .hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--text); color: white; padding: 12px 24px;
+  border-radius: 30px; font-size: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  z-index: 200; animation: fadeInUp 0.25s;
+}
+.toast.success { background: var(--success); }
+.toast.error { background: var(--danger); }
+@keyframes fadeInUp { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+.empty { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+.empty .icon { font-size: 50px; margin-bottom: 10px; opacity: 0.5; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="screenLogin" class="screen">
+  <div class="login-box">
+    <h1>🏭 Winflex PET</h1>
+    <p class="sub">Tablet de operarios · Chivilcoy</p>
+    <div class="pin-display" id="pinDisplay"></div>
+    <div class="keypad">
+      <button class="key" onclick="kp(1)">1</button>
+      <button class="key" onclick="kp(2)">2</button>
+      <button class="key" onclick="kp(3)">3</button>
+      <button class="key" onclick="kp(4)">4</button>
+      <button class="key" onclick="kp(5)">5</button>
+      <button class="key" onclick="kp(6)">6</button>
+      <button class="key" onclick="kp(7)">7</button>
+      <button class="key" onclick="kp(8)">8</button>
+      <button class="key" onclick="kp(9)">9</button>
+      <button class="key del" onclick="kpDel()">⌫</button>
+      <button class="key" onclick="kp(0)">0</button>
+      <button class="key ok" onclick="tryLogin()">✓</button>
+    </div>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- TURNO -->
+<div id="screenTurno" class="screen hidden">
+  <header>
+    <div>
+      <div class="titulo" id="turnoOpName">—</div>
+      <div class="info">Bienvenido a la planta</div>
+    </div>
+    <div class="right">
+      <span id="syncStatus" class="sync">Listo</span>
+      <button class="btn-sec" style="padding:8px 14px;font-size:13px;border-radius:8px" onclick="logout()">Salir</button>
+    </div>
+  </header>
+  <h2 class="section-title">¿En qué turno trabajás?</h2>
+  <div class="turno-grid">
+    <button class="turno-btn dia" onclick="selectTurno('dia')">
+      <span class="icon">☀️</span>
+      <span>DÍA</span>
+    </button>
+    <button class="turno-btn noche" onclick="selectTurno('noche')">
+      <span class="icon">🌙</span>
+      <span>NOCHE</span>
+    </button>
+  </div>
+</div>
+
+<!-- LISTA OPS -->
+<div id="screenOps" class="screen hidden">
+  <header>
+    <div>
+      <div class="titulo" id="opsOpName">—</div>
+      <div class="info"><span id="opsTurno">—</span> · <span id="opsHora">—</span></div>
+    </div>
+    <div class="right">
+      <span id="syncStatusOps" class="sync">Listo</span>
+      <button class="btn-sec" style="padding:8px 14px;font-size:13px;border-radius:8px" onclick="reloadData()">↻</button>
+    </div>
+  </header>
+  <h2 class="section-title">OPs activas para producir</h2>
+  <div id="opsList"></div>
+  <button class="btn-big btn-sec" style="margin-top:16px" onclick="cerrarTurno()">Cerrar turno</button>
+</div>
+
+<!-- OP DETAIL (Carga de bobinas) -->
+<div id="screenOpDetail" class="screen hidden">
+  <header>
+    <div>
+      <button class="btn-sec" style="padding:6px 12px;font-size:13px;border-radius:8px" onclick="volverAOps()">← OPs</button>
+    </div>
+    <div class="right">
+      <span id="syncStatusDetail" class="sync">Listo</span>
+    </div>
+  </header>
+  <div id="opDetailHeader"></div>
+  <button class="btn-big btn-pri" onclick="openBobinaModal()">➕ CARGAR NUEVA BOBINA</button>
+  <h3 class="card-title" style="margin-top:20px;margin-bottom:10px">Bobinas cargadas (mías, este turno)</h3>
+  <div id="bobinasList"></div>
+</div>
+
+<!-- Modal bobina -->
+<div id="modalContainer"></div>
+
+<script>
+// ============================================================
+// CONFIG (debe coincidir con la app PC)
+// ============================================================
+const CONFIG = {
+  JSONBIN_BIN_ID: 'PEGAR_BIN_ID_AQUI',
+  MASTER_KEY: 'PEGAR_MASTER_KEY_AQUI'
+};
+const LS_KEY = 'winflex_pet_tablet_v1';
+
+// ============================================================
+// STATE
+// ============================================================
+let DATA = null;
+let SESSION = {
+  operario: null,
+  turno: null,
+  inicio: null,
+  opSeleccionada: null  // id del pedido
+};
+let pinBuffer = '';
+
+// ============================================================
+// LOGIN
+// ============================================================
+function kp(n) {
+  if (pinBuffer.length >= 6) return;
+  pinBuffer += String(n);
+  refreshPin();
+}
+function kpDel() {
+  pinBuffer = pinBuffer.slice(0, -1);
+  refreshPin();
+}
+function refreshPin() {
+  document.getElementById('pinDisplay').textContent = '•'.repeat(pinBuffer.length);
+  document.getElementById('loginErr').textContent = '';
+}
+async function tryLogin() {
+  if (!pinBuffer) return;
+  if (!DATA) { await loadData(); }
+  const ops = DATA.catalogos.operarios || [];
+  const op = ops.find(o => o.pin === pinBuffer);
+  if (op) {
+    SESSION.operario = op;
+    pinBuffer = '';
+    refreshPin();
+    showScreen('Turno');
+    document.getElementById('turnoOpName').textContent = op.nombre;
+  } else {
+    document.getElementById('loginErr').textContent = 'PIN incorrecto';
+    pinBuffer = '';
+    refreshPin();
+  }
+}
+function logout() {
+  SESSION = { operario: null, turno: null, inicio: null, opSeleccionada: null };
+  showScreen('Login');
+}
+
+// ============================================================
+// SCREENS
+// ============================================================
+function showScreen(name) {
+  ['Login','Turno','Ops','OpDetail'].forEach(s => {
+    document.getElementById('screen'+s).classList.add('hidden');
+  });
+  document.getElementById('screen'+name).classList.remove('hidden');
+}
+
+function selectTurno(t) {
+  SESSION.turno = t;
+  SESSION.inicio = new Date().toISOString();
+  showScreen('Ops');
+  document.getElementById('opsOpName').textContent = SESSION.operario.nombre;
+  document.getElementById('opsTurno').textContent = 'Turno ' + (t==='dia'?'DÍA ☀️':'NOCHE 🌙');
+  document.getElementById('opsHora').textContent = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  renderOps();
+}
+
+function cerrarTurno() {
+  if (!confirm('¿Cerrar el turno? Vas a volver a la pantalla de login.')) return;
+  logout();
+}
+
+// ============================================================
+// RENDER LISTA DE OPS
+// ============================================================
+function renderOps() {
+  const lista = document.getElementById('opsList');
+  // OPs en estado Confirmada o En producción, con nroOP cargado
+  const ops = (DATA.pedidos || []).filter(p =>
+    (p.estadoWorkflow === 'Confirmada' || p.estadoWorkflow === 'En producción') &&
+    p.nroOP && p.recetaCodigo
+  );
+  // Ordenar: primero "En producción", luego "Confirmada", dentro de cada por fecha
+  ops.sort((a, b) => {
+    const order = { 'En producción': 0, 'Confirmada': 1 };
+    if (order[a.estadoWorkflow] !== order[b.estadoWorkflow]) return order[a.estadoWorkflow] - order[b.estadoWorkflow];
+    return (a.fechaDespacho || '') < (b.fechaDespacho || '') ? -1 : 1;
+  });
+
+  if (ops.length === 0) {
+    lista.innerHTML = '<div class="empty"><div class="icon">📭</div><p>No hay OPs activas para producir.</p><p style="font-size:13px;margin-top:8px">Las OPs aparecen acá cuando están en estado "Confirmada" o "En producción".</p></div>';
+    return;
+  }
+
+  lista.innerHTML = ops.map(p => {
+    const kgPed = +p.kgPedidos || 0;
+    const kgReal = +p.kgReales || 0;
+    const pct = kgPed > 0 ? Math.min(100, Math.round(kgReal/kgPed*100)) : 0;
+    const bobEst = (p.kgPorBobina > 0) ? Math.ceil(kgPed/p.kgPorBobina) : 0;
+    const wfClass = 'badge-' + p.estadoWorkflow.replace(/\s+/g,'').toLowerCase();
+    return `<div class="op-card" onclick="selectOp('${p.id}')">
+      <div class="op-header">
+        <div>
+          <div class="op-nro">OP ${p.nroOP}</div>
+          <div class="op-cliente">${p.cliente}</div>
+        </div>
+        <span class="badge ${wfClass}">${p.estadoWorkflow}</span>
+      </div>
+      <div class="op-specs">${p.ancho||'-'}mm × ${p.espesor||'-'}μm · ${p.color||'-'} · Silicona ${p.silicona||'-'}</div>
+      <div class="op-progress"><div class="op-progress-bar" style="width:${pct}%"></div></div>
+      <div class="op-stats">
+        <span><b>${fmt(kgReal)}</b> / ${fmt(kgPed)} kg (${pct}%)</span>
+        <span>${bobEst} bobinas est.</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectOp(id) {
+  SESSION.opSeleccionada = id;
+  showScreen('OpDetail');
+  renderOpDetail();
+  // Si está en Confirmada y arrancamos a producir, pasarla a "En producción"
+  const p = DATA.pedidos.find(x => x.id === id);
+  if (p && p.estadoWorkflow === 'Confirmada') {
+    p.estadoWorkflow = 'En producción';
+    saveData();
+  }
+}
+
+function volverAOps() {
+  SESSION.opSeleccionada = null;
+  showScreen('Ops');
+  renderOps();
+}
+
+// ============================================================
+// OP DETAIL
+// ============================================================
+function renderOpDetail() {
+  const p = DATA.pedidos.find(x => x.id === SESSION.opSeleccionada);
+  if (!p) { volverAOps(); return; }
+  const kgPed = +p.kgPedidos || 0;
+  const kgReal = +p.kgReales || 0;
+  const pct = kgPed > 0 ? Math.round(kgReal/kgPed*100) : 0;
+  const rec = (DATA.catalogos.recetas || []).find(r => r.codigo === p.recetaCodigo);
+
+  // Bobinas cargadas POR ESTE OPERARIO EN ESTE TURNO para este pedido
+  const misBobinas = (DATA.producciones || []).filter(b =>
+    b.pedidoId === p.id &&
+    b.operario === SESSION.operario.nombre &&
+    b.turno === SESSION.turno &&
+    b.fecha === new Date().toISOString().slice(0,10)
+  );
+
+  // Todas las bobinas de este pedido (para conocer numeración global)
+  const todasBobinas = (DATA.producciones || []).filter(b => b.pedidoId === p.id);
+  const lastNroBob = todasBobinas.reduce((max, b) => Math.max(max, +b.nroBobina || 0), 0);
+  const lastPallet = todasBobinas.reduce((max, b) => Math.max(max, +b.nroPallet || 0), 0);
+
+  document.getElementById('opDetailHeader').innerHTML = `
+    <div class="op-detail-header">
+      <h2>OP ${p.nroOP} · ${p.cliente}</h2>
+      <div class="sub">${p.ancho||'-'}mm × ${p.espesor||'-'}μm · ${p.color||'-'} · Silicona ${p.silicona||'-'}</div>
+      ${rec ? `<div class="sub" style="margin-top:6px">Receta <b>${rec.codigo}</b> — ${Object.entries(rec.componentes).map(([k,v]) => `${(v*100).toFixed(0)}% ${k}`).join(' / ')}</div>` : ''}
+      <div class="op-detail-stats">
+        <div class="op-stat"><div class="val">${fmt(kgReal)}</div><div class="lbl">de ${fmt(kgPed)} kg (${pct}%)</div></div>
+        <div class="op-stat"><div class="val">${todasBobinas.length}</div><div class="lbl">bobinas totales</div></div>
+        <div class="op-stat"><div class="val">${lastPallet||0}</div><div class="lbl">pallets</div></div>
+      </div>
+    </div>
+  `;
+
+  const lista = document.getElementById('bobinasList');
+  if (misBobinas.length === 0) {
+    lista.innerHTML = '<div class="empty" style="padding:20px"><p>Todavía no cargaste bobinas en este turno.</p></div>';
+  } else {
+    lista.innerHTML = [...misBobinas].reverse().map(b => `
+      <div class="bobina-item">
+        <div class="bobina-info">
+          <div class="bobina-nro">#${b.nroBobina} · ${fmt(b.kg)} kg</div>
+          <div class="bobina-detail">Pallet ${b.nroPallet} · ${new Date(b.timestamp).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}${b.observaciones?' · '+b.observaciones:''}</div>
+        </div>
+        <div class="bobina-actions">
+          <button class="bobina-btn" onclick="openBobinaModal('${b.id}')">✏️</button>
+          <button class="bobina-btn" onclick="deleteBobina('${b.id}')">🗑️</button>
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+// ============================================================
+// MODAL CARGAR BOBINA
+// ============================================================
+function openBobinaModal(bobinaId) {
+  const p = DATA.pedidos.find(x => x.id === SESSION.opSeleccionada);
+  if (!p) return;
+
+  let b = bobinaId ? (DATA.producciones || []).find(x => x.id === bobinaId) : null;
+  const isEdit = !!b;
+
+  if (!b) {
+    const todas = (DATA.producciones || []).filter(x => x.pedidoId === p.id);
+    const lastNro = todas.reduce((m, x) => Math.max(m, +x.nroBobina || 0), 0);
+    const lastPallet = todas.reduce((m, x) => Math.max(m, +x.nroPallet || 0), 0);
+    b = {
+      id: 'BOB-' + Date.now(),
+      pedidoId: p.id,
+      operario: SESSION.operario.nombre,
+      turno: SESSION.turno,
+      fecha: new Date().toISOString().slice(0,10),
+      timestamp: new Date().toISOString(),
+      nroBobina: lastNro + 1,
+      nroPallet: lastPallet || 1,
+      kg: p.kgPorBobina || 0,
+      mezclaReal: p.mezclaTeoricaTexto || '',
+      siliconaPct: p.siliconaGramosM2 || 0,
+      observaciones: ''
+    };
+  }
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <h3>${isEdit ? 'Editar bobina' : 'Nueva bobina'} <button class="close" onclick="closeModal()">✕</button></h3>
+        <div class="field-row">
+          <div class="field"><label>N° Bobina</label><input type="number" id="b_nro" value="${b.nroBobina}" min="1"></div>
+          <div class="field"><label>N° Pallet</label><input type="number" id="b_pallet" value="${b.nroPallet}" min="1"></div>
+        </div>
+        <div class="field">
+          <label>Kg producidos *</label>
+          <input type="number" step="0.1" id="b_kg" value="${b.kg||''}" inputmode="decimal" placeholder="200">
+          <div class="hint">Sugerido: ${p.kgPorBobina||0} kg/bobina</div>
+        </div>
+        <div class="field">
+          <label>Mezcla real</label>
+          <textarea id="b_mezcla" rows="2" placeholder="Ej: 50% Pref. Cristal / 50% Scrap">${b.mezclaReal||''}</textarea>
+          <div class="hint">Default (teórica): ${p.mezclaTeoricaTexto||'-'}</div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Silicona %</label>
+            <input type="number" step="0.001" id="b_silicona" value="${b.siliconaPct||0}" inputmode="decimal">
+            <div class="hint">Teórica: ${p.siliconaGramosM2||0} g/m²</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Observaciones</label>
+          <textarea id="b_obs" rows="2" placeholder="Opcional">${b.observaciones||''}</textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-top:8px">
+          <button class="btn-big btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn-big btn-success" onclick="saveBobina('${b.id}', ${isEdit})">💾 ${isEdit ? 'Guardar' : 'CARGAR BOBINA'}</button>
+        </div>
+      </div>
+    </div>
+  `;
+  // Focus en kg
+  setTimeout(() => { try { document.getElementById('b_kg').focus(); document.getElementById('b_kg').select(); } catch(e){} }, 100);
+}
+
+function closeModal() {
+  document.getElementById('modalContainer').innerHTML = '';
+}
+
+async function saveBobina(id, isEdit) {
+  const kg = +document.getElementById('b_kg').value;
+  if (!kg || kg <= 0) { alert('Kg debe ser > 0'); return; }
+  const p = DATA.pedidos.find(x => x.id === SESSION.opSeleccionada);
+  if (!p) return;
+
+  const data = {
+    id,
+    pedidoId: p.id,
+    operario: SESSION.operario.nombre,
+    turno: SESSION.turno,
+    fecha: new Date().toISOString().slice(0,10),
+    timestamp: isEdit ? (DATA.producciones.find(x => x.id === id)?.timestamp || new Date().toISOString()) : new Date().toISOString(),
+    nroBobina: +document.getElementById('b_nro').value || 0,
+    nroPallet: +document.getElementById('b_pallet').value || 1,
+    kg: kg,
+    mezclaReal: document.getElementById('b_mezcla').value.trim(),
+    siliconaPct: +document.getElementById('b_silicona').value || 0,
+    observaciones: document.getElementById('b_obs').value.trim()
+  };
+
+  if (!DATA.producciones) DATA.producciones = [];
+  if (isEdit) {
+    const idx = DATA.producciones.findIndex(x => x.id === id);
+    DATA.producciones[idx] = data;
+  } else {
+    DATA.producciones.push(data);
+  }
+  // Recalcular kg reales del pedido
+  recalcKgReales(p.id);
+  closeModal();
+  await saveData();
+  renderOpDetail();
+  toast(isEdit ? 'Bobina actualizada' : '✓ Bobina cargada', 'success');
+}
+
+async function deleteBobina(id) {
+  if (!confirm('¿Eliminar esta bobina?')) return;
+  const b = DATA.producciones.find(x => x.id === id);
+  if (!b) return;
+  DATA.producciones = DATA.producciones.filter(x => x.id !== id);
+  recalcKgReales(b.pedidoId);
+  await saveData();
+  renderOpDetail();
+  toast('Bobina eliminada', 'success');
+}
+
+function recalcKgReales(pedidoId) {
+  const p = DATA.pedidos.find(x => x.id === pedidoId);
+  if (!p) return;
+  const total = (DATA.producciones || [])
+    .filter(b => b.pedidoId === pedidoId)
+    .reduce((s, b) => s + (+b.kg || 0), 0);
+  p.kgReales = Math.round(total * 100) / 100;
+}
+
+// ============================================================
+// DATA LAYER (mismo bin que la app PC)
+// ============================================================
+async function loadData() {
+  setSync('Cargando...', 'warn');
+  const isConfigured = CONFIG.JSONBIN_BIN_ID && CONFIG.JSONBIN_BIN_ID !== 'PEGAR_BIN_ID_AQUI';
+  if (isConfigured) {
+    try {
+      const r = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}/latest`, {
+        headers: { 'X-Master-Key': CONFIG.MASTER_KEY }
+      });
+      if (r.ok) {
+        const j = await r.json();
+        DATA = j.record;
+        localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+        setSync('Sincronizado', 'ok');
+        return DATA;
+      }
+    } catch (e) { console.warn('JSONBin offline:', e); }
+  }
+  const cached = localStorage.getItem(LS_KEY);
+  if (cached) {
+    DATA = JSON.parse(cached);
+    setSync('Offline (cache)', 'err');
+    return DATA;
+  }
+  alert('No se pudo cargar datos. Verificá la configuración del bin.');
+  setSync('Sin datos', 'err');
+}
+
+async function saveData() {
+  DATA.lastUpdate = new Date().toISOString();
+  localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+  setSync('Guardando...', 'warn');
+  const isConfigured = CONFIG.JSONBIN_BIN_ID && CONFIG.JSONBIN_BIN_ID !== 'PEGAR_BIN_ID_AQUI';
+  if (!isConfigured) { setSync('Sin bin (local)', 'warn'); return; }
+  try {
+    // GET first to avoid overwriting concurrent changes
+    const fresh = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}/latest`, {
+      headers: { 'X-Master-Key': CONFIG.MASTER_KEY }
+    });
+    if (fresh.ok) {
+      const j = await fresh.json();
+      const remoteData = j.record;
+      // Merge: priorizamos producciones (lo que cargó la tablet) y kgReales del pedido afectado
+      // Resto del bin: usar la versión remota (más actualizada para todo lo demás)
+      const merged = remoteData;
+      merged.producciones = DATA.producciones;
+      // Sync kgReales para los pedidos que toqué
+      const pedidosTocados = new Set((DATA.producciones || []).map(b => b.pedidoId));
+      pedidosTocados.forEach(pid => {
+        const local = DATA.pedidos.find(p => p.id === pid);
+        const remote = merged.pedidos.find(p => p.id === pid);
+        if (local && remote) {
+          remote.kgReales = local.kgReales;
+          if (local.estadoWorkflow === 'En producción' && remote.estadoWorkflow === 'Confirmada') {
+            remote.estadoWorkflow = 'En producción';
+          }
+        }
+      });
+      merged.lastUpdate = new Date().toISOString();
+      const r = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG.JSONBIN_BIN_ID}`, {
+        method: 'PUT',
+        headers: { 'Content-Type':'application/json', 'X-Master-Key': CONFIG.MASTER_KEY },
+        body: JSON.stringify(merged)
+      });
+      if (r.ok) {
+        DATA = merged;
+        localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+        setSync('Sincronizado', 'ok');
+      } else {
+        setSync('Error sync', 'err');
+      }
+    } else {
+      setSync('Error fetch fresh', 'err');
+    }
+  } catch (e) {
+    setSync('Sin conexión', 'err');
+  }
+}
+
+async function reloadData() {
+  await loadData();
+  if (!document.getElementById('screenOpDetail').classList.contains('hidden')) {
+    renderOpDetail();
+  } else {
+    renderOps();
+  }
+  toast('Recargado', 'success');
+}
+
+function setSync(text, cls) {
+  ['syncStatus','syncStatusOps','syncStatusDetail'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = text; el.className = 'sync ' + (cls || ''); }
+  });
+}
+
+function toast(msg, cls) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + (cls || '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+function fmt(n) {
+  if (n === null || n === undefined || n === '' || isNaN(n)) return '0';
+  return Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+}
+
+// ============================================================
+// INIT
+// ============================================================
+loadData();
+</script>
+</body>
+</html>
