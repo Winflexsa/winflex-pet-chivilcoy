@@ -305,7 +305,9 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
   </header>
   <h2 class="section-title">OPs activas para producir</h2>
   <div id="opsList"></div>
-  <button class="btn-big btn-sec" style="margin-top:16px" onclick="cerrarTurno()">Cerrar turno</button>
+  <button class="btn-big btn-pri" style="margin-top:16px" onclick="cerrarPlanillaRegistros()">📊 Cerrar planilla de Registros (PDF)</button>
+  <button class="btn-big btn-success" style="margin-top:8px" onclick="cerrarPlanillaBobinas()">🎯 Cerrar planilla de Bobinas (PDF)</button>
+  <button class="btn-big btn-sec" style="margin-top:8px" onclick="cerrarTurnoSalir()">Salir sin cerrar planillas</button>
 </div>
 
 <!-- OP DETAIL (Carga de bobinas) -->
@@ -319,12 +321,17 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
     </div>
   </header>
   <div id="opDetailHeader"></div>
-  <div style="margin:10px 0;padding:10px 14px;background:white;border-radius:10px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
-    <div>
-      <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px">Operario actual</div>
-      <div style="font-size:16px;font-weight:600;color:#16a34a" id="operarioActualLbl">— (se pide al cargar)</div>
+  <div style="margin:10px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div style="padding:10px 12px;background:white;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:3px solid #16a34a">
+      <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px">📊 Registros</div>
+      <div style="font-size:14px;font-weight:600;color:#15803d;margin-top:2px" id="opRegistrosLbl">— (se pide al cargar)</div>
+      <button class="btn-ghost" style="font-size:11px;margin-top:2px;padding:2px 6px" onclick="cambiarOperario('registros')">Cambiar</button>
     </div>
-    <button class="btn-sec" style="padding:8px 14px;font-size:13px;border-radius:8px" onclick="cambiarOperario()">Cambiar</button>
+    <div style="padding:10px 12px;background:white;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:3px solid #059669">
+      <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px">🎯 Bobinas</div>
+      <div style="font-size:14px;font-weight:600;color:#059669;margin-top:2px" id="opBobinasLbl">— (se pide al cargar)</div>
+      <button class="btn-ghost" style="font-size:11px;margin-top:2px;padding:2px 6px" onclick="cambiarOperario('bobinas')">Cambiar</button>
+    </div>
   </div>
   <div class="btn-row" style="margin-top:6px">
     <button class="btn-big btn-success" onclick="openBobinaModal()">🎯<br>Cargar bobina<br><small style="font-weight:400;opacity:0.85">final máquina</small></button>
@@ -367,7 +374,11 @@ const LS_KEY = 'winflex_pet_tablet_v1';
 let DATA = null;
 let SESSION = {
   loggedIn: false,
-  operarioActual: null,  // operario seleccionado en este momento (puede cambiar)
+  // Operarios separados para cada planilla (pueden ser distintos)
+  operarioRegistros: null,  // quien carga la planilla WEC001
+  operarioBobinas: null,    // quien carga la planilla Producción-Bobinas
+  // Para compat (algunas funciones lo leen)
+  operarioActual: null,
   turno: null,
   inicio: null,
   opSeleccionada: null
@@ -407,7 +418,7 @@ async function tryLogin() {
   }
 }
 function logout() {
-  SESSION = { loggedIn: false, operarioActual: null, turno: null, inicio: null, opSeleccionada: null };
+  SESSION = { loggedIn: false, operarioRegistros: null, operarioBobinas: null, operarioActual: null, turno: null, inicio: null, opSeleccionada: null };
   showScreen('Login');
 }
 
@@ -430,130 +441,268 @@ function selectTurno(t) {
   renderOps();
 }
 
-function cerrarTurno() {
-  // Compilar lo que se cargó en este turno
+// ============================================================
+// CIERRE DE PLANILLAS — DOS PDFs SEPARADOS (uno por operario)
+// ============================================================
+function cerrarTurnoSalir() {
+  if (confirm('¿Salir sin cerrar planillas?\n\nLos datos quedan guardados. Podés volver más tarde a generar los PDFs.')) {
+    logout();
+  }
+}
+
+function cerrarPlanillaRegistros() {
+  if (!ensureJsPDF()) return;
+  const today = new Date().toISOString().slice(0,10);
+  const registros = (DATA.registrosProduccion || []).filter(r =>
+    r.turno === SESSION.turno && r.fecha === today
+  );
+  if (registros.length === 0) {
+    alert('No hay registros cargados en este turno. Cargá al menos uno para generar el PDF.');
+    return;
+  }
+  const operarios = [...new Set(registros.map(r => r.operario).filter(Boolean))];
+  const operName = operarios.join(', ') || (SESSION.operarioRegistros ? SESSION.operarioRegistros.nombre : '-');
+  const msg = `¿Cerrar planilla de Registros?\n\n• ${registros.length} registros del turno\n• Operario(s): ${operName}\n\nSe genera el PDF para descargar y enviar.`;
+  if (!confirm(msg)) return;
+
+  try {
+    generarPDFRegistros(registros, operName);
+    toast('PDF de registros generado', 'success');
+  } catch (e) {
+    console.error('PDF registros error:', e);
+    alert('Error generando el PDF: ' + (e.message || e));
+  }
+}
+
+function cerrarPlanillaBobinas() {
+  if (!ensureJsPDF()) return;
   const today = new Date().toISOString().slice(0,10);
   const bobinas = (DATA.producciones || []).filter(b =>
     b.turno === SESSION.turno && b.fecha === today
   );
-  const registros = (DATA.registrosProduccion || []).filter(r =>
-    r.turno === SESSION.turno && r.fecha === today
-  );
-  const totalKg = bobinas.reduce((s, b) => s + (+b.kg || 0), 0);
-  const totalBobinas = bobinas.length;
-  const totalRegistros = registros.length;
-
-  const msg = `¿Cerrar el turno?\n\nResumen:\n• ${totalRegistros} registros horarios\n• ${totalBobinas} bobinas (${fmt(totalKg)} kg)\n\nSe genera un PDF del turno para descargar y enviar a Agustín.`;
-  if (!confirm(msg)) return;
-
-  if (totalRegistros === 0 && totalBobinas === 0) {
-    if (!confirm('No se cargó nada en este turno. ¿Cerrar igual sin PDF?')) return;
-    logout();
+  if (bobinas.length === 0) {
+    alert('No hay bobinas cargadas en este turno. Cargá al menos una para generar el PDF.');
     return;
   }
+  const operarios = [...new Set(bobinas.map(b => b.operario).filter(Boolean))];
+  const operName = operarios.join(', ') || (SESSION.operarioBobinas ? SESSION.operarioBobinas.nombre : '-');
+  const totalKg = bobinas.reduce((s, b) => s + (+b.kg || 0), 0);
+  const msg = `¿Cerrar planilla de Bobinas?\n\n• ${bobinas.length} bobinas del turno (${fmt(totalKg)} kg)\n• Operario(s): ${operName}\n\nSe genera el PDF para descargar y enviar.`;
+  if (!confirm(msg)) return;
 
   try {
-    generarPDFTurno(registros, bobinas, totalKg);
-    toast('PDF generado, descargá y mandalo a Agustín', 'success');
-    setTimeout(() => { logout(); }, 1500);
+    generarPDFBobinas(bobinas, operName, totalKg);
+    toast('PDF de bobinas generado', 'success');
   } catch (e) {
-    console.error('PDF error', e);
-    alert('Error generando PDF: ' + e.message);
+    console.error('PDF bobinas error:', e);
+    alert('Error generando el PDF: ' + (e.message || e));
   }
 }
 
-function generarPDFTurno(registros, bobinas, totalKg) {
-  if (!window.jspdf) { alert('jsPDF no cargado'); return; }
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const W = 210, H = 297, M = 10;
-  const C_PRI = [22, 163, 74], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
+function ensureJsPDF() {
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    alert('jsPDF no está cargado. Verificá la conexión a internet y recargá la página.');
+    return false;
+  }
+  return true;
+}
 
+// Helpers PDF
+function safeStr(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[^\x20-\x7Eáéíóúñü°ÁÉÍÓÚÑÜ²³%·\/\-\(\):,.°]/g, ' ').substring(0, 200);
+}
+function safeFecha() {
+  try { return new Date().toLocaleDateString('es-AR'); } catch (e) { return ''; }
+}
+function safeTurnoLabel() {
+  if (SESSION.turno === 'dia') return 'DIA';
+  if (SESSION.turno === 'noche') return 'NOCHE';
+  return '-';
+}
+
+function pdfHeader(doc, title, subtitle) {
+  const W = 297, H = 210, M = 8;  // landscape A4
+  const C_PRI = [22, 163, 74];
+  doc.setFillColor(...C_PRI);
+  doc.rect(0, 0, W, 24, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+  doc.setTextColor(255, 255, 255);
+  doc.text('WINFLEX PET - ' + safeStr(title), M, 11);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  doc.setTextColor(220, 252, 231);
+  doc.text(safeStr(subtitle), M, 18);
+  doc.setFontSize(9);
+  doc.text('Generado ' + safeFecha() + ' ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}), W - M, 18, { align: 'right' });
+}
+
+function generarPDFRegistros(registros, operName) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  const W = 297, H = 210, M = 8;
+  const C_PRI = [22, 163, 74], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
   const setFill = (rgb) => doc.setFillColor(...rgb);
   const setText = (rgb) => doc.setTextColor(...rgb);
-  const txt = (s, x, y, opts = {}) => {
+  const txt = (s, x, y, opts={}) => {
     doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
     doc.setFontSize(opts.size || 9);
     setText(opts.color || C_DARK);
-    doc.text(String(s ?? '—'), x, y, { align: opts.align || 'left' });
+    doc.text(safeStr(s), x, y, { align: opts.align || 'left' });
   };
 
   // Header
-  setFill(C_PRI);
-  doc.rect(0, 0, W, 26, 'F');
-  txt('WINFLEX PET — CIERRE DE TURNO', M, 12, { bold: true, size: 16, color: [255,255,255] });
-  txt(`Turno ${SESSION.turno.toUpperCase()} · ${new Date().toLocaleDateString('es-AR')} · Planta Chivilcoy`, M, 20, { size: 10, color: [220, 252, 231] });
-  txt(`Generado ${new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}`, W - M, 20, { size: 9, color: [220, 252, 231], align: 'right' });
+  const subtitle = 'Registro de Produccion (WEC001) · Turno ' + safeTurnoLabel() + ' · ' + safeFecha();
+  pdfHeader(doc, 'REGISTRO DE PRODUCCION', subtitle);
+  let y = 30;
 
-  let y = 34;
-  // Resumen
-  setFill(C_LIGHT);
-  doc.roundedRect(M, y, W - 2*M, 22, 2, 2, 'F');
-  txt('RESUMEN', M + 3, y + 6, { bold: true, size: 10, color: C_DARK });
-  const colWR = (W - 2*M) / 4;
-  txt('TOTAL KG', M + 4, y + 13, { size: 8, color: C_GRAY });
-  txt(fmt(totalKg) + ' kg', M + 4, y + 19, { bold: true, size: 12, color: C_PRI });
-  txt('BOBINAS', M + colWR + 4, y + 13, { size: 8, color: C_GRAY });
-  txt(String(bobinas.length), M + colWR + 4, y + 19, { bold: true, size: 12, color: C_PRI });
-  txt('REGISTROS', M + 2*colWR + 4, y + 13, { size: 8, color: C_GRAY });
-  txt(String(registros.length), M + 2*colWR + 4, y + 19, { bold: true, size: 12, color: C_PRI });
-  txt('TURNO', M + 3*colWR + 4, y + 13, { size: 8, color: C_GRAY });
-  txt(SESSION.turno === 'dia' ? 'DÍA ☀' : 'NOCHE 🌙', M + 3*colWR + 4, y + 19, { bold: true, size: 12 });
-  y += 28;
-
-  // Registros horarios
-  if (registros.length > 0) {
-    setFill(C_PRI);
-    doc.rect(M, y, W - 2*M, 7, 'F');
-    txt('REGISTRO DE PRODUCCIÓN (WEC001)', M + 3, y + 5, { bold: true, size: 10, color: [255,255,255] });
-    y += 8;
-    // Header table
-    setFill(C_LIGHT);
-    doc.rect(M, y, W - 2*M, 6, 'F');
-    const cols = ['Hora','Bob','Partida','T°','Kg/h','Vel','SP Esp','SP Av','Torq','P1','P2','P3','Vacc','Gap','Sil','Eizq','Ecen','Eder','Op.'];
-    const colXs = [M+2, M+12, M+20, M+38, M+45, M+53, M+60, M+68, M+76, M+83, M+90, M+97, M+104, M+112, M+119, M+126, M+134, M+142, M+150];
-    cols.forEach((c, i) => txt(c, colXs[i], y + 4, { bold: true, size: 7, color: C_DARK }));
-    y += 6;
-    [...registros].sort((a,b) => (a.hora||'').localeCompare(b.hora||'')).forEach((r, i) => {
-      if (y > H - 20) { doc.addPage(); y = M; }
-      if (i % 2 === 0) { setFill([249, 250, 251]); doc.rect(M, y, W - 2*M, 5, 'F'); }
-      const vals = [r.hora||'', r.nroBobina||'', r.partida||'', r.tempEntrada||'', r.kgH||'', r.velMin||'', r.spEspesor||'', r.spAvEspesor||'', r.torqueM||'', r.p1||'', r.p2||'', r.p3||'', r.vacc||'', r.gap||'', r.sil||'', r.eIzq||'', r.eCen||'', r.eDer||'', (r.operario||'').substring(0,8)];
-      vals.forEach((v, j) => txt(String(v||'-'), colXs[j], y + 4, { size: 7 }));
-      y += 5;
-    });
-    y += 4;
+  // Info del operario y OP de referencia
+  const opRef = registros[0] && registros[0].pedidoId ? (DATA.pedidos.find(p => p.id === registros[0].pedidoId)) : null;
+  setFill(C_LIGHT); doc.roundedRect(M, y, W - 2*M, 12, 2, 2, 'F');
+  txt('Operario(s):', M + 2, y + 5, { size: 9, color: C_GRAY });
+  txt(safeStr(operName), M + 30, y + 5, { bold: true, size: 10 });
+  txt('Total registros:', M + 100, y + 5, { size: 9, color: C_GRAY });
+  txt(String(registros.length), M + 135, y + 5, { bold: true, size: 10 });
+  if (opRef) {
+    txt('OP de referencia:', M + 2, y + 10, { size: 9, color: C_GRAY });
+    txt('N°' + safeStr(opRef.nroOP) + ' - ' + safeStr(opRef.cliente) + ' - ' + safeStr(opRef.ancho) + 'x' + safeStr(opRef.espesor), M + 30, y + 10, { bold: true, size: 9 });
   }
+  y += 16;
 
-  // Bobinas producidas
-  if (bobinas.length > 0) {
-    if (y > H - 50) { doc.addPage(); y = M; }
-    setFill(C_PRI);
-    doc.rect(M, y, W - 2*M, 7, 'F');
-    txt('PRODUCCIÓN - BOBINAS', M + 3, y + 5, { bold: true, size: 10, color: [255,255,255] });
-    y += 8;
-    setFill(C_LIGHT);
-    doc.rect(M, y, W - 2*M, 6, 'F');
-    const cols2 = ['Hora','OP','Partida','Bob','Pallet','Ancho','Esp','Kg','Mts','Mezcla real','Obs','Op.'];
-    const colXs2 = [M+2, M+12, M+28, M+50, M+58, M+68, M+78, M+85, M+95, M+103, M+135, M+165];
-    cols2.forEach((c, i) => txt(c, colXs2[i], y + 4, { bold: true, size: 7, color: C_DARK }));
-    y += 6;
-    [...bobinas].sort((a,b) => (a.hora||'').localeCompare(b.hora||'')).forEach((b, i) => {
-      if (y > H - 20) { doc.addPage(); y = M; }
-      if (i % 2 === 0) { setFill([249, 250, 251]); doc.rect(M, y, W - 2*M, 5, 'F'); }
-      const ped = (DATA.pedidos || []).find(x => x.id === b.pedidoId);
-      const nopName = ped ? ped.nroOP : '-';
-      const vals = [b.hora||'-', nopName, b.partida||'-', b.nroBobina||'-', b.nroPallet||'-', b.ancho||'-', b.espesor||'-', fmt(b.kg||0), b.metros||'-', (b.mezclaReal||'').substring(0,30), (b.observaciones||'').substring(0,20), (b.operario||'').substring(0,8)];
-      vals.forEach((v, j) => txt(String(v||'-'), colXs2[j], y + 4, { size: 7 }));
-      y += 5;
+  // Tabla de registros - columnas
+  const cols = [
+    { lbl: 'Hora',    x: M+1,   w: 13 },
+    { lbl: 'Bob',     x: M+15,  w: 9 },
+    { lbl: 'Partida', x: M+25,  w: 24 },
+    { lbl: 'T.Ent',   x: M+50,  w: 11 },
+    { lbl: 'Kg/h',    x: M+62,  w: 11 },
+    { lbl: 'Vel',     x: M+74,  w: 10 },
+    { lbl: 'SP Esp',  x: M+85,  w: 11 },
+    { lbl: 'SP Av',   x: M+97,  w: 11 },
+    { lbl: 'Torq',    x: M+109, w: 10 },
+    { lbl: 'P1',      x: M+120, w: 10 },
+    { lbl: 'P2',      x: M+131, w: 10 },
+    { lbl: 'P3',      x: M+142, w: 10 },
+    { lbl: 'Vacc',    x: M+153, w: 10 },
+    { lbl: 'Gap',     x: M+164, w: 9 },
+    { lbl: 'Sil',     x: M+174, w: 9 },
+    { lbl: 'Eizq',    x: M+184, w: 9 },
+    { lbl: 'Ecen',    x: M+194, w: 9 },
+    { lbl: 'Eder',    x: M+204, w: 9 },
+    { lbl: 'Operario',x: M+214, w: 30 }
+  ];
+  // Header de tabla
+  setFill(C_PRI); doc.rect(M, y, W - 2*M, 7, 'F');
+  cols.forEach(c => txt(c.lbl, c.x + 1, y + 5, { bold: true, size: 8, color: [255,255,255] }));
+  y += 7;
+
+  // Filas
+  const sorted = [...registros].sort((a, b) => safeStr(a.hora).localeCompare(safeStr(b.hora)));
+  sorted.forEach((r, i) => {
+    if (y > H - 14) { doc.addPage(); pdfHeader(doc, 'REGISTRO DE PRODUCCION (cont.)', subtitle); y = 30; setFill(C_PRI); doc.rect(M, y, W - 2*M, 7, 'F'); cols.forEach(c => txt(c.lbl, c.x + 1, y + 5, { bold: true, size: 8, color: [255,255,255] })); y += 7; }
+    if (i % 2 === 0) { setFill([249, 250, 251]); doc.rect(M, y, W - 2*M, 6, 'F'); }
+    const vals = [
+      r.hora, r.nroBobina, r.partida, r.tempEntrada, r.kgH, r.velMin,
+      r.spEspesor, r.spAvEspesor, r.torqueM, r.p1, r.p2, r.p3,
+      r.vacc, r.gap, r.sil, r.eIzq, r.eCen, r.eDer, r.operario
+    ];
+    vals.forEach((v, j) => {
+      let s = (v === null || v === undefined || v === '') ? '-' : safeStr(v);
+      if (j === 18 && s.length > 14) s = s.substring(0, 14);  // operario truncado
+      if (j === 2 && s.length > 12) s = s.substring(0, 12);   // partida truncada
+      txt(s, cols[j].x + 1, y + 4, { size: 7 });
     });
-  }
+    y += 6;
+  });
 
   // Footer
-  doc.setFontSize(7);
-  setText(C_GRAY);
-  doc.text(`Cierre turno · Winflex S.A. Planta Chivilcoy · ${new Date().toLocaleString('es-AR')}`, M, H - 6);
+  setText(C_GRAY); doc.setFontSize(7);
+  doc.text('Winflex S.A. - Planta Chivilcoy - Cierre de planilla Registros', M, H - 4);
 
-  const fname = `Turno_${SESSION.turno}_${today.replace(/-/g,'')}.pdf`;
+  const fname = 'Registros_' + safeTurnoLabel() + '_' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '.pdf';
+  doc.save(fname);
+}
+
+function generarPDFBobinas(bobinas, operName, totalKg) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  const W = 297, H = 210, M = 8;
+  const C_PRI = [22, 163, 74], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
+  const setFill = (rgb) => doc.setFillColor(...rgb);
+  const setText = (rgb) => doc.setTextColor(...rgb);
+  const txt = (s, x, y, opts={}) => {
+    doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+    doc.setFontSize(opts.size || 9);
+    setText(opts.color || C_DARK);
+    doc.text(safeStr(s), x, y, { align: opts.align || 'left' });
+  };
+
+  const subtitle = 'Produccion - Bobinas · Turno ' + safeTurnoLabel() + ' · ' + safeFecha();
+  pdfHeader(doc, 'PRODUCCION - BOBINAS', subtitle);
+  let y = 30;
+
+  // Resumen
+  setFill(C_LIGHT); doc.roundedRect(M, y, W - 2*M, 16, 2, 2, 'F');
+  const colWR = (W - 2*M) / 4;
+  txt('OPERARIO(S)', M + 2, y + 5, { size: 8, color: C_GRAY, bold: true });
+  txt(safeStr(operName).substring(0, 40), M + 2, y + 12, { bold: true, size: 11 });
+  txt('TOTAL KG', M + colWR + 60, y + 5, { size: 8, color: C_GRAY, bold: true });
+  txt(fmt(totalKg) + ' kg', M + colWR + 60, y + 12, { bold: true, size: 12, color: C_PRI });
+  txt('BOBINAS', M + 2*colWR + 60, y + 5, { size: 8, color: C_GRAY, bold: true });
+  txt(String(bobinas.length), M + 2*colWR + 60, y + 12, { bold: true, size: 12, color: C_PRI });
+  txt('TURNO', M + 3*colWR + 60, y + 5, { size: 8, color: C_GRAY, bold: true });
+  txt(safeTurnoLabel(), M + 3*colWR + 60, y + 12, { bold: true, size: 12 });
+  y += 22;
+
+  // Tabla de bobinas
+  const cols = [
+    { lbl: 'Hora',     x: M+1,   w: 14 },
+    { lbl: 'OP',       x: M+16,  w: 14 },
+    { lbl: 'Partida',  x: M+31,  w: 26 },
+    { lbl: 'Bob#',     x: M+58,  w: 10 },
+    { lbl: 'Pallet',   x: M+69,  w: 11 },
+    { lbl: 'Ancho',    x: M+81,  w: 12 },
+    { lbl: 'Esp',      x: M+94,  w: 10 },
+    { lbl: 'Kg',       x: M+105, w: 12 },
+    { lbl: 'Metros',   x: M+118, w: 13 },
+    { lbl: 'Mezcla real', x: M+132, w: 48 },
+    { lbl: 'Observ',   x: M+181, w: 30 },
+    { lbl: 'Operario', x: M+212, w: 32 }
+  ];
+  setFill(C_PRI); doc.rect(M, y, W - 2*M, 7, 'F');
+  cols.forEach(c => txt(c.lbl, c.x + 1, y + 5, { bold: true, size: 8, color: [255,255,255] }));
+  y += 7;
+
+  const sorted = [...bobinas].sort((a, b) => safeStr(a.hora).localeCompare(safeStr(b.hora)));
+  sorted.forEach((b, i) => {
+    if (y > H - 14) { doc.addPage(); pdfHeader(doc, 'PRODUCCION - BOBINAS (cont.)', subtitle); y = 30; setFill(C_PRI); doc.rect(M, y, W - 2*M, 7, 'F'); cols.forEach(c => txt(c.lbl, c.x + 1, y + 5, { bold: true, size: 8, color: [255,255,255] })); y += 7; }
+    if (i % 2 === 0) { setFill([249, 250, 251]); doc.rect(M, y, W - 2*M, 6, 'F'); }
+    const ped = (DATA.pedidos || []).find(x => x.id === b.pedidoId);
+    const nopName = ped ? safeStr(ped.nroOP) : '-';
+    const vals = [
+      b.hora,
+      nopName,
+      b.partida,
+      b.nroBobina,
+      b.nroPallet,
+      b.ancho,
+      b.espesor,
+      fmt(b.kg || 0),
+      b.metros,
+      (b.mezclaReal || '').substring(0, 30),
+      (b.observaciones || '').substring(0, 18),
+      (b.operario || '').substring(0, 18)
+    ];
+    vals.forEach((v, j) => {
+      const s = (v === null || v === undefined || v === '') ? '-' : safeStr(v);
+      txt(s, cols[j].x + 1, y + 4, { size: 7 });
+    });
+    y += 6;
+  });
+
+  setText(C_GRAY); doc.setFontSize(7);
+  doc.text('Winflex S.A. - Planta Chivilcoy - Cierre de planilla Bobinas', M, H - 4);
+
+  const fname = 'Bobinas_' + safeTurnoLabel() + '_' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '.pdf';
   doc.save(fname);
 }
 
@@ -706,34 +855,31 @@ function renderOpDetail() {
       }
     }).join('');
   }
-  actualizarOperarioLabel();
-}
-
-function cambiarOperario() {
-  SESSION.operarioActual = null;
-  promptOperarioPin(() => actualizarOperarioLabel());
-}
-function actualizarOperarioLabel() {
-  const el = document.getElementById('operarioActualLbl');
-  if (el) el.textContent = SESSION.operarioActual ? SESSION.operarioActual.nombre : '— (se pide al cargar)';
+  actualizarOperariosLabel();
 }
 
 // ============================================================
 // PIN OPERARIO — pedido antes de cargar bobinas/registros
+// Soporta operarios distintos para cada planilla
 // ============================================================
-function ensureOperarioPin(callback) {
-  // Si ya hay un operario actual seleccionado en esta sesión, usarlo
-  if (SESSION.operarioActual) { callback(); return; }
-  // Si no, mostrar modal para pedir PIN
-  promptOperarioPin(callback);
+function ensureOperarioPin(tipo, callback) {
+  // tipo: 'registros' o 'bobinas'
+  const key = tipo === 'registros' ? 'operarioRegistros' : 'operarioBobinas';
+  if (SESSION[key]) {
+    SESSION.operarioActual = SESSION[key]; // alias compat
+    callback();
+    return;
+  }
+  promptOperarioPin(tipo, callback);
 }
 
-function promptOperarioPin(callback) {
-  const ops = (DATA.catalogos.operarios || []);
+function promptOperarioPin(tipo, callback) {
+  const label = tipo === 'registros' ? '📊 Registros de producción' : '🎯 Bobinas';
   document.getElementById('modalContainer').innerHTML = `
     <div class="modal-bg">
       <div class="modal">
         <h3>👤 PIN del operario <button class="close" onclick="closeModal()">✕</button></h3>
+        <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Planilla: <b>${label}</b></p>
         <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Ingresá tu PIN para registrar tu nombre en esta carga.</p>
         <div class="field">
           <input type="password" inputmode="numeric" id="opPinInput" maxlength="6" autocomplete="off" autofocus
@@ -743,17 +889,17 @@ function promptOperarioPin(callback) {
         <div id="opPinErr" style="color:#dc2626;font-size:13px;text-align:center;min-height:18px;margin-bottom:10px"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
           <button class="btn-big btn-sec" onclick="closeModal()">Cancelar</button>
-          <button class="btn-big btn-pri" onclick="checkOperarioPin()">Confirmar</button>
+          <button class="btn-big btn-pri" onclick="checkOperarioPin('${tipo}')">Confirmar</button>
         </div>
-        ${SESSION.operarioActual ? `<button class="btn-ghost" style="display:block;margin:10px auto 0;font-size:12px;color:#6b7280" onclick="SESSION.operarioActual=null;closeModal();promptOperarioPin(window._operarioPinCallback)">Cambiar operario</button>` : ''}
       </div>
     </div>
   `;
   window._operarioPinCallback = callback;
+  window._operarioPinTipo = tipo;
   setTimeout(() => { try { document.getElementById('opPinInput').focus(); } catch(e){} }, 100);
 }
 
-function checkOperarioPin() {
+function checkOperarioPin(tipo) {
   const pin = document.getElementById('opPinInput').value.trim();
   if (!pin) return;
   const op = (DATA.catalogos.operarios || []).find(o => o.pin === pin);
@@ -762,15 +908,30 @@ function checkOperarioPin() {
     document.getElementById('opPinInput').value = '';
     return;
   }
+  const key = tipo === 'registros' ? 'operarioRegistros' : 'operarioBobinas';
+  SESSION[key] = op;
   SESSION.operarioActual = op;
   closeModal();
-  toast(`👤 ${op.nombre}`, 'success');
-  actualizarOperarioLabel();
+  toast(`👤 ${op.nombre} (${tipo})`, 'success');
+  actualizarOperariosLabel();
   if (window._operarioPinCallback) {
     const cb = window._operarioPinCallback;
     window._operarioPinCallback = null;
     setTimeout(cb, 100);
   }
+}
+
+function cambiarOperario(tipo) {
+  const key = tipo === 'registros' ? 'operarioRegistros' : 'operarioBobinas';
+  SESSION[key] = null;
+  promptOperarioPin(tipo, () => actualizarOperariosLabel());
+}
+
+function actualizarOperariosLabel() {
+  const elR = document.getElementById('opRegistrosLbl');
+  const elB = document.getElementById('opBobinasLbl');
+  if (elR) elR.textContent = SESSION.operarioRegistros ? SESSION.operarioRegistros.nombre : '— (se pide al cargar)';
+  if (elB) elB.textContent = SESSION.operarioBobinas ? SESSION.operarioBobinas.nombre : '— (se pide al cargar)';
 }
 
 // Hook: antes de abrir bobina o registro, pedir PIN
@@ -780,10 +941,11 @@ const _origOpenBobinaModal = null; // se setea abajo
 // MODAL CARGAR BOBINA
 // ============================================================
 function openBobinaModal(bobinaId) {
-  if (!bobinaId && !SESSION.operarioActual) {
-    ensureOperarioPin(() => openBobinaModal(bobinaId));
+  if (!bobinaId && !SESSION.operarioBobinas) {
+    ensureOperarioPin('bobinas', () => openBobinaModal(bobinaId));
     return;
   }
+  SESSION.operarioActual = SESSION.operarioBobinas; // para que el modal lo lea
   _openBobinaModalImpl(bobinaId);
 }
 
@@ -959,10 +1121,11 @@ function recalcKgReales(pedidoId) {
 // Cargar parámetros de control de proceso cada hora
 // ============================================================
 function openRegistroModal(registroId) {
-  if (!registroId && !SESSION.operarioActual) {
-    ensureOperarioPin(() => openRegistroModal(registroId));
+  if (!registroId && !SESSION.operarioRegistros) {
+    ensureOperarioPin('registros', () => openRegistroModal(registroId));
     return;
   }
+  SESSION.operarioActual = SESSION.operarioRegistros; // para que el modal lo lea
   _openRegistroModalImpl(registroId);
 }
 
