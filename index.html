@@ -2751,13 +2751,17 @@ function renderDetailBody(p, bobinas) {
     // SECCIÓN 1: Enviar OC a Agustín (visible en estados OC, OP)
     if (estado === 'OC' || estado === 'OP') {
       const emailJonathan = DATA.config.emailJonathan || '';
-      const ccJonathan = (p.conoTipo === '3' && emailJonathan);
+      const esLaminado = p.destinoCodigo === 'L';
+      const ccJonathan = (p.conoTipo === '3' && emailJonathan) || (esLaminado && emailJonathan);
+      const motivoCC = esLaminado
+        ? 'Como es <b>Laminado</b>, también se manda en copia a Jonathan con el detalle del PE que necesita.'
+        : 'Como es <b>cono 3</b>, también se manda en copia a Jonathan.';
       html += `
         <div class="detail-section">
           <h3>📧 Notificar a planta por la OC</h3>
-          <p style="font-size:13px;color:#6b7280;margin-bottom:12px">Envía un mail a Agustín avisándole que entró este pedido para que revise y emita la OP.${ccJonathan ? ' <b>Como es cono 3, también se manda en copia a Jonathan.</b>' : ''}</p>
+          <p style="font-size:13px;color:#6b7280;margin-bottom:12px">Envía un mail a Agustín avisándole que entró este pedido para que revise y emita la OP.${ccJonathan ? ' ' + motivoCC : ''}</p>
           <div class="detail-field" style="margin-bottom:6px"><span class="lbl">Para</span><span class="val" style="font-size:13px">${emailAgustin || '<span class="muted">Sin configurar (cargar en Configuración → email Agustín)</span>'}</span></div>
-          ${ccJonathan ? `<div class="detail-field" style="margin-bottom:12px"><span class="lbl">CC (cono 3)</span><span class="val" style="font-size:13px">${emailJonathan}</span></div>` : ''}
+          ${ccJonathan ? `<div class="detail-field" style="margin-bottom:12px"><span class="lbl">CC ${esLaminado?'(laminado)':'(cono 3)'}</span><span class="val" style="font-size:13px">${emailJonathan}</span></div>` : ''}
           <div class="actions-row">
             <button class="btn-action ${estado === 'OC' ? 'primary' : ''}" onclick="enviarOCmail('${p.id}')" ${!emailAgustin ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>📧 Enviar OC a Agustín${ccJonathan ? ' + CC Jonathan' : ''}</button>
             <button class="btn-action" onclick="copiarTextoOC('${p.id}')">📋 Copiar texto</button>
@@ -2975,8 +2979,13 @@ function openOPModal(pedidoId) {
                 <select id="op_producto">${productos.map(pr => `<option value="${pr.nombre}" ${pr.nombre===p.producto?'selected':''}>${pr.nombre}</option>`).join('')}</select>
               </div>
               <div class="field"><label>Código producto (auto)</label><input type="text" id="op_codigoProducto" value="${p.codigoProducto||(p.ancho&&p.espesor?p.ancho+''+p.espesor:'')}" readonly style="background:#f9fafb"></div>
-              <div class="field"><label>Destino</label>
-                <select id="op_destinoCodigo" onchange="actualizarCodigoPartida()">${destinos.map(d => `<option value="${d.codigo}" ${d.codigo===(p.destinoCodigo||'T')?'selected':''}>${d.codigo} — ${d.nombre}</option>`).join('')}</select>
+              <div class="field"><label>Destino (definido en la OC)</label>
+                <input type="text" id="op_destinoCodigo_display" value="${(() => {
+                  const d = (DATA.catalogos.destinos || []).find(x => x.codigo === (p.destinoCodigo||'T'));
+                  return d ? `${d.codigo} — ${d.nombre}` : (p.destinoCodigo||'T');
+                })()}" readonly style="background:#f9fafb">
+                <input type="hidden" id="op_destinoCodigo" value="${p.destinoCodigo||'T'}">
+                <div class="hint">Para cambiarlo, editá la OC del pedido.</div>
               </div>
             </div>
           </div>
@@ -3244,6 +3253,71 @@ function calcDiametroBobina(kgBobina, anchoMm) {
 // MAIL OC a Agustín (interno, le avisa que entró un pedido)
 // ============================================================
 function buildOCBody(p) {
+  // ====== CASO LAMINADO ======
+  // Mail va a Agustín (PET-Chivilcoy) y Jonathan (PE-Lanús) con desglose completo
+  if (p.destinoCodigo === 'L') {
+    const lam = (p.laminadoIdx !== undefined) ? (DATA.catalogos.laminados || [])[p.laminadoIdx] : null;
+    const pf = lam?.producto || {};
+    const pet = { ancho: p.ancho||0, espesor: p.espesor||0, peso: p.kgPorBobina6||p.kgPorBobina||0, metros: (lam?.pet?.metros||0) };
+    const pe = p.lamPe || lam?.pe || { ancho:0, espesor:0, peso:0, metros:0 };
+    // Estimar kg de PE necesarios usando una regla simple: relación de pesos PET:PE de la base * kg pedidos
+    // Si la relación no se puede calcular, lo dejamos en blanco.
+    let kgPENecesarios = 0;
+    if (pet.peso > 0 && pe.peso > 0) {
+      kgPENecesarios = Math.round((+p.kgPedidos || 0) * (pe.peso / pet.peso));
+    }
+    return `Hola Agustín y Jonathan,
+
+Entró un pedido de LAMINADO. Detallo abajo todo lo que necesita cada planta.
+
+═══════════════════════════════════════
+PEDIDO
+═══════════════════════════════════════
+• Cliente:         ${p.cliente}
+• OC cliente:      ${p.oc || '-'}
+• Cantidad total:  ${fmtNum(p.kgPedidos)} kg (kg de PET pedidos a producir)
+• Fecha entrega:   ${fmtFecha(p.fechaEntrega) || 'a confirmar'}
+${lam ? '• Base laminado:   ' + lam.cliente + (lam.nota ? '  ⚠ ' + lam.nota : '') : ''}
+
+═══════════════════════════════════════
+🎯 PRODUCTO FINAL (lo que pide el cliente)
+═══════════════════════════════════════
+• Ancho:           ${pf.ancho || '-'} mm
+• Espesor:         ${pf.espesor || '-'} μm
+• Peso por bobina: ${pf.peso || '-'} kg
+
+═══════════════════════════════════════
+🟡 PARA AGUSTÍN — Lámina PET (Chivilcoy)
+═══════════════════════════════════════
+• Ancho:           ${pet.ancho || '-'} mm
+• Espesor:         ${pet.espesor || '-'} μm
+• Color:           ${p.color || '-'}
+• Silicona:        ${p.silicona === 'CON' ? `CON ${p.siliconaPct||0}%${p.siliconaCaras?' · '+p.siliconaCaras+(p.siliconaCaras==2?' caras':' cara'):''}` : (p.silicona||'-')}
+• Kg por bobina:   ${pet.peso || '-'} kg
+• Mts por bobina:  ${pet.metros || '-'} mts
+• Kg a producir:   ${fmtNum(p.kgPedidos)} kg
+
+═══════════════════════════════════════
+🔵 PARA JONATHAN — Lámina PE (Lanús)
+═══════════════════════════════════════
+• Ancho:           ${pe.ancho || '-'} mm
+• Espesor:         ${pe.espesor || '-'} μm
+• Kg por bobina:   ${pe.peso || '-'} kg
+• Mts por bobina:  ${pe.metros || '-'} mts
+${kgPENecesarios > 0 ? '• Kg estimados:    ' + fmtNum(kgPENecesarios) + ' kg (≈ proporción ' + (pe.peso/pet.peso).toFixed(2) + ')' : '• Kg estimados:    a calcular según consumo'}
+
+═══════════════════════════════════════
+🔧 EQUIPO
+═══════════════════════════════════════
+• Cilindro laminador: ${p.lamCilindro || lam?.cilindro || '-'}
+${p.observaciones ? '\nObservaciones:\n' + p.observaciones + '\n' : ''}
+Por favor confirmen disponibilidad y emitan las OPs correspondientes.
+
+Saludos,
+Matías`;
+  }
+
+  // ====== CASO TERMOFORMADO / VENTA (sin cambios) ======
   // Silicona pretty
   let silTxt = p.silicona || '-';
   if (p.silicona === 'CON') silTxt = `CON ${p.siliconaPct||0}%${p.siliconaCaras?' · '+p.siliconaCaras+(p.siliconaCaras==2?' caras':' cara'):''}`;
@@ -3282,12 +3356,23 @@ function enviarOCmail(id) {
     switchTab('config');
     return;
   }
-  const subject = `Nuevo pedido ${p.cliente}${p.oc?' · '+p.oc:''} — ${p.ancho||'-'}×${p.espesor||'-'} · ${fmtNum(p.kgPedidos)} kg${p.conoTipo==='3'?' · CONO 3':''}`;
+  // Subject y CC dependen del destino
+  let subject, ccList = [];
+  const esLaminado = p.destinoCodigo === 'L';
+  if (esLaminado) {
+    // Laminado: incluir Jonathan como CC (no destinatario principal porque la coordinación principal es Agustín)
+    const lam = (p.laminadoIdx !== undefined) ? (DATA.catalogos.laminados || [])[p.laminadoIdx] : null;
+    const refLam = lam?.cliente ? ` [${lam.cliente}]` : '';
+    subject = `🔗 Nuevo pedido LAMINADO ${p.cliente}${p.oc?' · '+p.oc:''}${refLam} — ${fmtNum(p.kgPedidos)} kg`;
+    if (DATA.config.emailJonathan) ccList.push(DATA.config.emailJonathan.trim());
+  } else {
+    subject = `Nuevo pedido ${p.cliente}${p.oc?' · '+p.oc:''} — ${p.ancho||'-'}×${p.espesor||'-'} · ${fmtNum(p.kgPedidos)} kg${p.conoTipo==='3'?' · CONO 3':''}`;
+    // Si es cono 3, agregar CC a Jonathan
+    if (p.conoTipo === '3' && DATA.config.emailJonathan) ccList.push(DATA.config.emailJonathan.trim());
+  }
   const body = buildOCBody(p);
-  // Si cono 3, agregar CC a Jonathan
-  const ccJonathan = (p.conoTipo === '3' && DATA.config.emailJonathan) ? DATA.config.emailJonathan.trim() : '';
   let href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`;
-  if (ccJonathan) href += `&cc=${encodeURIComponent(ccJonathan)}`;
+  if (ccList.length) href += `&cc=${encodeURIComponent(ccList.join(','))}`;
   href += `&body=${encodeURIComponent(body)}`;
   window.location.href = href;
 }
