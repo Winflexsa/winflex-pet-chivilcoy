@@ -599,7 +599,10 @@ async function loadData() {
       if (r.ok) {
         const j = await r.json();
         DATA = migrateLegacyData(j.record);
-        pcRecalcularTodosKgReales(DATA);
+        // Set de pedidos que tienen bobinas en el remoto → solo esos se recalculan.
+        // Los que no tienen bobinas mantienen su kgReales histórico (cargado manualmente desde Excel).
+        const pedConBobinas = new Set((DATA.producciones || []).map(b => b.pedidoId).filter(Boolean));
+        pcRecalcularTodosKgReales(DATA, pedConBobinas);
         localStorage.setItem(LS_KEY, JSON.stringify(DATA));
         setSyncStatus('Sincronizado', 'ok');
         return DATA;
@@ -649,7 +652,11 @@ function mergeArrayPorId(remoteArr, localArr) {
 // Recalcula kgReales SOLO de pedidos que tengan bobinas cargadas en producciones.
 // Si un pedido no tiene producciones cargadas (ej. histórico viejo con kgReales manual del Excel),
 // se respeta su valor existente. Esto evita pisar valores históricos.
-function pcRecalcularTodosKgReales(d) {
+//
+// pedidosQueTuvieronBobinas (opcional): set de IDs de pedidos que SÍ tuvieron bobinas en algún momento
+// (remoto o local). Si el pedido está en este set pero ahora no tiene bobinas, significa que TODAS
+// fueron borradas en la tablet → kgReales debe ir a 0 (no quedar con el valor stale del remoto).
+function pcRecalcularTodosKgReales(d, pedidosQueTuvieronBobinas) {
   if (!d || !d.pedidos) return;
   const totales = {};
   (d.producciones || []).forEach(b => {
@@ -657,10 +664,14 @@ function pcRecalcularTodosKgReales(d) {
     totales[b.pedidoId] = (totales[b.pedidoId] || 0) + (+b.kg || 0);
   });
   d.pedidos.forEach(p => {
-    // Solo si HAY producciones cargadas para este pedido (no pisar el manual)
     if (totales[p.id] !== undefined) {
+      // Hay bobinas para este pedido → sumar
       p.kgReales = Math.round(totales[p.id] * 100) / 100;
+    } else if (pedidosQueTuvieronBobinas && pedidosQueTuvieronBobinas.has(p.id)) {
+      // El pedido tenía bobinas (en remoto o local) y ahora no tiene ninguna → todas borradas → 0
+      p.kgReales = 0;
     }
+    // Si nunca tuvo bobinas (totales undefined Y no está en el set), dejar el valor histórico tal cual.
   });
 }
 
@@ -780,8 +791,10 @@ async function saveData() {
     merged.producciones = remote.producciones || [];
     merged.registrosProduccion = remote.registrosProduccion || [];
 
-    // 3) Recalcular kgReales de TODOS los pedidos a partir del array remoto
-    pcRecalcularTodosKgReales(merged);
+    // 3) Recalcular kgReales de TODOS los pedidos a partir del array remoto.
+    // Solo afecta a pedidos con bobinas en remoto; los históricos (sin producciones) quedan intactos.
+    const pedConBobinasSV = new Set((merged.producciones || []).map(b => b.pedidoId).filter(Boolean));
+    pcRecalcularTodosKgReales(merged, pedConBobinasSV);
 
     merged.lastUpdate = new Date().toISOString();
     console.log('[PC saveData] merged. Final prod:', merged.producciones.length, 'reg:', merged.registrosProduccion.length);
@@ -830,8 +843,14 @@ async function silentReloadPC() {
     }
     // Re-aplicar migración para asegurar estructuras nuevas (transportistas, remitos, etc)
     migrateLegacyData(merged);
-    // Recalcular kgReales SIEMPRE (importante después de borrados en tablet)
-    pcRecalcularTodosKgReales(merged);
+    // Recalcular kgReales SIEMPRE (importante después de borrados en tablet).
+    // pedidosAfectadosSR = pedidos que tenían bobinas en local O las tienen en remoto. Si después
+    // del merge no quedan bobinas para esa OP, kgReales va a 0 (todas borradas en la tablet).
+    const pedidosAfectadosSR = new Set([
+      ...((DATA.producciones) || []).map(b => b.pedidoId).filter(Boolean),
+      ...((remote.producciones) || []).map(b => b.pedidoId).filter(Boolean)
+    ]);
+    pcRecalcularTodosKgReales(merged, pedidosAfectadosSR);
     // Detectar si hubo cambios reales antes de re-renderizar
     const prodCountBefore = (DATA.producciones || []).length;
     const regCountBefore = (DATA.registrosProduccion || []).length;

@@ -1606,8 +1606,14 @@ async function loadData() {
           ...(remote.producciones || []).map(b => b.id),
           ...(remote.registrosProduccion || []).map(r => r.id)
         ]);
-        // Recalcular kgReales por si el remoto tenía un valor desactualizado
-        recalcularTodosKgReales(DATA);
+        // Recalcular kgReales por si el remoto tenía un valor desactualizado.
+        // Pasar el set de pedidos que tenían bobinas en remoto o local — si ahora no tienen,
+        // significa que se borraron todas y kgReales debe quedar en 0.
+        const pedidosConBobinasAntes = new Set([
+          ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
+          ...((localData && localData.producciones) || []).map(b => b.pedidoId).filter(Boolean)
+        ]);
+        recalcularTodosKgReales(DATA, pedidosConBobinasAntes);
         localStorage.setItem(LS_KEY, JSON.stringify(DATA));
         setSync('Sincronizado', 'ok');
         return DATA;
@@ -1637,8 +1643,9 @@ async function loadData() {
 // - Item en ambos → gana el de timestamp más reciente
 // - Item borrado localmente (en DELETED) → se excluye del merge
 // ============================================================
-// Recalcula kgReales SOLO de pedidos con producciones cargadas (no pisar manuales históricos)
-function recalcularTodosKgReales(d) {
+// Recalcula kgReales SOLO de pedidos con producciones cargadas (no pisar manuales históricos),
+// PERO si un pedido tenía bobinas y ahora no tiene ninguna (todas borradas), poner kgReales=0.
+function recalcularTodosKgReales(d, pedidosQueTuvieronBobinas) {
   if (!d || !d.pedidos) return;
   const totales = {};
   (d.producciones || []).forEach(b => {
@@ -1648,7 +1655,12 @@ function recalcularTodosKgReales(d) {
   d.pedidos.forEach(p => {
     if (totales[p.id] !== undefined) {
       p.kgReales = Math.round(totales[p.id] * 100) / 100;
+    } else if (pedidosQueTuvieronBobinas && pedidosQueTuvieronBobinas.has(p.id)) {
+      // El pedido tenía bobinas (local o remoto) y ahora no tiene ninguna → todas borradas → kgReales = 0
+      p.kgReales = 0;
     }
+    // Si totales[p.id] es undefined y el pedido NUNCA tuvo bobinas, dejamos el kgReales tal cual
+    // (puede ser un valor histórico cargado manualmente desde el Excel)
   });
 }
 
@@ -1734,12 +1746,13 @@ async function saveData() {
 
     // 2c) Recalcular kgReales de TODOS los pedidos a partir del array MERGED
     // (no solo afectados — para garantizar consistencia tras borrados)
-    recalcularTodosKgReales(merged);
-    // Si mi local ya marcó "En producción" pero el remoto está en OP, propagar
+    // pedidosAfectados = los que tenían bobinas en remoto o local. Si ahora no tienen, kgReales=0.
     const pedidosAfectados = new Set([
-      ...(remote.producciones || []).map(b => b.pedidoId),
-      ...(DATA.producciones || []).map(b => b.pedidoId)
+      ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
+      ...(DATA.producciones || []).map(b => b.pedidoId).filter(Boolean)
     ]);
+    recalcularTodosKgReales(merged, pedidosAfectados);
+    // Si mi local ya marcó "En producción" pero el remoto está en OP, propagar
     pedidosAfectados.forEach(pid => {
       const p = (merged.pedidos || []).find(x => x.id === pid);
       if (!p) return;
@@ -1885,8 +1898,13 @@ async function silentReload() {
       ...(remote.registrosProduccion || []).map(r => r.id)
     ]);
     // Recalcular kgReales de todos los pedidos a partir del merged
-    // (importante después de borrar bobinas — el remoto puede tener kgReales viejo)
-    recalcularTodosKgReales(DATA);
+    // (importante después de borrar bobinas — el remoto puede tener kgReales viejo).
+    // Pasamos el set de pedidos afectados para que los que se quedaron sin bobinas vayan a 0.
+    const pedidosAfectadosSR = new Set([
+      ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
+      ...(DATA.producciones || []).map(b => b.pedidoId).filter(Boolean)
+    ]);
+    recalcularTodosKgReales(DATA, pedidosAfectadosSR);
     if (!document.getElementById('screenOpDetail').classList.contains('hidden')) {
       renderOpDetail();
     } else if (!document.getElementById('screenOps').classList.contains('hidden')) {
