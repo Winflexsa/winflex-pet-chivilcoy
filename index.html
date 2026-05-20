@@ -521,6 +521,8 @@ function migrateLegacyData(d) {
   if (!d.config.diametroTubo) d.config.diametroTubo = 152;
   if (!d.config.logoBase64) d.config.logoBase64 = '';
   if (!d.config.pinFabrica) d.config.pinFabrica = '1234'; // PIN general para abrir la tablet
+  // Horario de turnos (auto-detección en tablet)
+  if (!d.config.horarioTurnoDia) d.config.horarioTurnoDia = { inicio: 6, fin: 18 };  // 6am a 6pm = día
   // Registros de producción (parámetros horarios - planilla WEC001)
   if (!d.registrosProduccion) d.registrosProduccion = [];
   if (migrated > 0) console.log(`Migrated ${migrated} legacy fields`);
@@ -562,30 +564,153 @@ async function loadData() {
   return DATA;
 }
 
+// ============================================================
+// MERGE INTELIGENTE para producciones y registros (igual que tablet)
+// Evita pisar items cargados desde la tablet
+// ============================================================
+function mergeArrayPorId(remoteArr, localArr) {
+  const out = new Map();
+  (remoteArr || []).forEach(item => {
+    if (item && item.id) out.set(item.id, item);
+  });
+  (localArr || []).forEach(item => {
+    if (!item || !item.id) return;
+    const existing = out.get(item.id);
+    if (!existing) {
+      out.set(item.id, item);
+    } else {
+      const tsR = existing.timestamp || '';
+      const tsL = item.timestamp || '';
+      out.set(item.id, tsL >= tsR ? item : existing);
+    }
+  });
+  return [...out.values()].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+}
+
 async function saveData() {
   DATA.lastUpdate = new Date().toISOString();
   localStorage.setItem(LS_KEY, JSON.stringify(DATA));
   isDirty = true;
-  setSyncStatus('Guardado local · pendiente sync', 'syncing');
+  setSyncStatus('Guardando...', 'syncing');
 
   const creds = getCredentials();
   if (!creds) { setSyncStatus('Sin credenciales (solo local)', 'error'); return; }
 
   try {
+    // 1) GET fresh para no pisar lo que cargó la tablet
+    const fresh = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, {
+      headers: { 'X-Master-Key': creds.masterKey }
+    });
+    if (!fresh.ok) { setSyncStatus('Error fetch (HTTP ' + fresh.status + ')', 'error'); return; }
+    const j = await fresh.json();
+    const remote = j.record;
+    console.log('[PC saveData] GET ok. Remote prod:', (remote.producciones||[]).length, 'reg:', (remote.registrosProduccion||[]).length, 'Local prod:', (DATA.producciones||[]).length, 'reg:', (DATA.registrosProduccion||[]).length);
+
+    // 2) Construir el payload final:
+    //    - pedidos, catalogos, config, costosMensuales → vienen del LOCAL (la PC los maneja)
+    //    - producciones y registrosProduccion → MERGE por ID (preservar cargas de tablet)
+    const merged = JSON.parse(JSON.stringify(DATA));  // base local
+    merged.producciones = mergeArrayPorId(
+      remote.producciones || [],
+      DATA.producciones || []
+    );
+    merged.registrosProduccion = mergeArrayPorId(
+      remote.registrosProduccion || [],
+      DATA.registrosProduccion || []
+    );
+
+    // 3) Recalcular kgReales de pedidos a partir del array MERGED
+    const pedidosAfectados = new Set([
+      ...(remote.producciones || []).map(b => b.pedidoId),
+      ...(DATA.producciones || []).map(b => b.pedidoId)
+    ]);
+    pedidosAfectados.forEach(pid => {
+      const p = (merged.pedidos || []).find(x => x.id === pid);
+      if (!p) return;
+      const total = merged.producciones
+        .filter(b => b.pedidoId === pid)
+        .reduce((s, b) => s + (+b.kg || 0), 0);
+      p.kgReales = Math.round(total * 100) / 100;
+    });
+
+    merged.lastUpdate = new Date().toISOString();
+    console.log('[PC saveData] merged. Final prod:', merged.producciones.length, 'reg:', merged.registrosProduccion.length);
+
     const headers = { 'Content-Type': 'application/json', 'X-Master-Key': creds.masterKey };
     const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}`, {
-      method: 'PUT', headers, body: JSON.stringify(DATA)
+      method: 'PUT', headers, body: JSON.stringify(merged)
     });
     if (r.ok) {
+      DATA = merged;
+      localStorage.setItem(LS_KEY, JSON.stringify(DATA));
       isDirty = false;
       setSyncStatus('Sincronizado', 'ok');
+      console.log('[PC saveData] PUT ok');
     } else {
-      setSyncStatus('Error sync', 'error');
+      setSyncStatus('Error sync (HTTP ' + r.status + ')', 'error');
     }
   } catch (e) {
+    console.error('[PC saveData] error:', e);
     setSyncStatus('Sin conexión', 'error');
   }
 }
+
+// Auto-refresh silencioso cada 20s para que la PC vea lo que sube la tablet
+async function silentReloadPC() {
+  if (document.querySelector('.modal-bg')) return; // no si hay modal abierto
+  const creds = getCredentials();
+  if (!creds) return;
+  try {
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, {
+      headers: { 'X-Master-Key': creds.masterKey }
+    });
+    if (!r.ok) return;
+    const j = await r.json();
+    const remote = j.record;
+    // Merge: pedidos/catálogos del local (los manejo yo), producciones/registros del merge
+    const merged = JSON.parse(JSON.stringify(DATA));
+    merged.producciones = mergeArrayPorId(
+      remote.producciones || [],
+      DATA.producciones || []
+    );
+    merged.registrosProduccion = mergeArrayPorId(
+      remote.registrosProduccion || [],
+      DATA.registrosProduccion || []
+    );
+    // Si la PC no estaba editando pedidos, traer también lo que cambió remoto en pedidos
+    // (heurística: si la PC no es dirty, refrescar pedidos del remoto)
+    if (!isDirty) {
+      merged.pedidos = remote.pedidos || merged.pedidos;
+      merged.catalogos = remote.catalogos || merged.catalogos;
+      merged.config = remote.config || merged.config;
+    }
+    // Recalcular kgReales
+    const pedsAfect = new Set([
+      ...(remote.producciones || []).map(b => b.pedidoId),
+      ...(DATA.producciones || []).map(b => b.pedidoId)
+    ]);
+    pedsAfect.forEach(pid => {
+      const p = (merged.pedidos || []).find(x => x.id === pid);
+      if (!p) return;
+      const total = merged.producciones
+        .filter(b => b.pedidoId === pid)
+        .reduce((s, b) => s + (+b.kg || 0), 0);
+      p.kgReales = Math.round(total * 100) / 100;
+    });
+    // Detectar si hubo cambios reales antes de re-renderizar
+    const prodCountBefore = (DATA.producciones || []).length;
+    const regCountBefore = (DATA.registrosProduccion || []).length;
+    const prodCountAfter = merged.producciones.length;
+    const regCountAfter = merged.registrosProduccion.length;
+    DATA = merged;
+    localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+    if (prodCountAfter !== prodCountBefore || regCountAfter !== regCountBefore) {
+      console.log('[PC silentReload] Cambios detectados. Prod:', prodCountBefore, '→', prodCountAfter, 'Reg:', regCountBefore, '→', regCountAfter);
+      render();
+    }
+  } catch (e) { /* silent */ }
+}
+setInterval(silentReloadPC, 20000);
 
 async function syncNow() {
   await saveData();
@@ -3070,6 +3195,23 @@ function renderConfig() {
     </div>
 
     <div class="detail-section">
+      <h3>🕐 Horarios de turno (auto-detección en tablet)</h3>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:14px">La tablet detecta automáticamente día o noche según la hora en que se hace login. Si la hora está entre estos rangos, el turno arranca como DÍA. Fuera de ese rango, NOCHE.</p>
+      <div class="detail-grid">
+        <div class="detail-field">
+          <span class="lbl">☀️ Turno DÍA — desde (hora)</span>
+          <input type="number" id="cf_turnoDiaInicio" min="0" max="23" value="${(c.horarioTurnoDia && c.horarioTurnoDia.inicio) || 6}" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:16px;font-family:monospace;margin-top:4px">
+        </div>
+        <div class="detail-field">
+          <span class="lbl">🌙 Turno DÍA — hasta (hora)</span>
+          <input type="number" id="cf_turnoDiaFin" min="0" max="23" value="${(c.horarioTurnoDia && c.horarioTurnoDia.fin) || 18}" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:16px;font-family:monospace;margin-top:4px">
+        </div>
+      </div>
+      <div class="hint" style="font-size:11px;color:#9ca3af;margin-top:8px">Default: turno día 6 a 18 hs (6am-6pm), turno noche el resto. El operario puede cambiar manualmente el turno si la auto-detección falla.</div>
+      <button class="btn btn-pri" style="margin-top:12px" onclick="saveHorarioTurnos()">💾 Guardar horarios</button>
+    </div>
+
+    <div class="detail-section">
       <h3>📧 Email de Agustín (para mail de OC ingresada)</h3>
       <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Cuando entra un pedido, se le envía un mail a Agustín avisándole para que revise y emita la OP.</p>
       <div style="display:flex;gap:8px;align-items:center">
@@ -3153,6 +3295,18 @@ async function savePINs() {
   DATA.config.pinFabrica = (document.getElementById('cf_pinFabrica').value || '1234').trim();
   await saveData();
   toast('PINs guardados', 'success');
+}
+
+async function saveHorarioTurnos() {
+  const inicio = +document.getElementById('cf_turnoDiaInicio').value;
+  const fin = +document.getElementById('cf_turnoDiaFin').value;
+  if (isNaN(inicio) || isNaN(fin) || inicio < 0 || inicio > 23 || fin < 0 || fin > 23) {
+    alert('Las horas deben estar entre 0 y 23');
+    return;
+  }
+  DATA.config.horarioTurnoDia = { inicio, fin };
+  await saveData();
+  toast('Horarios de turno guardados', 'success');
 }
 
 async function saveEmailJonathan() {
