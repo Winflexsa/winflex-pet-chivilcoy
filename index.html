@@ -64,7 +64,7 @@ tbody tr:hover { background: #f9fafb; }
 .estado { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .estado-FINALIZADO { background: #d1fae5; color: #065f46; }
 .estado-PENDIENTE { background: #fef3c7; color: #92400e; }
-.estado-PARCIAL { background: #dcfce7; color: #15803d; }
+.estado-PARCIAL { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
 .estado-VENCIDO { background: #fee2e2; color: #991b1b; }
 
 /* Workflow badges */
@@ -498,6 +498,17 @@ function migrateLegacyData(d) {
     {nombre: 'Lamina PET/PE', codigo: 'PETPE'}
   ];
   if (!d.catalogos.operarios) d.catalogos.operarios = [];
+  // Asegurar que Agustín Ruiz Guiñazú esté en el catálogo (PIN 9999 para tablet)
+  const tieneAgustin = d.catalogos.operarios.some(o => o.nombre && o.nombre.toLowerCase().includes('agust'));
+  if (!tieneAgustin) {
+    d.catalogos.operarios.push({
+      nombre: 'Agustín Ruiz Guiñazú',
+      legajo: '0',
+      ingreso: '',
+      pin: '9999',
+      rol: 'supervisor'
+    });
+  }
   if (!d.catalogos.tolvas) d.catalogos.tolvas = ['B1','B2','B3','B4','B5'];
   // Forzar destinos al nuevo formato T/L/V
   d.catalogos.destinos = [
@@ -588,7 +599,9 @@ function mergeArrayPorId(remoteArr, localArr) {
   return [...out.values()].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
 }
 
-// Recalcula kgReales de TODOS los pedidos a partir de DATA.producciones
+// Recalcula kgReales SOLO de pedidos que tengan bobinas cargadas en producciones.
+// Si un pedido no tiene producciones cargadas (ej. histórico viejo con kgReales manual del Excel),
+// se respeta su valor existente. Esto evita pisar valores históricos.
 function pcRecalcularTodosKgReales(d) {
   if (!d || !d.pedidos) return;
   const totales = {};
@@ -597,8 +610,53 @@ function pcRecalcularTodosKgReales(d) {
     totales[b.pedidoId] = (totales[b.pedidoId] || 0) + (+b.kg || 0);
   });
   d.pedidos.forEach(p => {
-    p.kgReales = Math.round((totales[p.id] || 0) * 100) / 100;
+    // Solo si HAY producciones cargadas para este pedido (no pisar el manual)
+    if (totales[p.id] !== undefined) {
+      p.kgReales = Math.round(totales[p.id] * 100) / 100;
+    }
   });
+}
+
+// Mapeo de kgReales históricos desde el Excel original (Produccion_PET-_Chivilcoy.xlsx)
+// Indexado por código de partida (campo "op" o "partida")
+const KG_REALES_HISTORICO = {"1126PC-1VX": 1775.0, "23225SCN-1VX": 1170.0, "28825S-1V2": 268.0, "1026C1-3V2": 1847.0, "1626S-1V2": 1106.0, "2826S-1V2": 1105.0, "1326AZ-1V1": 525.0, "1426AZ-2V2": 318.0, "29225PC-1VX": 3131.0, "726S-1VX": 459.0, "926S-1V2": 1664.0, "226S-1VX": 1208.0, "326S-1V2": 1361.0, "426S-1V2": 630.0, "126S-1VX": 1232.0, "826S-1V2": 781.0, "1226S-1VX": 561.0, "626S-1T2": 5140.0, "526S-1T1": 5735.0, "2126C1-3VX": 525.0, "3526SCN-1V2": 551.0, "3726SCN-1V2": 835.0, "4026S-1VX": 1082.0, "4726S-1VX": 550.0, "6523SCN-1VX": 640.0, "2326S-1V2": 1074.0, "2026PC-1VX": 2362.0, "1926S-1V2": 2198.0, "3026S-1V2": 2200.0, "1526S-1T1": 2876.0, "1726S-1T1": 2768.0, "1826S-1T2": 4646.0, "2926S-1V2": 1040.0, "2726S-1V2": 1364.0, "4626S-1V2": 313.0, "2426S-1V2": 208.0, "2526S-1V2": 212.0, "2626S-1V2": 210.0, "3326S-1V2": 2054.0, "3426S-1VX": 2891.0, "2226S-1T2": 4735.0, "3226S-1T2": 5664.0, "3126S-1T1": 4575.0, "3626SCN-1V2": 1109.0, "5826S-1VX": 1106.0, "3826S-1VX": 4053.0, "3926C1-3VX": 871.0, "5626SB1V2": 537.0, "5226S-1V2": 1103.0, "5426S-1V2": 559.0, "5126S-1VX": 1162.0, "4826S-1V2": 3669.0, "5026S-1V2": 309.0, "4526S-1V2": 311.0, "5926PC-1V2": 1038.0, "4126S-1VX": 546.0, "5326S-1V2": 315.0, "4226S-1T2": 5354.0, "4426S-1T1": 4940.0, "5726S-1VX": 2205.0, "6226S-1VX": 203.0, "4926S-1T1": 4938.0, "6026S-1V2": 1106.0, "5526S-1V2": 1107.0, "6326S-1VX": 1218.0, "6826S1V2": 536.0, "6126S-1V2": 560.0, "29425S-1VX": 10417.0, "4326S-1V2": 6377.0, "6426S-1VX": 607.0, "7026S-1V1": 517.0, "7326SB-1V2": 579.0, "6626S-1T2": 9112.0, "7526S-1VX": 2241.0, "8226S-1V2": 527.0, "7226S-1V2": 521.0, "7426SB-1V2": 531.0, "7126S-1V2": 2091.0, "6726S-1VX": 546.0, "6926S-1T1": 2970.0, "7626S-1VX": 5386.0, "8326S-1V2": 331.0, "7726S-1VX": 2194.0, "9426SCN-1VX": 908.0, "7826S-1VX": 2847.0, "8526S-1VX": 1355.0, "9326SCN-1V2": 1143.0, "8026S-1T2": 4939.0, "7926S-1VX": 4402.0, "8126S-1T2": 5143.0, "8426S-1VX": 849.0, "8626S-1VX": 5739.0, "8726S-1VX": 5857.0, "8826S-1VX": 1763.0, "9226S-1V2": 1116.0, "8926S-1VX": 7736.0, "9026S-1T1": 7802.0, "9126S-1T2": 3915.0, "9526S-1V2": 2205.0, "9626S-1V1": 15408.0, "9726PC-1VX": 14777.0, "9826S-1V2": 561.0, "9926S-1V2": 569.0, "10226S-1V2": 528.0, "10126S-1V2": 1070.0, "10326S-1V1": 263.0, "10026S-1V2": 513.0, "10526S-1VX": 613.0, "10626S-1T1": 2670.0};
+
+async function restaurarKgRealesHistoricos() {
+  const st = document.getElementById('restaurarStatus');
+  if (!DATA || !DATA.pedidos) { st.innerHTML = '<span style="color:#dc2626">No hay datos cargados</span>'; return; }
+  if (!confirm('¿Restaurar kg producidos históricos desde el Excel original?\n\nSolo se modifican pedidos que actualmente tienen kgReales=0 y SIN bobinas cargadas en la tablet. Esto NO toca los pedidos con producción cargada después del lanzamiento de la app.\n\n¿Continuar?')) return;
+
+  // Set de pedidoIds con bobinas cargadas (esos NO se tocan)
+  const conBobinas = new Set((DATA.producciones || []).map(b => b.pedidoId));
+
+  let actualizados = 0;
+  let yaTenia = 0;
+  let noEncontrado = 0;
+
+  DATA.pedidos.forEach(p => {
+    // Saltear pedidos que tienen bobinas cargadas (esos están bien calculados)
+    if (conBobinas.has(p.id)) return;
+    // Si el pedido ya tiene un kgReales > 0, no tocar (manual o ya restaurado)
+    if (p.kgReales && +p.kgReales > 0) { yaTenia++; return; }
+    // Buscar por código de partida (campo "op")
+    const codigo = p.op || p.partida;
+    if (!codigo) { noEncontrado++; return; }
+    const histKg = KG_REALES_HISTORICO[codigo];
+    if (histKg !== undefined && histKg > 0) {
+      p.kgReales = histKg;
+      actualizados++;
+    } else {
+      noEncontrado++;
+    }
+  });
+
+  st.innerHTML = `<span style="color:#16a34a;font-weight:600">✓ ${actualizados} pedidos restaurados</span> · <span style="color:#6b7280">${yaTenia} ya tenían valor · ${noEncontrado} sin match</span>`;
+
+  if (actualizados > 0) {
+    await saveData();
+    render();
+    toast(`Restaurados ${actualizados} kgReales históricos`, 'success');
+  }
 }
 
 async function saveData() {
@@ -3816,6 +3874,13 @@ function renderConfig() {
       </div>
       <div class="hint" style="font-size:11px;color:#9ca3af;margin-top:8px">Default: turno día 6 a 18 hs (6am-6pm), turno noche el resto. El operario puede cambiar manualmente el turno si la auto-detección falla.</div>
       <button class="btn btn-pri" style="margin-top:12px" onclick="saveHorarioTurnos()">💾 Guardar horarios</button>
+    </div>
+
+    <div class="detail-section" style="border:2px solid #fbbf24;background:#fffbeb">
+      <h3>🛠️ Restaurar kg producidos históricos</h3>
+      <p style="font-size:13px;color:#92400e;margin-bottom:10px">Si los pedidos viejos perdieron sus kg producidos (aparecen en 0), apretá este botón para restaurarlos desde el Excel original. Solo afecta a pedidos SIN bobinas cargadas en la tablet — los que ya tienen producciones cargadas no se tocan.</p>
+      <button class="btn btn-pri" style="background:#d97706" onclick="restaurarKgRealesHistoricos()">🛠️ Restaurar kgReales desde Excel original (109 pedidos)</button>
+      <div id="restaurarStatus" style="margin-top:10px;font-size:13px"></div>
     </div>
 
     <div class="detail-section">

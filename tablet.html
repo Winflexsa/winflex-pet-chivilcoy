@@ -1637,8 +1637,7 @@ async function loadData() {
 // - Item en ambos → gana el de timestamp más reciente
 // - Item borrado localmente (en DELETED) → se excluye del merge
 // ============================================================
-// Recalcula kgReales de TODOS los pedidos del DATA a partir de DATA.producciones
-// Usarlo después de cualquier merge donde las bobinas pueden haber cambiado
+// Recalcula kgReales SOLO de pedidos con producciones cargadas (no pisar manuales históricos)
 function recalcularTodosKgReales(d) {
   if (!d || !d.pedidos) return;
   const totales = {};
@@ -1647,7 +1646,9 @@ function recalcularTodosKgReales(d) {
     totales[b.pedidoId] = (totales[b.pedidoId] || 0) + (+b.kg || 0);
   });
   d.pedidos.forEach(p => {
-    p.kgReales = Math.round((totales[p.id] || 0) * 100) / 100;
+    if (totales[p.id] !== undefined) {
+      p.kgReales = Math.round(totales[p.id] * 100) / 100;
+    }
   });
 }
 
