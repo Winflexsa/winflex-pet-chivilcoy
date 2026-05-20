@@ -10211,9 +10211,6 @@ function enviarMailRemito(remitoId) {
   });
   body += `\n══ TOTAL ══\n`;
   body += `${Math.round(r.totalKg || 0)} kg · ${r.totalPallets || 0} pallets · ${(r.bobinaIds||[]).length} bobinas\n\n`;
-  body += `IMPORTANTE: adjuntar al mail los 2 PDFs descargados:\n`;
-  body += `  • Remito_${nroFormat}_${(r.destinatario?.nombre||'').replace(/[^a-zA-Z0-9]/g,'_').substring(0,15)}.pdf\n`;
-  body += `  • Detalle_envio_${(r.puntoVenta||'0001')}-${(r.nroRemito||'').toString().padStart(4,'0')}_${fmtFecha(r.fecha).replace(/\//g,'-')}.pdf\n\n`;
   body += `Saludos,\n${r.emisor || 'Agustín'}\nWinflex S.A. - Planta Chivilcoy`;
 
   const url = `mailto:${destinatarios}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -10226,7 +10223,7 @@ function enviarMailRemito(remitoId) {
   // Abrir el cliente de mail
   window.location.href = url;
 
-  toast('Abriendo cliente de mail. Acordate de adjuntar los 2 PDFs', 'success');
+  toast('Abriendo cliente de mail con resumen', 'success');
 }
 
 </script>
