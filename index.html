@@ -205,6 +205,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
     <button class="tab" data-tab="pedidos">📋 Pedidos</button>
     <button class="tab" data-tab="consulta">🔍 Consulta</button>
     <button class="tab" data-tab="producciones">⚙️ Producciones</button>
+    <button class="tab" data-tab="remitos">📦 Remitos</button>
     <button class="tab" data-tab="mp">📦 Materia Prima</button>
     <button class="tab" data-tab="catalogos">📚 Catálogos</button>
     <button class="tab" data-tab="config">⚙️ Configuración</button>
@@ -319,6 +320,14 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
       <div class="panel">
         <div class="panel-h"><h2>Producciones diarias (cargadas por operarios desde tablet)</h2></div>
         <div id="produccionesContent"></div>
+      </div>
+    </div>
+
+    <!-- REMITOS -->
+    <div id="tab-remitos" class="tab-content hidden">
+      <div class="panel">
+        <div class="panel-h"><h2>Remitos y despachos</h2></div>
+        <div id="remitosContent"></div>
       </div>
     </div>
 
@@ -509,6 +518,25 @@ function migrateLegacyData(d) {
       rol: 'supervisor'
     });
   }
+  // Remitos: catálogo de transportistas y storage
+  if (!d.catalogos.transportistas) {
+    d.catalogos.transportistas = [
+      { nombre: 'Transporte Aguirre', cuit: '', domicilio: '' },
+      { nombre: 'Transporte Monti SA', cuit: '', domicilio: 'Lanús' },
+      { nombre: 'Expreso Chivilcoy', cuit: '', domicilio: 'Chivilcoy' }
+    ];
+  }
+  if (!d.remitos) d.remitos = [];
+  if (!d.config.proximoNroRemito) d.config.proximoNroRemito = 1235; // siguiente al ejemplo 1234
+  if (!d.config.puntoVentaRemito) d.config.puntoVentaRemito = '0001';
+  // Destinatario por default (Lanús)
+  if (!d.config.remitoDestinatario) {
+    d.config.remitoDestinatario = {
+      nombre: 'Winflex S.A.',
+      domicilio: 'Pichincha 3369, Lanús, Bs As, Argentina',
+      cuit: '30-61048777-3'
+    };
+  }
   if (!d.catalogos.tolvas) d.catalogos.tolvas = ['B1','B2','B3','B4','B5'];
   // Forzar destinos al nuevo formato T/L/V
   d.catalogos.destinos = [
@@ -620,6 +648,53 @@ function pcRecalcularTodosKgReales(d) {
 // Mapeo de kgReales históricos desde el Excel original (Produccion_PET-_Chivilcoy.xlsx)
 // Indexado por código de partida (campo "op" o "partida")
 const KG_REALES_HISTORICO = {"1126PC-1VX": 1775.0, "23225SCN-1VX": 1170.0, "28825S-1V2": 268.0, "1026C1-3V2": 1847.0, "1626S-1V2": 1106.0, "2826S-1V2": 1105.0, "1326AZ-1V1": 525.0, "1426AZ-2V2": 318.0, "29225PC-1VX": 3131.0, "726S-1VX": 459.0, "926S-1V2": 1664.0, "226S-1VX": 1208.0, "326S-1V2": 1361.0, "426S-1V2": 630.0, "126S-1VX": 1232.0, "826S-1V2": 781.0, "1226S-1VX": 561.0, "626S-1T2": 5140.0, "526S-1T1": 5735.0, "2126C1-3VX": 525.0, "3526SCN-1V2": 551.0, "3726SCN-1V2": 835.0, "4026S-1VX": 1082.0, "4726S-1VX": 550.0, "6523SCN-1VX": 640.0, "2326S-1V2": 1074.0, "2026PC-1VX": 2362.0, "1926S-1V2": 2198.0, "3026S-1V2": 2200.0, "1526S-1T1": 2876.0, "1726S-1T1": 2768.0, "1826S-1T2": 4646.0, "2926S-1V2": 1040.0, "2726S-1V2": 1364.0, "4626S-1V2": 313.0, "2426S-1V2": 208.0, "2526S-1V2": 212.0, "2626S-1V2": 210.0, "3326S-1V2": 2054.0, "3426S-1VX": 2891.0, "2226S-1T2": 4735.0, "3226S-1T2": 5664.0, "3126S-1T1": 4575.0, "3626SCN-1V2": 1109.0, "5826S-1VX": 1106.0, "3826S-1VX": 4053.0, "3926C1-3VX": 871.0, "5626SB1V2": 537.0, "5226S-1V2": 1103.0, "5426S-1V2": 559.0, "5126S-1VX": 1162.0, "4826S-1V2": 3669.0, "5026S-1V2": 309.0, "4526S-1V2": 311.0, "5926PC-1V2": 1038.0, "4126S-1VX": 546.0, "5326S-1V2": 315.0, "4226S-1T2": 5354.0, "4426S-1T1": 4940.0, "5726S-1VX": 2205.0, "6226S-1VX": 203.0, "4926S-1T1": 4938.0, "6026S-1V2": 1106.0, "5526S-1V2": 1107.0, "6326S-1VX": 1218.0, "6826S1V2": 536.0, "6126S-1V2": 560.0, "29425S-1VX": 10417.0, "4326S-1V2": 6377.0, "6426S-1VX": 607.0, "7026S-1V1": 517.0, "7326SB-1V2": 579.0, "6626S-1T2": 9112.0, "7526S-1VX": 2241.0, "8226S-1V2": 527.0, "7226S-1V2": 521.0, "7426SB-1V2": 531.0, "7126S-1V2": 2091.0, "6726S-1VX": 546.0, "6926S-1T1": 2970.0, "7626S-1VX": 5386.0, "8326S-1V2": 331.0, "7726S-1VX": 2194.0, "9426SCN-1VX": 908.0, "7826S-1VX": 2847.0, "8526S-1VX": 1355.0, "9326SCN-1V2": 1143.0, "8026S-1T2": 4939.0, "7926S-1VX": 4402.0, "8126S-1T2": 5143.0, "8426S-1VX": 849.0, "8626S-1VX": 5739.0, "8726S-1VX": 5857.0, "8826S-1VX": 1763.0, "9226S-1V2": 1116.0, "8926S-1VX": 7736.0, "9026S-1T1": 7802.0, "9126S-1T2": 3915.0, "9526S-1V2": 2205.0, "9626S-1V1": 15408.0, "9726PC-1VX": 14777.0, "9826S-1V2": 561.0, "9926S-1V2": 569.0, "10226S-1V2": 528.0, "10126S-1V2": 1070.0, "10326S-1V1": 263.0, "10026S-1V2": 513.0, "10526S-1VX": 613.0, "10626S-1T1": 2670.0};
+
+async function saveRemitoConfig() {
+  if (!DATA.config.remitoDestinatario) DATA.config.remitoDestinatario = {};
+  DATA.config.remitoDestinatario.nombre = document.getElementById('cf_destNombre').value.trim() || 'Winflex S.A.';
+  DATA.config.remitoDestinatario.cuit = document.getElementById('cf_destCuit').value.trim();
+  DATA.config.remitoDestinatario.domicilio = document.getElementById('cf_destDomicilio').value.trim();
+  DATA.config.puntoVentaRemito = (document.getElementById('cf_remPV').value.trim() || '0001').padStart(4, '0');
+  DATA.config.proximoNroRemito = +document.getElementById('cf_remNro').value || 1;
+  await saveData();
+  toast('Config de remito guardada', 'success');
+}
+
+function renderTransportistasList() {
+  const lst = document.getElementById('transportistasList');
+  if (!lst) return;
+  const ts = DATA.catalogos.transportistas || [];
+  if (ts.length === 0) {
+    lst.innerHTML = '<p class="muted" style="font-size:12px">Sin transportistas cargados.</p>';
+    return;
+  }
+  lst.innerHTML = ts.map((t, i) => `
+    <div style="display:grid;grid-template-columns:2fr 1fr 2fr auto;gap:8px;margin-bottom:6px;align-items:center">
+      <input type="text" placeholder="Nombre" value="${(t.nombre||'').replace(/"/g,'&quot;')}" onchange="DATA.catalogos.transportistas[${i}].nombre=this.value" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <input type="text" placeholder="CUIT" value="${(t.cuit||'').replace(/"/g,'&quot;')}" onchange="DATA.catalogos.transportistas[${i}].cuit=this.value" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <input type="text" placeholder="Domicilio" value="${(t.domicilio||'').replace(/"/g,'&quot;')}" onchange="DATA.catalogos.transportistas[${i}].domicilio=this.value" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <button class="btn-ghost" onclick="removeTransportista(${i})" title="Eliminar" style="color:#dc2626;padding:4px 10px">🗑️</button>
+    </div>
+  `).join('') + '<button class="btn-ghost" onclick="saveTransportistas()" style="margin-top:6px;font-size:12px">💾 Guardar cambios</button>';
+}
+
+function addTransportista() {
+  if (!DATA.catalogos.transportistas) DATA.catalogos.transportistas = [];
+  DATA.catalogos.transportistas.push({ nombre: '', cuit: '', domicilio: '' });
+  renderTransportistasList();
+}
+
+function removeTransportista(idx) {
+  if (!confirm('¿Eliminar este transportista?')) return;
+  DATA.catalogos.transportistas.splice(idx, 1);
+  renderTransportistasList();
+  saveTransportistas();
+}
+
+async function saveTransportistas() {
+  await saveData();
+  toast('Transportistas guardados', 'success');
+}
 
 async function restaurarKgRealesHistoricos() {
   const st = document.getElementById('restaurarStatus');
@@ -847,6 +922,7 @@ function render() {
   else if (currentTab === 'pedidos') renderPedidos();
   else if (currentTab === 'consulta') renderConsulta();
   else if (currentTab === 'producciones') renderProducciones();
+  else if (currentTab === 'remitos') renderRemitos();
   else if (currentTab === 'catalogos') renderCatalogos();
   else if (currentTab === 'config') renderConfig();
 }
@@ -3876,6 +3952,43 @@ function renderConfig() {
       <button class="btn btn-pri" style="margin-top:12px" onclick="saveHorarioTurnos()">💾 Guardar horarios</button>
     </div>
 
+    <div class="detail-section">
+      <h3>📦 Datos del remito — destinatario por default</h3>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Estos datos aparecen como destinatario al crear un remito (editable en cada uno).</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div class="detail-field">
+          <span class="lbl">Nombre destinatario</span>
+          <input type="text" id="cf_destNombre" value="${(c.remitoDestinatario && c.remitoDestinatario.nombre) || 'Winflex S.A.'}" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-top:4px">
+        </div>
+        <div class="detail-field">
+          <span class="lbl">CUIT</span>
+          <input type="text" id="cf_destCuit" value="${(c.remitoDestinatario && c.remitoDestinatario.cuit) || '30-61048777-3'}" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-top:4px">
+        </div>
+      </div>
+      <div class="detail-field" style="margin-bottom:10px">
+        <span class="lbl">Domicilio</span>
+        <input type="text" id="cf_destDomicilio" value="${(c.remitoDestinatario && c.remitoDestinatario.domicilio) || 'Pichincha 3369, Lanús, Bs As, Argentina'}" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-top:4px;width:100%">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div class="detail-field">
+          <span class="lbl">Punto de venta (4 digitos)</span>
+          <input type="text" id="cf_remPV" value="${c.puntoVentaRemito || '0001'}" maxlength="4" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-top:4px">
+        </div>
+        <div class="detail-field">
+          <span class="lbl">Próximo N° remito sugerido</span>
+          <input type="number" id="cf_remNro" value="${c.proximoNroRemito || 1}" min="1" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-top:4px">
+        </div>
+      </div>
+      <button class="btn btn-pri" style="margin-top:8px" onclick="saveRemitoConfig()">💾 Guardar config remito</button>
+    </div>
+
+    <div class="detail-section">
+      <h3>🚚 Transportistas</h3>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Transportistas habituales para elegir al armar el remito.</p>
+      <div id="transportistasList"></div>
+      <button class="btn-ghost" style="margin-top:8px" onclick="addTransportista()">+ Agregar transportista</button>
+    </div>
+
     <div class="detail-section" style="border:2px solid #fbbf24;background:#fffbeb">
       <h3>🛠️ Restaurar kg producidos históricos</h3>
       <p style="font-size:13px;color:#92400e;margin-bottom:10px">Si los pedidos viejos perdieron sus kg producidos (aparecen en 0), apretá este botón para restaurarlos desde el Excel original. Solo afecta a pedidos SIN bobinas cargadas en la tablet — los que ya tienen producciones cargadas no se tocan.</p>
@@ -3954,6 +4067,8 @@ function renderConfig() {
       <button class="btn btn-pri" style="margin-top:12px" onclick="saveConfigParams()">💾 Guardar parámetros</button>
     </div>
   `;
+  // Render transportistas list (separated for dynamism)
+  setTimeout(() => renderTransportistasList(), 50);
 }
 
 async function saveEmailAgustin() {
@@ -9314,6 +9429,719 @@ const SEED = {
   },
   "lastUpdate": "2026-05-18T21:03:01.448989"
 };
+
+// ============================================================
+// MODULO REMITOS — armado y emisión
+// ============================================================
+let remitosSubTab = 'disponibles'; // 'disponibles' | 'historico'
+let remitosSeleccion = new Set();  // ids de bobinas seleccionadas para el remito en armado
+let remitosFiltros = { cliente: '', op: '', desde: '', hasta: '' };
+
+function renderRemitos() {
+  const c = document.getElementById('remitosContent');
+  // Sub-tabs
+  let html = `
+    <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid #e5e7eb">
+      <button onclick="remitosSubTab='disponibles';renderRemitos()" style="padding:10px 18px;border:none;background:${remitosSubTab==='disponibles'?'#16a34a':'transparent'};color:${remitosSubTab==='disponibles'?'white':'#6b7280'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">📦 Pallets disponibles</button>
+      <button onclick="remitosSubTab='historico';renderRemitos()" style="padding:10px 18px;border:none;background:${remitosSubTab==='historico'?'#16a34a':'transparent'};color:${remitosSubTab==='historico'?'white':'#6b7280'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">📋 Remitos emitidos</button>
+    </div>
+  `;
+  c.innerHTML = html;
+  if (remitosSubTab === 'disponibles') renderRemitosDisponibles();
+  else renderRemitosHistorico();
+}
+
+function renderRemitosDisponibles() {
+  const c = document.getElementById('remitosContent');
+  // Bobinas SIN remitoId (todavía no despachadas)
+  const todas = (DATA.producciones || []).filter(b => !b.remitoId);
+  if (todas.length === 0) {
+    c.innerHTML += '<p class="muted" style="padding:30px;text-align:center">No hay bobinas cargadas pendientes de remitir. Cuando los operarios carguen bobinas en la tablet, van a aparecer acá agrupadas por pallet.</p>';
+    return;
+  }
+
+  // Agrupar por pallet (clave = nroPallet + pedidoId para diferenciar pallets de distintas OPs con mismo número)
+  const pallets = {};
+  todas.forEach(b => {
+    if (!b.nroPallet) return; // bobina sin pallet asignado todavía
+    const k = b.nroPallet + '__' + b.pedidoId;
+    if (!pallets[k]) pallets[k] = { nroPallet: b.nroPallet, pedidoId: b.pedidoId, bobinas: [], firstDate: b.fecha };
+    pallets[k].bobinas.push(b);
+    if (b.fecha < pallets[k].firstDate) pallets[k].firstDate = b.fecha;
+  });
+  const palletList = Object.values(pallets).sort((a, b) => (b.firstDate||'').localeCompare(a.firstDate||''));
+
+  // Aplicar filtros
+  const palletsFilt = palletList.filter(pl => {
+    const ped = DATA.pedidos.find(x => x.id === pl.pedidoId);
+    if (!ped) return false;
+    if (remitosFiltros.cliente && !ped.cliente.toLowerCase().includes(remitosFiltros.cliente.toLowerCase())) return false;
+    if (remitosFiltros.op && !(ped.nroOP || '').toString().includes(remitosFiltros.op)) return false;
+    if (remitosFiltros.desde && pl.firstDate < remitosFiltros.desde) return false;
+    if (remitosFiltros.hasta && pl.firstDate > remitosFiltros.hasta) return false;
+    return true;
+  });
+
+  // Bobinas sin pallet (alerta)
+  const sinPallet = todas.filter(b => !b.nroPallet);
+
+  // Selección actual
+  const seleccionadas = (DATA.producciones || []).filter(b => remitosSeleccion.has(b.id) && !b.remitoId);
+  const totalKgSel = seleccionadas.reduce((s, b) => s + (+b.kg || 0), 0);
+  const palletsSel = new Set(seleccionadas.map(b => b.nroPallet + '__' + b.pedidoId)).size;
+
+  // Filtros UI
+  c.innerHTML += `
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;background:white;padding:12px;border-radius:10px;border:1px solid #e5e7eb">
+      <div style="font-size:13px;font-weight:600;color:#374151">Filtros:</div>
+      <input type="text" placeholder="Cliente" value="${remitosFiltros.cliente}" oninput="remitosFiltros.cliente=this.value;renderRemitos()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:160px">
+      <input type="text" placeholder="OP" value="${remitosFiltros.op}" oninput="remitosFiltros.op=this.value;renderRemitos()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:80px">
+      <input type="date" value="${remitosFiltros.desde}" onchange="remitosFiltros.desde=this.value;renderRemitos()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px" title="Desde">
+      <span style="font-size:12px;color:#9ca3af">a</span>
+      <input type="date" value="${remitosFiltros.hasta}" onchange="remitosFiltros.hasta=this.value;renderRemitos()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px" title="Hasta">
+      <button class="btn-ghost" onclick="remitosFiltros={cliente:'',op:'',desde:'',hasta:''};renderRemitos()" style="font-size:12px;padding:6px 10px">Limpiar</button>
+      <div style="flex:1"></div>
+      <button class="btn-ghost" onclick="seleccionarTodosPallets()" style="font-size:12px;padding:6px 10px">Seleccionar todo (filtrado)</button>
+      <button class="btn-ghost" onclick="remitosSeleccion=new Set();renderRemitos()" style="font-size:12px;padding:6px 10px">Deseleccionar</button>
+    </div>
+  `;
+
+  // KPI selección + botón
+  if (palletsSel > 0) {
+    c.innerHTML += `
+      <div style="background:linear-gradient(135deg,#16a34a,#15803d);color:white;padding:14px 18px;border-radius:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-size:13px;opacity:0.9">SELECCIONADO PARA REMITIR</div>
+          <div style="font-size:18px;font-weight:700;margin-top:4px">${palletsSel} pallets · ${seleccionadas.length} bobinas · ${fmtNum(totalKgSel)} kg</div>
+        </div>
+        <button onclick="openCrearRemitoModal()" style="background:white;color:#15803d;border:none;padding:12px 24px;font-size:15px;font-weight:700;border-radius:8px;cursor:pointer">📄 Generar remito</button>
+      </div>
+    `;
+  }
+
+  if (sinPallet.length > 0) {
+    c.innerHTML += `<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px">⚠️ Hay <b>${sinPallet.length} bobinas sin nro de pallet asignado</b>. Pedile al operario que las cargue con su pallet en la tablet o asignalo manualmente en la pestaña Producciones.</div>`;
+  }
+
+  if (palletsFilt.length === 0) {
+    c.innerHTML += '<p class="muted" style="padding:30px;text-align:center">No hay pallets que coincidan con los filtros.</p>';
+    return;
+  }
+
+  // Lista de pallets - cards
+  let listHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(380px, 1fr));gap:12px">';
+  palletsFilt.forEach(pl => {
+    const ped = DATA.pedidos.find(x => x.id === pl.pedidoId);
+    if (!ped) return;
+    const bobIds = pl.bobinas.map(b => b.id);
+    const allSelected = bobIds.every(id => remitosSeleccion.has(id));
+    const totalKg = pl.bobinas.reduce((s, b) => s + (+b.kg || 0), 0);
+    const bobNros = pl.bobinas.map(b => b.nroBobina).filter(Boolean).sort((a,b) => +a - +b);
+    const rangoBob = bobNros.length > 0 ? (bobNros.length === 1 ? '#' + bobNros[0] : '#' + bobNros[0] + ' a #' + bobNros[bobNros.length-1]) : '';
+    listHtml += `
+      <div onclick="togglePalletSeleccion('${pl.nroPallet}', '${pl.pedidoId}')" style="background:white;border:2px solid ${allSelected?'#16a34a':'#e5e7eb'};border-radius:10px;padding:14px;cursor:pointer;transition:all 0.15s;${allSelected?'box-shadow:0 0 0 3px rgba(22,163,74,0.15)':''}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+              <div style="font-size:20px">${allSelected?'☑':'☐'}</div>
+              <div style="font-size:16px;font-weight:700;color:#15803d">Pallet ${pl.nroPallet}</div>
+            </div>
+            <div style="font-size:14px;font-weight:600;color:#1f2937;margin-bottom:2px">${ped.cliente}</div>
+            <div style="font-size:12px;color:#6b7280">OP ${ped.nroOP||'-'} · ${ped.ancho||'-'}×${ped.espesor||'-'} mic · ${ped.color||'-'}</div>
+            <div style="font-size:11px;color:#9ca3af;margin-top:4px">Partida: <code>${ped.op||'-'}</code></div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:18px;font-weight:700;color:#16a34a">${fmtNum(totalKg)}</div>
+            <div style="font-size:11px;color:#6b7280">kg</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:6px">${pl.bobinas.length} bob${rangoBob?'<br>'+rangoBob:''}</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6">
+          ${pl.bobinas.map(b => b.fecha).filter((v,i,a) => a.indexOf(v) === i).map(d => fmtFecha(d)).join(', ')}
+        </div>
+      </div>
+    `;
+  });
+  listHtml += '</div>';
+  c.innerHTML += listHtml;
+}
+
+function togglePalletSeleccion(nroPallet, pedidoId) {
+  const bobinas = (DATA.producciones || []).filter(b =>
+    b.nroPallet === nroPallet && b.pedidoId === pedidoId && !b.remitoId
+  );
+  const allSelected = bobinas.every(b => remitosSeleccion.has(b.id));
+  bobinas.forEach(b => {
+    if (allSelected) remitosSeleccion.delete(b.id);
+    else remitosSeleccion.add(b.id);
+  });
+  renderRemitos();
+}
+
+function seleccionarTodosPallets() {
+  // Selecciona todos los pallets actualmente filtrados
+  const todas = (DATA.producciones || []).filter(b => !b.remitoId && b.nroPallet);
+  const pallets = {};
+  todas.forEach(b => {
+    const k = b.nroPallet + '__' + b.pedidoId;
+    if (!pallets[k]) pallets[k] = [];
+    pallets[k].push(b);
+  });
+  Object.values(pallets).forEach(palletBobs => {
+    const ped = DATA.pedidos.find(x => x.id === palletBobs[0].pedidoId);
+    if (!ped) return;
+    if (remitosFiltros.cliente && !ped.cliente.toLowerCase().includes(remitosFiltros.cliente.toLowerCase())) return;
+    if (remitosFiltros.op && !(ped.nroOP || '').toString().includes(remitosFiltros.op)) return;
+    if (remitosFiltros.desde && palletBobs[0].fecha < remitosFiltros.desde) return;
+    if (remitosFiltros.hasta && palletBobs[0].fecha > remitosFiltros.hasta) return;
+    palletBobs.forEach(b => remitosSeleccion.add(b.id));
+  });
+  renderRemitos();
+}
+
+function renderRemitosHistorico() {
+  const c = document.getElementById('remitosContent');
+  const remitos = (DATA.remitos || []).slice().sort((a, b) => (b.fecha||'').localeCompare(a.fecha||''));
+  if (remitos.length === 0) {
+    c.innerHTML += '<p class="muted" style="padding:30px;text-align:center">Todavía no hay remitos emitidos.</p>';
+    return;
+  }
+  let html = '<table style="width:100%"><thead><tr><th>N° Remito</th><th>Fecha</th><th>Destinatario</th><th>Transportista</th><th>Patente</th><th class="num">Pallets</th><th class="num">Bobinas</th><th class="num">Kg total</th><th>Acciones</th></tr></thead><tbody>';
+  remitos.forEach(r => {
+    html += `<tr>
+      <td><code style="font-size:12px">${r.puntoVenta||'0001'}-${(r.nroRemito||'').toString().padStart(8,'0')}</code></td>
+      <td>${fmtFecha(r.fecha)}</td>
+      <td>${r.destinatario?.nombre || '-'}</td>
+      <td>${r.transportista?.nombre || '-'}</td>
+      <td>${r.patente || '-'}</td>
+      <td class="num">${r.totalPallets || 0}</td>
+      <td class="num">${(r.bobinaIds||[]).length}</td>
+      <td class="num">${fmtNum(r.totalKg||0)}</td>
+      <td>
+        <button class="btn-action" onclick="generarRemitoPDF('${r.id}')" title="PDF Remito">📄 Remito</button>
+        <button class="btn-action" onclick="generarDetalleEnvioPDF('${r.id}')" title="PDF Detalle WBAN-001">📋 Detalle</button>
+        <button class="btn-action" style="background:#fee2e2;color:#991b1b" onclick="anularRemito('${r.id}')" title="Anular este remito">✕ Anular</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  c.innerHTML += html;
+}
+
+// ============================================================
+// CREAR REMITO (modal)
+// ============================================================
+function openCrearRemitoModal() {
+  const seleccionadas = (DATA.producciones || []).filter(b => remitosSeleccion.has(b.id) && !b.remitoId);
+  if (seleccionadas.length === 0) { alert('No hay bobinas seleccionadas.'); return; }
+
+  // Agrupar para resumen
+  const porPed = {};
+  seleccionadas.forEach(b => {
+    if (!porPed[b.pedidoId]) porPed[b.pedidoId] = { bobinas: [], pallets: new Set() };
+    porPed[b.pedidoId].bobinas.push(b);
+    if (b.nroPallet) porPed[b.pedidoId].pallets.add(b.nroPallet);
+  });
+
+  const totalKg = seleccionadas.reduce((s, b) => s + (+b.kg || 0), 0);
+  const totalPallets = new Set(seleccionadas.map(b => b.nroPallet + '__' + b.pedidoId)).size;
+  const totalBobinas = seleccionadas.length;
+
+  const transportistas = DATA.catalogos.transportistas || [];
+  const destinatario = DATA.config.remitoDestinatario || { nombre: 'Winflex S.A.', domicilio: 'Pichincha 3369, Lanús, Bs As, Argentina', cuit: '30-61048777-3' };
+  const proximoNro = DATA.config.proximoNroRemito || 1;
+  const puntoVenta = DATA.config.puntoVentaRemito || '0001';
+
+  let resumen = '';
+  Object.entries(porPed).forEach(([pid, data]) => {
+    const ped = DATA.pedidos.find(x => x.id === pid);
+    if (!ped) return;
+    const kg = data.bobinas.reduce((s,b) => s+(+b.kg||0), 0);
+    resumen += `<div style="display:flex;justify-content:space-between;padding:6px 8px;border-bottom:1px solid #f3f4f6;font-size:13px"><span><b>${ped.cliente}</b> · OP ${ped.nroOP||'-'} · ${ped.ancho||'-'}×${ped.espesor||'-'} mic</span><span style="color:#16a34a;font-weight:600">${fmtNum(kg)} kg · ${data.pallets.size} pall · ${data.bobinas.length} bob</span></div>`;
+  });
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg">
+      <div class="modal" style="max-width:720px">
+        <div class="modal-h">
+          <h3>📄 Nuevo remito</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+            <div class="field">
+              <label>Punto de venta</label>
+              <input type="text" id="rem_pv" value="${puntoVenta}" maxlength="4">
+            </div>
+            <div class="field">
+              <label>N° Remito (editable)</label>
+              <input type="number" id="rem_nro" value="${proximoNro}" min="1">
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:14px">
+            <label>Fecha</label>
+            <input type="date" id="rem_fecha" value="${new Date().toISOString().slice(0,10)}">
+          </div>
+
+          <h4 style="font-size:13px;font-weight:700;color:#374151;margin:14px 0 8px">📍 Destinatario</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div class="field">
+              <label>Nombre</label>
+              <input type="text" id="rem_dest_nombre" value="${destinatario.nombre || ''}">
+            </div>
+            <div class="field">
+              <label>CUIT</label>
+              <input type="text" id="rem_dest_cuit" value="${destinatario.cuit || ''}">
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:14px">
+            <label>Domicilio</label>
+            <input type="text" id="rem_dest_domicilio" value="${destinatario.domicilio || ''}">
+          </div>
+
+          <h4 style="font-size:13px;font-weight:700;color:#374151;margin:14px 0 8px">🚚 Transportista</h4>
+          <div class="field" style="margin-bottom:10px">
+            <label>Seleccionar</label>
+            <select id="rem_transp" onchange="setTranspFromCatalog(this.value)">
+              ${transportistas.map((t, i) => `<option value="${i}">${t.nombre}</option>`).join('')}
+              <option value="custom">— Otro (escribir manual) —</option>
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+            <div class="field">
+              <label>Nombre</label>
+              <input type="text" id="rem_transp_nombre" value="${transportistas[0]?.nombre || ''}">
+            </div>
+            <div class="field">
+              <label>CUIT</label>
+              <input type="text" id="rem_transp_cuit" value="${transportistas[0]?.cuit || ''}">
+            </div>
+            <div class="field">
+              <label>Domicilio</label>
+              <input type="text" id="rem_transp_domicilio" value="${transportistas[0]?.domicilio || ''}">
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:14px">
+            <label>Patente del vehículo</label>
+            <input type="text" id="rem_patente" placeholder="AB 123 CD" style="text-transform:uppercase">
+          </div>
+          <div class="field" style="margin-bottom:14px">
+            <label>Observaciones</label>
+            <textarea id="rem_observaciones" rows="2" placeholder="Ej: Entrega en Winflex Lanús"></textarea>
+          </div>
+
+          <h4 style="font-size:13px;font-weight:700;color:#374151;margin:14px 0 8px">📦 Contenido</h4>
+          <div style="background:#f9fafb;border-radius:8px;padding:10px;max-height:200px;overflow-y:auto;border:1px solid #e5e7eb">
+            ${resumen}
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:10px;background:#15803d;color:white;border-radius:8px;margin-top:10px;font-weight:700">
+            <span>TOTAL</span>
+            <span>${fmtNum(totalKg)} kg · ${totalPallets} pallets · ${totalBobinas} bobinas</span>
+          </div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="confirmarYGenerarRemito()">✓ Emitir remito + descargar PDFs</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function setTranspFromCatalog(idx) {
+  if (idx === 'custom') {
+    document.getElementById('rem_transp_nombre').value = '';
+    document.getElementById('rem_transp_cuit').value = '';
+    document.getElementById('rem_transp_domicilio').value = '';
+    return;
+  }
+  const t = (DATA.catalogos.transportistas || [])[+idx];
+  if (!t) return;
+  document.getElementById('rem_transp_nombre').value = t.nombre || '';
+  document.getElementById('rem_transp_cuit').value = t.cuit || '';
+  document.getElementById('rem_transp_domicilio').value = t.domicilio || '';
+}
+
+async function confirmarYGenerarRemito() {
+  const seleccionadas = (DATA.producciones || []).filter(b => remitosSeleccion.has(b.id) && !b.remitoId);
+  if (seleccionadas.length === 0) { alert('No hay bobinas válidas.'); return; }
+
+  const remitoId = 'REM-' + Date.now();
+  const remito = {
+    id: remitoId,
+    nroRemito: +document.getElementById('rem_nro').value,
+    puntoVenta: document.getElementById('rem_pv').value.trim() || '0001',
+    fecha: document.getElementById('rem_fecha').value || new Date().toISOString().slice(0,10),
+    destinatario: {
+      nombre: document.getElementById('rem_dest_nombre').value.trim(),
+      cuit: document.getElementById('rem_dest_cuit').value.trim(),
+      domicilio: document.getElementById('rem_dest_domicilio').value.trim()
+    },
+    transportista: {
+      nombre: document.getElementById('rem_transp_nombre').value.trim(),
+      cuit: document.getElementById('rem_transp_cuit').value.trim(),
+      domicilio: document.getElementById('rem_transp_domicilio').value.trim()
+    },
+    patente: document.getElementById('rem_patente').value.trim().toUpperCase(),
+    observaciones: document.getElementById('rem_observaciones').value.trim(),
+    bobinaIds: seleccionadas.map(b => b.id),
+    totalKg: Math.round(seleccionadas.reduce((s,b) => s+(+b.kg||0), 0) * 100) / 100,
+    totalPallets: new Set(seleccionadas.map(b => b.nroPallet + '__' + b.pedidoId)).size,
+    timestamp: new Date().toISOString(),
+    emisor: 'Agustín Ruiz Guiñazú'
+  };
+
+  if (!confirm(`Emitir remito ${remito.puntoVenta}-${remito.nroRemito.toString().padStart(8,'0')}?\n\nVa a marcar ${seleccionadas.length} bobinas como despachadas y generar los 2 PDFs.`)) return;
+
+  // Marcar las bobinas como despachadas
+  seleccionadas.forEach(b => {
+    const orig = DATA.producciones.find(x => x.id === b.id);
+    if (orig) {
+      orig.remitoId = remitoId;
+      orig.fechaDespacho = remito.fecha;
+    }
+  });
+
+  // Guardar el remito
+  if (!DATA.remitos) DATA.remitos = [];
+  DATA.remitos.push(remito);
+
+  // Incrementar contador (sugerencia para el próximo)
+  DATA.config.proximoNroRemito = remito.nroRemito + 1;
+
+  await saveData();
+
+  // Generar PDFs
+  try {
+    generarRemitoPDF(remitoId);
+    setTimeout(() => generarDetalleEnvioPDF(remitoId), 600);
+  } catch (e) {
+    console.error('Error generando PDFs:', e);
+    alert('Remito guardado pero error generando PDFs: ' + e.message);
+  }
+
+  // Limpiar selección y cerrar
+  remitosSeleccion = new Set();
+  closeModal();
+  toast('Remito emitido', 'success');
+  remitosSubTab = 'historico';
+  renderRemitos();
+}
+
+async function anularRemito(remitoId) {
+  if (!confirm('¿Anular este remito?\n\nLas bobinas vuelven a estar disponibles para emitir un nuevo remito. El número del remito anulado NO se reutiliza.')) return;
+  // Liberar las bobinas
+  (DATA.producciones || []).forEach(b => {
+    if (b.remitoId === remitoId) {
+      delete b.remitoId;
+      delete b.fechaDespacho;
+    }
+  });
+  // Marcar el remito como anulado (no eliminar para mantener trazabilidad)
+  const r = (DATA.remitos || []).find(x => x.id === remitoId);
+  if (r) { r.anulado = true; r.anuladoFecha = new Date().toISOString(); }
+  await saveData();
+  toast('Remito anulado', 'success');
+  renderRemitos();
+}
+
+// ============================================================
+// PDF — REMITO COMERCIAL (formato Rto1234)
+// ============================================================
+function generarRemitoPDF(remitoId) {
+  if (!ensureJsPDFPC()) return setTimeout(() => generarRemitoPDF(remitoId), 500);
+  const r = (DATA.remitos || []).find(x => x.id === remitoId);
+  if (!r) { alert('Remito no encontrado'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, H = 297, M = 12;
+  const C_PRI = [22, 163, 74], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
+  const safeS = (s) => (s===null||s===undefined?'-':String(s).replace(/[^\x20-\x7Eáéíóúñü°ÁÉÍÓÚÑÜ²³%·\/\-\(\):,.°]/g,' '));
+  const txt = (s, x, y, opts={}) => {
+    doc.setFont('helvetica', opts.bold?'bold':'normal');
+    doc.setFontSize(opts.size||9);
+    doc.setTextColor(...(opts.color||C_DARK));
+    doc.text(safeS(s), x, y, { align: opts.align||'left' });
+  };
+
+  // Header
+  doc.setFillColor(...C_PRI);
+  doc.rect(0, 0, W, 30, 'F');
+  txt('WINFLEX S.A.', M, 12, { bold:true, size:18, color:[255,255,255] });
+  txt('Lamina PET reciclada para termoformado', M, 19, { size:10, color:[220,252,231] });
+  txt('Planta Chivilcoy', M, 24, { size:9, color:[220,252,231] });
+
+  // Caja "REMITO" arriba derecha
+  doc.setFillColor(255,255,255);
+  doc.rect(W-M-65, 6, 65, 20, 'F');
+  doc.setDrawColor(...C_DARK); doc.setLineWidth(0.5);
+  doc.rect(W-M-65, 6, 65, 20);
+  txt('REMITO', W-M-32.5, 13, { bold:true, size:14, color:C_DARK, align:'center' });
+  txt('N° ' + (r.puntoVenta||'0001') + ' - ' + (r.nroRemito||'').toString().padStart(8,'0'), W-M-32.5, 19, { size:10, bold:true, color:C_DARK, align:'center' });
+  txt('Fecha: ' + fmtFecha(r.fecha), W-M-32.5, 24, { size:9, color:C_DARK, align:'center' });
+
+  let y = 38;
+  if (r.anulado) {
+    doc.setTextColor(220, 38, 38);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(38);
+    doc.text('ANULADO', W/2, 120, { align:'center', angle: 30 });
+    doc.setTextColor(...C_DARK);
+  }
+
+  // Destinatario
+  doc.setFillColor(...C_LIGHT);
+  doc.rect(M, y, W-2*M, 22, 'F');
+  txt('DESTINATARIO:', M+3, y+5, { bold:true, size:9, color:C_GRAY });
+  txt(r.destinatario?.nombre || '-', M+38, y+5, { size:11, bold:true });
+  txt('DOMICILIO:', M+3, y+11, { bold:true, size:9, color:C_GRAY });
+  txt(r.destinatario?.domicilio || '-', M+38, y+11, { size:10 });
+  txt('C.U.I.T.:', M+3, y+17, { bold:true, size:9, color:C_GRAY });
+  txt(r.destinatario?.cuit || '-', M+38, y+17, { size:10 });
+  y += 26;
+
+  // Transportista
+  doc.setFillColor(...C_LIGHT);
+  doc.rect(M, y, W-2*M, 22, 'F');
+  txt('TRANSPORTISTA:', M+3, y+5, { bold:true, size:9, color:C_GRAY });
+  txt(r.transportista?.nombre || '-', M+38, y+5, { size:11, bold:true });
+  txt('DOMICILIO:', M+3, y+11, { bold:true, size:9, color:C_GRAY });
+  txt(r.transportista?.domicilio || '-', M+38, y+11, { size:10 });
+  txt('C.U.I.T.:', M+3, y+17, { bold:true, size:9, color:C_GRAY });
+  txt(r.transportista?.cuit || '-', M+38, y+17, { size:10 });
+  if (r.patente) {
+    txt('PATENTE:', W-M-50, y+11, { bold:true, size:9, color:C_GRAY });
+    txt(r.patente, W-M-30, y+11, { size:11, bold:true });
+  }
+  y += 28;
+
+  // Tabla de contenido — agrupado por (cliente x medida x partida)
+  const bobinas = (DATA.producciones || []).filter(b => (r.bobinaIds || []).includes(b.id));
+  const grupos = {};
+  bobinas.forEach(b => {
+    const ped = DATA.pedidos.find(x => x.id === b.pedidoId);
+    if (!ped) return;
+    const k = `${ped.cliente}__${b.ancho || ped.ancho}__${b.espesor || ped.espesor}__${ped.color}`;
+    if (!grupos[k]) {
+      grupos[k] = {
+        cliente: ped.cliente,
+        ancho: b.ancho || ped.ancho,
+        espesor: b.espesor || ped.espesor,
+        color: ped.color,
+        kg: 0,
+        bobs: 0,
+        pallets: new Set()
+      };
+    }
+    grupos[k].kg += (+b.kg || 0);
+    grupos[k].bobs++;
+    if (b.nroPallet) grupos[k].pallets.add(b.nroPallet);
+  });
+
+  // Header tabla
+  doc.setFillColor(...C_PRI);
+  doc.rect(M, y, W-2*M, 8, 'F');
+  txt('ID', M+3, y+5.5, { bold:true, size:10, color:[255,255,255] });
+  txt('DESCRIPCION', M+22, y+5.5, { bold:true, size:10, color:[255,255,255] });
+  txt('Kg', W-M-50, y+5.5, { bold:true, size:10, color:[255,255,255], align:'right' });
+  txt('Pallets', W-M-3, y+5.5, { bold:true, size:10, color:[255,255,255], align:'right' });
+  y += 9;
+
+  let totalKg = 0, totalPallets = 0, totalBobs = 0;
+  Object.values(grupos).forEach((g, i) => {
+    if (i % 2 === 0) { doc.setFillColor(249,250,251); doc.rect(M, y, W-2*M, 6, 'F'); }
+    txt(String(i+1), M+3, y+4, { size:10 });
+    txt(`rPET ${g.ancho}x${g.espesor} mic ${g.color || 'Cristal'} p/ ${g.cliente}`, M+22, y+4, { size:10 });
+    txt(fmtNum(Math.round(g.kg)), W-M-50, y+4, { size:10, align:'right' });
+    txt(String(g.pallets.size), W-M-3, y+4, { size:10, align:'right' });
+    totalKg += g.kg;
+    totalPallets += g.pallets.size;
+    totalBobs += g.bobs;
+    y += 6;
+  });
+
+  // Total
+  y += 2;
+  doc.setFillColor(...C_DARK);
+  doc.rect(M, y, W-2*M, 8, 'F');
+  txt('TOTAL', M+3, y+5.5, { bold:true, size:11, color:[255,255,255] });
+  txt(fmtNum(Math.round(totalKg)) + ' kg', W-M-50, y+5.5, { bold:true, size:11, color:[255,255,255], align:'right' });
+  txt(String(totalPallets), W-M-3, y+5.5, { bold:true, size:11, color:[255,255,255], align:'right' });
+  y += 14;
+
+  // Observaciones
+  if (r.observaciones) {
+    txt('Observaciones:', M, y, { bold:true, size:10 });
+    y += 5;
+    const lines = doc.splitTextToSize(safeS(r.observaciones), W-2*M-2);
+    doc.setFontSize(9);
+    doc.text(lines, M, y);
+    y += lines.length * 4 + 4;
+  }
+
+  // Firmas
+  y = Math.max(y, H - 50);
+  doc.setDrawColor(...C_GRAY); doc.setLineWidth(0.3);
+  doc.line(M, y, M+70, y);
+  doc.line(W-M-70, y, W-M, y);
+  txt('Recibí conforme', M, y+5, { size:9, color:C_GRAY });
+  txt('Aclaración / DNI', W-M-70, y+5, { size:9, color:C_GRAY });
+  y += 18;
+  doc.line(M, y, M+70, y);
+  txt('Firma chofer', M, y+5, { size:9, color:C_GRAY });
+
+  // Footer
+  doc.setTextColor(...C_GRAY); doc.setFontSize(7);
+  doc.text('Winflex S.A. - Pichincha 3369, Lanus, Bs As - CUIT 30-61048777-3', M, H-6);
+
+  const fname = `Remito_${r.puntoVenta||'0001'}-${(r.nroRemito||'').toString().padStart(8,'0')}_${(r.destinatario?.nombre||'').replace(/[^a-zA-Z0-9]/g,'_').substring(0,15)}.pdf`;
+  doc.save(fname);
+  toast('Remito PDF descargado', 'success');
+}
+
+// ============================================================
+// PDF — DETALLE DE ENVÍO (WBAN-001)
+// ============================================================
+function generarDetalleEnvioPDF(remitoId) {
+  if (!ensureJsPDFPC()) return setTimeout(() => generarDetalleEnvioPDF(remitoId), 500);
+  const r = (DATA.remitos || []).find(x => x.id === remitoId);
+  if (!r) { alert('Remito no encontrado'); return; }
+  const bobinas = (DATA.producciones || []).filter(b => (r.bobinaIds || []).includes(b.id));
+
+  // Ordenar: por OP, después por pallet, después por nroBobina
+  bobinas.sort((a, b) => {
+    if (a.pedidoId !== b.pedidoId) return a.pedidoId.localeCompare(b.pedidoId);
+    if ((a.nroPallet||'') !== (b.nroPallet||'')) return (a.nroPallet||'').localeCompare(b.nroPallet||'');
+    return (+a.nroBobina||0) - (+b.nroBobina||0);
+  });
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, H = 297, M = 10;
+  const C_PRI = [22, 163, 74], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
+  const safeS = (s) => (s===null||s===undefined?'-':String(s).replace(/[^\x20-\x7Eáéíóúñü°ÁÉÍÓÚÑÜ²³%·\/\-\(\):,.°]/g,' '));
+  const txt = (s, x, y, opts={}) => {
+    doc.setFont('helvetica', opts.bold?'bold':'normal');
+    doc.setFontSize(opts.size||9);
+    doc.setTextColor(...(opts.color||C_DARK));
+    doc.text(safeS(s), x, y, { align: opts.align||'left' });
+  };
+
+  function headerPage(pageNum, totalPages) {
+    doc.setFillColor(...C_PRI);
+    doc.rect(0, 0, W, 22, 'F');
+    txt('WINFLEX S.A.', M, 9, { bold:true, size:13, color:[255,255,255] });
+    txt('Planilla de recepcion de las bobinas Jumbo', M, 15, { size:9, color:[220,252,231] });
+    txt('WBAN-001', W-M, 9, { bold:true, size:10, color:[255,255,255], align:'right' });
+    txt('Hoja ' + pageNum + '/' + totalPages, W-M, 15, { size:8, color:[220,252,231], align:'right' });
+    // Sub header con fecha y remito
+    let yy = 25;
+    doc.setFillColor(...C_LIGHT);
+    doc.rect(M, yy, W-2*M, 6, 'F');
+    txt('Detalle de envio', M+3, yy+4, { bold:true, size:10 });
+    txt('Fecha: ' + fmtFecha(r.fecha), M+55, yy+4, { size:10 });
+    txt('Remito: ' + (r.puntoVenta||'0001') + '-' + (r.nroRemito||'').toString().padStart(4,'0'), W-M-3, yy+4, { size:10, align:'right' });
+    return yy + 7;
+  }
+
+  function tableHeader(y) {
+    doc.setFillColor(...C_DARK);
+    doc.rect(M, y, W-2*M, 7, 'F');
+    const cols = [
+      { lbl:'Partida', x:M+2, w:36 },
+      { lbl:'Bobina N°', x:M+39, w:18 },
+      { lbl:'Peso (kg)', x:M+58, w:18, num:true },
+      { lbl:'Medida', x:M+77, w:22 },
+      { lbl:'Pallet', x:M+100, w:18 },
+      { lbl:'Solicitud', x:M+119, w:22 },
+      { lbl:'Destino', x:M+142, w:48 }
+    ];
+    cols.forEach(c => txt(c.lbl, c.x + (c.num?c.w-1:0), y+4.7, { bold:true, size:9, color:[255,255,255], align: c.num?'right':'left' }));
+    return { cols, y: y + 7 };
+  }
+
+  // Calcular cuántas filas por página
+  const ROWS_PER_PAGE_FIRST = 30; // primera página con headers grandes
+  const ROWS_PER_PAGE = 35;       // páginas siguientes
+  const totalPages = Math.max(1, Math.ceil(bobinas.length / ROWS_PER_PAGE));
+
+  let pageNum = 1;
+  let y = headerPage(pageNum, totalPages);
+  let header = tableHeader(y);
+  y = header.y;
+  let cols = header.cols;
+  let rowOnPage = 0;
+
+  bobinas.forEach((b, idx) => {
+    if (rowOnPage >= ROWS_PER_PAGE_FIRST && pageNum === 1) {
+      // Footer firmas
+      drawFirmasFooter();
+      doc.addPage();
+      pageNum++;
+      y = headerPage(pageNum, totalPages);
+      header = tableHeader(y);
+      y = header.y;
+      cols = header.cols;
+      rowOnPage = 0;
+    } else if (rowOnPage >= ROWS_PER_PAGE && pageNum > 1) {
+      drawFirmasFooter();
+      doc.addPage();
+      pageNum++;
+      y = headerPage(pageNum, totalPages);
+      header = tableHeader(y);
+      y = header.y;
+      cols = header.cols;
+      rowOnPage = 0;
+    }
+    if (rowOnPage % 2 === 0) { doc.setFillColor(249,250,251); doc.rect(M, y, W-2*M, 5.5, 'F'); }
+    const ped = DATA.pedidos.find(x => x.id === b.pedidoId);
+    const medida = (b.ancho || ped?.ancho || '-') + 'x' + (b.espesor || ped?.espesor || '-');
+    const vals = [
+      { v: b.partida || ped?.op || '-', c: cols[0] },
+      { v: String(b.nroBobina || '-'), c: cols[1] },
+      { v: fmtNum(b.kg || 0), c: cols[2] },
+      { v: medida, c: cols[3] },
+      { v: b.nroPallet || '-', c: cols[4] },
+      { v: ped?.nroSolicitud || '-', c: cols[5] },
+      { v: ped?.cliente || '-', c: cols[6] }
+    ];
+    vals.forEach(item => txt(item.v, item.c.x + (item.c.num?item.c.w-1:0), y+3.7, { size:8, align: item.c.num?'right':'left' }));
+    y += 5.5;
+    rowOnPage++;
+  });
+
+  function drawFirmasFooter() {
+    const yF = H - 22;
+    doc.setFillColor(...C_LIGHT);
+    doc.rect(M, yF, W-2*M, 14, 'F');
+    txt('Revisó:', M+3, yF+5, { bold:true, size:9, color:C_GRAY });
+    txt(safeS(r.emisor || 'Ruiz Guiñazú Agustín'), M+20, yF+5, { size:10 });
+    txt('Controló:', M+80, yF+5, { bold:true, size:9, color:C_GRAY });
+    txt('Stancato Jonathan', M+98, yF+5, { size:10 });
+    doc.line(M+3, yF+11, M+70, yF+11);
+    doc.line(M+80, yF+11, M+150, yF+11);
+    // Footer
+    doc.setTextColor(...C_GRAY); doc.setFontSize(7);
+    doc.text('Winflex S.A. - Planta Chivilcoy - WBAN-001', M, H-3);
+  }
+
+  drawFirmasFooter();
+
+  const fname = `Detalle_envio_${r.puntoVenta||'0001'}-${(r.nroRemito||'').toString().padStart(4,'0')}_${fmtFecha(r.fecha).replace(/\//g,'-')}.pdf`;
+  doc.save(fname);
+  toast('Detalle de envío PDF descargado', 'success');
+}
+
+// Helper para asegurar jspdf cargado (igual al ensureJsPDF de la tablet pero para PC)
+function ensureJsPDFPC() {
+  if (typeof window.jspdf !== 'undefined') return true;
+  const s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+  document.head.appendChild(s);
+  return false;
+}
+
 </script>
 </body>
 </html>
