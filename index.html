@@ -541,6 +541,7 @@ async function loadData() {
       if (r.ok) {
         const j = await r.json();
         DATA = migrateLegacyData(j.record);
+        pcRecalcularTodosKgReales(DATA);
         localStorage.setItem(LS_KEY, JSON.stringify(DATA));
         setSyncStatus('Sincronizado', 'ok');
         return DATA;
@@ -587,6 +588,19 @@ function mergeArrayPorId(remoteArr, localArr) {
   return [...out.values()].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
 }
 
+// Recalcula kgReales de TODOS los pedidos a partir de DATA.producciones
+function pcRecalcularTodosKgReales(d) {
+  if (!d || !d.pedidos) return;
+  const totales = {};
+  (d.producciones || []).forEach(b => {
+    if (!b.pedidoId) return;
+    totales[b.pedidoId] = (totales[b.pedidoId] || 0) + (+b.kg || 0);
+  });
+  d.pedidos.forEach(p => {
+    p.kgReales = Math.round((totales[p.id] || 0) * 100) / 100;
+  });
+}
+
 async function saveData() {
   DATA.lastUpdate = new Date().toISOString();
   localStorage.setItem(LS_KEY, JSON.stringify(DATA));
@@ -608,30 +622,14 @@ async function saveData() {
 
     // 2) Construir el payload final:
     //    - pedidos, catalogos, config, costosMensuales → vienen del LOCAL (la PC los maneja)
-    //    - producciones y registrosProduccion → MERGE por ID (preservar cargas de tablet)
+    //    - producciones y registrosProduccion → SOLO del REMOTO (la PC nunca los crea ni borra,
+    //      solo la tablet lo hace. Mergear localmente podría resucitar items borrados.)
     const merged = JSON.parse(JSON.stringify(DATA));  // base local
-    merged.producciones = mergeArrayPorId(
-      remote.producciones || [],
-      DATA.producciones || []
-    );
-    merged.registrosProduccion = mergeArrayPorId(
-      remote.registrosProduccion || [],
-      DATA.registrosProduccion || []
-    );
+    merged.producciones = remote.producciones || [];
+    merged.registrosProduccion = remote.registrosProduccion || [];
 
-    // 3) Recalcular kgReales de pedidos a partir del array MERGED
-    const pedidosAfectados = new Set([
-      ...(remote.producciones || []).map(b => b.pedidoId),
-      ...(DATA.producciones || []).map(b => b.pedidoId)
-    ]);
-    pedidosAfectados.forEach(pid => {
-      const p = (merged.pedidos || []).find(x => x.id === pid);
-      if (!p) return;
-      const total = merged.producciones
-        .filter(b => b.pedidoId === pid)
-        .reduce((s, b) => s + (+b.kg || 0), 0);
-      p.kgReales = Math.round(total * 100) / 100;
-    });
+    // 3) Recalcular kgReales de TODOS los pedidos a partir del array remoto
+    pcRecalcularTodosKgReales(merged);
 
     merged.lastUpdate = new Date().toISOString();
     console.log('[PC saveData] merged. Final prod:', merged.producciones.length, 'reg:', merged.registrosProduccion.length);
@@ -667,36 +665,19 @@ async function silentReloadPC() {
     if (!r.ok) return;
     const j = await r.json();
     const remote = j.record;
-    // Merge: pedidos/catálogos del local (los manejo yo), producciones/registros del merge
+    // Merge: pedidos/catálogos del local (los manejo yo), producciones/registros del REMOTO
+    // (la PC nunca crea/borra producciones; mergear podría resucitar borrados de tablet)
     const merged = JSON.parse(JSON.stringify(DATA));
-    merged.producciones = mergeArrayPorId(
-      remote.producciones || [],
-      DATA.producciones || []
-    );
-    merged.registrosProduccion = mergeArrayPorId(
-      remote.registrosProduccion || [],
-      DATA.registrosProduccion || []
-    );
+    merged.producciones = remote.producciones || [];
+    merged.registrosProduccion = remote.registrosProduccion || [];
     // Si la PC no estaba editando pedidos, traer también lo que cambió remoto en pedidos
-    // (heurística: si la PC no es dirty, refrescar pedidos del remoto)
     if (!isDirty) {
       merged.pedidos = remote.pedidos || merged.pedidos;
       merged.catalogos = remote.catalogos || merged.catalogos;
       merged.config = remote.config || merged.config;
     }
-    // Recalcular kgReales
-    const pedsAfect = new Set([
-      ...(remote.producciones || []).map(b => b.pedidoId),
-      ...(DATA.producciones || []).map(b => b.pedidoId)
-    ]);
-    pedsAfect.forEach(pid => {
-      const p = (merged.pedidos || []).find(x => x.id === pid);
-      if (!p) return;
-      const total = merged.producciones
-        .filter(b => b.pedidoId === pid)
-        .reduce((s, b) => s + (+b.kg || 0), 0);
-      p.kgReales = Math.round(total * 100) / 100;
-    });
+    // Recalcular kgReales SIEMPRE (importante después de borrados en tablet)
+    pcRecalcularTodosKgReales(merged);
     // Detectar si hubo cambios reales antes de re-renderizar
     const prodCountBefore = (DATA.producciones || []).length;
     const regCountBefore = (DATA.registrosProduccion || []).length;

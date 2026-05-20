@@ -1665,6 +1665,8 @@ async function loadData() {
           ...(remote.producciones || []).map(b => b.id),
           ...(remote.registrosProduccion || []).map(r => r.id)
         ]);
+        // Recalcular kgReales por si el remoto tenía un valor desactualizado
+        recalcularTodosKgReales(DATA);
         localStorage.setItem(LS_KEY, JSON.stringify(DATA));
         setSync('Sincronizado', 'ok');
         return DATA;
@@ -1694,6 +1696,20 @@ async function loadData() {
 // - Item en ambos → gana el de timestamp más reciente
 // - Item borrado localmente (en DELETED) → se excluye del merge
 // ============================================================
+// Recalcula kgReales de TODOS los pedidos del DATA a partir de DATA.producciones
+// Usarlo después de cualquier merge donde las bobinas pueden haber cambiado
+function recalcularTodosKgReales(d) {
+  if (!d || !d.pedidos) return;
+  const totales = {};
+  (d.producciones || []).forEach(b => {
+    if (!b.pedidoId) return;
+    totales[b.pedidoId] = (totales[b.pedidoId] || 0) + (+b.kg || 0);
+  });
+  d.pedidos.forEach(p => {
+    p.kgReales = Math.round((totales[p.id] || 0) * 100) / 100;
+  });
+}
+
 function mergeArrayPorId(remoteArr, localArr, deletedSet) {
   const out = new Map();
   // Empezar con todo lo remoto
@@ -1774,7 +1790,10 @@ async function saveData() {
       return;
     }
 
-    // 2c) Recalcular kgReales de los pedidos afectados
+    // 2c) Recalcular kgReales de TODOS los pedidos a partir del array MERGED
+    // (no solo afectados — para garantizar consistencia tras borrados)
+    recalcularTodosKgReales(merged);
+    // Si mi local ya marcó "En producción" pero el remoto está en OP, propagar
     const pedidosAfectados = new Set([
       ...(remote.producciones || []).map(b => b.pedidoId),
       ...(DATA.producciones || []).map(b => b.pedidoId)
@@ -1782,10 +1801,6 @@ async function saveData() {
     pedidosAfectados.forEach(pid => {
       const p = (merged.pedidos || []).find(x => x.id === pid);
       if (!p) return;
-      const total = merged.producciones
-        .filter(b => b.pedidoId === pid)
-        .reduce((s, b) => s + (+b.kg || 0), 0);
-      p.kgReales = Math.round(total * 100) / 100;
       const localP = (DATA.pedidos || []).find(x => x.id === pid);
       if (localP && localP.estadoWorkflow === 'En producción' &&
           (p.estadoWorkflow === 'OP' || p.estadoWorkflow === 'Confirmada')) {
@@ -1927,6 +1942,9 @@ async function silentReload() {
       ...(remote.producciones || []).map(b => b.id),
       ...(remote.registrosProduccion || []).map(r => r.id)
     ]);
+    // Recalcular kgReales de todos los pedidos a partir del merged
+    // (importante después de borrar bobinas — el remoto puede tener kgReales viejo)
+    recalcularTodosKgReales(DATA);
     if (!document.getElementById('screenOpDetail').classList.contains('hidden')) {
       renderOpDetail();
     } else if (!document.getElementById('screenOps').classList.contains('hidden')) {
