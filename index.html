@@ -602,6 +602,16 @@ async function loadData() {
         // Set de pedidos que tienen bobinas en el remoto → solo esos se recalculan.
         // Los que no tienen bobinas mantienen su kgReales histórico (cargado manualmente desde Excel).
         const pedConBobinas = new Set((DATA.producciones || []).map(b => b.pedidoId).filter(Boolean));
+        // Autoreparación: si una OP activa tiene kgReales>0 pero no hay bobinas para ella,
+        // significa que se borraron todas → forzar a 0.
+        (DATA.pedidos || []).forEach(p => {
+          if (p && p.id && (+p.kgReales || 0) > 0 && !pedConBobinas.has(p.id)) {
+            const wf = p.estadoWorkflow || '';
+            if (['En producción', 'Parcial', 'OP'].includes(wf)) {
+              pedConBobinas.add(p.id);
+            }
+          }
+        });
         pcRecalcularTodosKgReales(DATA, pedConBobinas);
         localStorage.setItem(LS_KEY, JSON.stringify(DATA));
         setSyncStatus('Sincronizado', 'ok');
@@ -794,6 +804,15 @@ async function saveData() {
     // 3) Recalcular kgReales de TODOS los pedidos a partir del array remoto.
     // Solo afecta a pedidos con bobinas en remoto; los históricos (sin producciones) quedan intactos.
     const pedConBobinasSV = new Set((merged.producciones || []).map(b => b.pedidoId).filter(Boolean));
+    // Autoreparación: OPs activas con kgReales>0 sin bobinas → forzar a 0.
+    (merged.pedidos || []).forEach(p => {
+      if (p && p.id && (+p.kgReales || 0) > 0 && !pedConBobinasSV.has(p.id)) {
+        const wf = p.estadoWorkflow || '';
+        if (['En producción', 'Parcial', 'OP'].includes(wf)) {
+          pedConBobinasSV.add(p.id);
+        }
+      }
+    });
     pcRecalcularTodosKgReales(merged, pedConBobinasSV);
 
     merged.lastUpdate = new Date().toISOString();
@@ -850,6 +869,19 @@ async function silentReloadPC() {
       ...((DATA.producciones) || []).map(b => b.pedidoId).filter(Boolean),
       ...((remote.producciones) || []).map(b => b.pedidoId).filter(Boolean)
     ]);
+    // Autoreparación PC: si una OP activa tiene kgReales>0 pero remote no tiene bobinas para ella,
+    // significa que la tablet borró todas las bobinas → forzar a 0.
+    const idsConBobinasAhoraPC = new Set(
+      ((remote.producciones) || []).map(b => b.pedidoId).filter(Boolean)
+    );
+    (merged.pedidos || []).forEach(p => {
+      if (p && p.id && (+p.kgReales || 0) > 0 && !idsConBobinasAhoraPC.has(p.id)) {
+        const wf = p.estadoWorkflow || '';
+        if (['En producción', 'Parcial', 'OP'].includes(wf)) {
+          pedidosAfectadosSR.add(p.id);
+        }
+      }
+    });
     pcRecalcularTodosKgReales(merged, pedidosAfectadosSR);
     // Detectar si hubo cambios reales antes de re-renderizar
     const prodCountBefore = (DATA.producciones || []).length;

@@ -385,20 +385,29 @@ let pinBuffer = '';
 // IDs de items borrados localmente — se persisten en localStorage
 // para sobrevivir recargas de la tablet y evitar que un GET fresco "resucite"
 // items que el operario borró antes de que sincronizara.
+//
+// Además, guardamos `pedidosAfectados` = set de pedidoId de OPs a las que se le borró
+// AL MENOS una bobina alguna vez. Esto sirve para que el recálculo de kgReales sepa
+// que esa OP "tenía bobinas alguna vez" aunque el array remoto y local ya estén vacíos.
 const DELETED_KEY = 'winflex_pet_tablet_deleted';
 function loadDeletedIds() {
   try {
     const raw = localStorage.getItem(DELETED_KEY);
-    if (!raw) return { bobinas: new Set(), registros: new Set() };
+    if (!raw) return { bobinas: new Set(), registros: new Set(), pedidosAfectados: new Set() };
     const obj = JSON.parse(raw);
-    return { bobinas: new Set(obj.bobinas || []), registros: new Set(obj.registros || []) };
-  } catch (e) { return { bobinas: new Set(), registros: new Set() }; }
+    return {
+      bobinas: new Set(obj.bobinas || []),
+      registros: new Set(obj.registros || []),
+      pedidosAfectados: new Set(obj.pedidosAfectados || [])
+    };
+  } catch (e) { return { bobinas: new Set(), registros: new Set(), pedidosAfectados: new Set() }; }
 }
 function saveDeletedIds(d) {
   try {
     localStorage.setItem(DELETED_KEY, JSON.stringify({
       bobinas: [...d.bobinas],
-      registros: [...d.registros]
+      registros: [...d.registros],
+      pedidosAfectados: [...(d.pedidosAfectados || new Set())]
     }));
   } catch (e) {}
 }
@@ -1393,6 +1402,9 @@ async function deleteBobina(id) {
   const b = DATA.producciones.find(x => x.id === id);
   if (!b) return;
   DELETED.bobinas.add(id);
+  // Rastrear el pedidoId afectado para que el recálculo de kgReales sepa que
+  // esa OP "tenía bobinas alguna vez" aunque ahora el array esté vacío.
+  if (b.pedidoId) DELETED.pedidosAfectados.add(b.pedidoId);
   saveDeletedIds(DELETED);
   DATA.producciones = DATA.producciones.filter(x => x.id !== id);
   recalcKgReales(b.pedidoId);
@@ -1543,7 +1555,9 @@ async function saveRegistro(id, isEdit) {
 
 async function deleteRegistro(id) {
   if (!confirm('¿Eliminar este registro horario?')) return;
+  const reg = (DATA.registrosProduccion || []).find(x => x.id === id);
   DELETED.registros.add(id);
+  if (reg && reg.pedidoId) DELETED.pedidosAfectados.add(reg.pedidoId);
   saveDeletedIds(DELETED);
   DATA.registrosProduccion = (DATA.registrosProduccion || []).filter(x => x.id !== id);
   await saveData();
@@ -1607,12 +1621,30 @@ async function loadData() {
           ...(remote.registrosProduccion || []).map(r => r.id)
         ]);
         // Recalcular kgReales por si el remoto tenía un valor desactualizado.
-        // Pasar el set de pedidos que tenían bobinas en remoto o local — si ahora no tienen,
-        // significa que se borraron todas y kgReales debe quedar en 0.
+        // Pasar el set de pedidos que tenían bobinas en remoto, local, o que se les borraron
+        // bobinas alguna vez (DELETED.pedidosAfectados). Si ahora no tienen bobinas, kgReales=0.
         const pedidosConBobinasAntes = new Set([
+          ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
+          ...((localData && localData.producciones) || []).map(b => b.pedidoId).filter(Boolean),
+          ...(DELETED.pedidosAfectados || [])
+        ]);
+        // Autoreparación: si una OP está "En producción" / "Parcial" / "Confirmada activa"
+        // y tiene kgReales > 0 pero NO tiene bobinas en producciones ni en remoto ni en local,
+        // claramente quedó un valor stale → forzar recalculación a 0.
+        // Esto cubre datos pre-existentes en localStorage de antes de este fix.
+        const idsConBobinasAhora = new Set([
           ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
           ...((localData && localData.producciones) || []).map(b => b.pedidoId).filter(Boolean)
         ]);
+        (DATA.pedidos || []).forEach(p => {
+          if (p && p.id && (+p.kgReales || 0) > 0 && !idsConBobinasAhora.has(p.id)) {
+            const wf = p.estadoWorkflow || '';
+            // Solo OPs activas en flujo de tablet — no tocar históricos finalizados.
+            if (['En producción', 'Parcial', 'OP'].includes(wf)) {
+              pedidosConBobinasAntes.add(p.id);
+            }
+          }
+        });
         recalcularTodosKgReales(DATA, pedidosConBobinasAntes);
         localStorage.setItem(LS_KEY, JSON.stringify(DATA));
         setSync('Sincronizado', 'ok');
@@ -1746,11 +1778,26 @@ async function saveData() {
 
     // 2c) Recalcular kgReales de TODOS los pedidos a partir del array MERGED
     // (no solo afectados — para garantizar consistencia tras borrados)
-    // pedidosAfectados = los que tenían bobinas en remoto o local. Si ahora no tienen, kgReales=0.
+    // pedidosAfectados = los que tenían bobinas en remoto o local + los que tuvimos que borrar.
+    // Si ahora no tienen ninguna, kgReales=0.
     const pedidosAfectados = new Set([
+      ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
+      ...(DATA.producciones || []).map(b => b.pedidoId).filter(Boolean),
+      ...(DELETED.pedidosAfectados || [])
+    ]);
+    // Autoreparación: OPs activas con kgReales>0 sin bobinas → forzar recalculación a 0.
+    const idsConBobinasAhoraSv = new Set([
       ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
       ...(DATA.producciones || []).map(b => b.pedidoId).filter(Boolean)
     ]);
+    (merged.pedidos || []).forEach(p => {
+      if (p && p.id && (+p.kgReales || 0) > 0 && !idsConBobinasAhoraSv.has(p.id)) {
+        const wf = p.estadoWorkflow || '';
+        if (['En producción', 'Parcial', 'OP'].includes(wf)) {
+          pedidosAfectados.add(p.id);
+        }
+      }
+    });
     recalcularTodosKgReales(merged, pedidosAfectados);
     // Si mi local ya marcó "En producción" pero el remoto está en OP, propagar
     pedidosAfectados.forEach(pid => {
@@ -1899,11 +1946,26 @@ async function silentReload() {
     ]);
     // Recalcular kgReales de todos los pedidos a partir del merged
     // (importante después de borrar bobinas — el remoto puede tener kgReales viejo).
-    // Pasamos el set de pedidos afectados para que los que se quedaron sin bobinas vayan a 0.
+    // Pasamos el set de pedidos afectados (remoto + local + DELETED) para que los que se quedaron
+    // sin bobinas vayan a 0.
     const pedidosAfectadosSR = new Set([
+      ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
+      ...(DATA.producciones || []).map(b => b.pedidoId).filter(Boolean),
+      ...(DELETED.pedidosAfectados || [])
+    ]);
+    // Autoreparación: OPs activas con kgReales>0 sin bobinas → forzar a 0.
+    const idsConBobinasAhoraSR = new Set([
       ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
       ...(DATA.producciones || []).map(b => b.pedidoId).filter(Boolean)
     ]);
+    (DATA.pedidos || []).forEach(p => {
+      if (p && p.id && (+p.kgReales || 0) > 0 && !idsConBobinasAhoraSR.has(p.id)) {
+        const wf = p.estadoWorkflow || '';
+        if (['En producción', 'Parcial', 'OP'].includes(wf)) {
+          pedidosAfectadosSR.add(p.id);
+        }
+      }
+    });
     recalcularTodosKgReales(DATA, pedidosAfectadosSR);
     if (!document.getElementById('screenOpDetail').classList.contains('hidden')) {
       renderOpDetail();
