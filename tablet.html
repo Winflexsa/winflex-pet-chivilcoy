@@ -247,6 +247,7 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
   <div class="login-box">
     <h1>🏭 Winflex PET</h1>
     <p class="sub">Tablet de operarios · Chivilcoy</p>
+    <p class="sub" style="font-size:13px;color:#9ca3af">Ingresá tu PIN personal</p>
     <div class="pin-display" id="pinDisplay"></div>
     <div class="keypad">
       <button class="key" onclick="kp(1)">1</button>
@@ -266,65 +267,77 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
   </div>
 </div>
 
-<!-- TURNO -->
+<!-- SELECCIÓN DE PLANILLA -->
+<div id="screenPlanilla" class="screen hidden">
+  <header>
+    <div>
+      <div class="titulo" id="planillaSaludo">—</div>
+      <div class="info"><span id="planillaTurnoLbl">—</span> · <span id="planillaHora">—</span></div>
+    </div>
+    <div class="right">
+      <span id="syncStatusPlanilla" class="sync">Listo</span>
+      <button class="btn-sec" style="padding:8px 14px;font-size:13px;border-radius:8px" onclick="logout()">Salir</button>
+    </div>
+  </header>
+  <h2 class="section-title">¿Qué planilla vas a cargar este turno?</h2>
+  <div style="display:grid;grid-template-columns:1fr;gap:14px;margin-top:24px">
+    <button onclick="elegirPlanilla('bobinas')" style="background:linear-gradient(135deg,#16a34a,#15803d);color:white;border:none;padding:32px 24px;border-radius:14px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:18px;box-shadow:0 4px 12px rgba(22,163,74,0.25)">
+      <span style="font-size:54px">🎯</span>
+      <div>
+        <div style="font-size:22px;font-weight:700;letter-spacing:0.3px">CARGAR BOBINAS</div>
+        <div style="font-size:13px;font-weight:400;opacity:0.92;margin-top:4px">Planilla "Producción - Bobinas"<br>Al final de la máquina</div>
+      </div>
+    </button>
+    <button onclick="elegirPlanilla('registros')" style="background:linear-gradient(135deg,#059669,#047857);color:white;border:none;padding:32px 24px;border-radius:14px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:18px;box-shadow:0 4px 12px rgba(5,150,105,0.25)">
+      <span style="font-size:54px">📊</span>
+      <div>
+        <div style="font-size:22px;font-weight:700;letter-spacing:0.3px">CARGAR REGISTROS DE PRODUCCIÓN</div>
+        <div style="font-size:13px;font-weight:400;opacity:0.92;margin-top:4px">Planilla "WEC001" · Control de proceso<br>Parámetros cada hora</div>
+      </div>
+    </button>
+  </div>
+  <p style="margin-top:30px;font-size:12px;color:#9ca3af;text-align:center">Si te equivocás, podés salir y volver a entrar.</p>
+</div>
+
 <!-- LISTA OPS -->
 <div id="screenOps" class="screen hidden">
   <header>
     <div>
-      <div class="titulo">OPs activas</div>
+      <div class="titulo" id="opsHeaderTitle">OPs activas</div>
       <div class="info">
-        <button id="opsTurno" onclick="cambiarTurnoManual()" style="background:none;border:1px dashed rgba(255,255,255,0.4);color:#fff;padding:2px 10px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">—</button>
-        · <span id="opsHora">—</span>
+        <span id="opsOperario">—</span> · <span id="opsTurno">—</span> · <span id="opsHora">—</span>
       </div>
     </div>
     <div class="right">
       <span id="syncStatusOps" class="sync">Listo</span>
       <button class="btn-sec" style="padding:8px 14px;font-size:13px;border-radius:8px" onclick="reloadData()">↻</button>
-      <button class="btn-sec" style="padding:8px 14px;font-size:13px;border-radius:8px" onclick="logout()">Salir</button>
     </div>
   </header>
-  <h2 class="section-title">OPs activas para producir</h2>
+  <h2 class="section-title">Elegí la OP para cargar</h2>
+  <p style="font-size:13px;color:#6b7280;margin:-10px 0 12px">Tocá una OP para entrar y cargar. Podés volver y cambiar de OP durante el turno.</p>
   <div id="opsList"></div>
 
-  <div style="margin-top:24px;padding:18px;background:linear-gradient(135deg,#16a34a 0%,#15803d 100%);border-radius:12px;color:white">
+  <div style="margin-top:30px;padding:18px;background:linear-gradient(135deg,#16a34a 0%,#15803d 100%);border-radius:12px;color:white">
     <div style="font-size:14px;font-weight:700;margin-bottom:4px">🚪 Cerrar turno</div>
-    <div style="font-size:12px;opacity:0.9;margin-bottom:12px">Genera los PDFs de lo que cargaste en este turno (si hay) y vuelve al login para que arranque el próximo operario.</div>
+    <div style="font-size:12px;opacity:0.92;margin-bottom:12px">Cuando termines tu turno, cerrá la sesión. Los PDFs se generan después desde la PC.</div>
     <button class="btn-big" style="background:white;color:#15803d;font-weight:700;width:100%;padding:18px;font-size:17px;border:none;border-radius:8px;cursor:pointer" onclick="cerrarTurnoCompleto()">🚪 CERRAR MI TURNO</button>
-  </div>
-
-  <div style="margin-top:14px;padding:14px;background:#fff;border-radius:10px;border:1px dashed #d1d5db">
-    <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px">📅 Al final del día</div>
-    <p style="font-size:11px;color:#6b7280;margin-bottom:10px">Una vez terminado el segundo turno, generá el PDF consolidado del día completo (todos los turnos + operarios) para mandar a Agustín.</p>
-    <button class="btn-big btn-sec" style="background:#374151;color:white;border:none;width:100%" onclick="cerrarConsolidadoDiario()">📅 PDF consolidado del día</button>
   </div>
 </div>
 
-<!-- OP DETAIL (Carga de bobinas) -->
+<!-- OP DETAIL -->
 <div id="screenOpDetail" class="screen hidden">
   <header>
     <div>
       <button class="btn-sec" style="padding:6px 12px;font-size:13px;border-radius:8px" onclick="volverAOps()">← OPs</button>
+      <span style="font-size:12px;color:#9ca3af;margin-left:10px" id="opDetailBanner">—</span>
     </div>
     <div class="right">
       <span id="syncStatusDetail" class="sync">Listo</span>
     </div>
   </header>
   <div id="opDetailHeader"></div>
-  <div style="margin:10px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-    <div style="padding:10px 12px;background:white;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:3px solid #16a34a">
-      <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px">📊 Cargando registros</div>
-      <div style="font-size:14px;font-weight:600;color:#15803d;margin-top:2px" id="opRegistrosLbl">— (PIN al cargar)</div>
-    </div>
-    <div style="padding:10px 12px;background:white;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:3px solid #059669">
-      <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px">🎯 Cargando bobinas</div>
-      <div style="font-size:14px;font-weight:600;color:#059669;margin-top:2px" id="opBobinasLbl">— (PIN al cargar)</div>
-    </div>
-  </div>
-  <div class="btn-row" style="margin-top:6px">
-    <button class="btn-big btn-success" onclick="openBobinaModal()">🎯<br>Cargar bobina<br><small style="font-weight:400;opacity:0.85">final máquina</small></button>
-    <button class="btn-big btn-pri" onclick="openRegistroModal()">📊<br>Registro horario<br><small style="font-weight:400;opacity:0.85">control proceso</small></button>
-  </div>
-  <h3 class="card-title" style="margin-top:20px;margin-bottom:10px">Mis cargas de este turno</h3>
+  <div id="opDetailLoadBtn" style="margin-top:14px"></div>
+  <h3 class="card-title" style="margin-top:20px;margin-bottom:10px">Cargas en esta OP</h3>
   <div id="bobinasList"></div>
 </div>
 
@@ -361,11 +374,9 @@ const LS_KEY = 'winflex_pet_tablet_v1';
 let DATA = null;
 let SESSION = {
   loggedIn: false,
-  // Operarios separados para cada planilla (pueden ser distintos)
-  operarioRegistros: null,
-  operarioBobinas: null,
-  operarioActual: null,
-  turno: null,
+  operario: null,         // Operario logueado (con PIN personal)
+  planilla: null,         // 'bobinas' o 'registros' (elige al entrar)
+  turno: null,            // auto-detectado por hora
   inicio: null,
   opSeleccionada: null
 };
@@ -427,17 +438,19 @@ function detectarTurnoAuto() {
 async function tryLogin() {
   if (!pinBuffer) return;
   if (!DATA) { await loadData(); }
-  const pinFabrica = (DATA.config && DATA.config.pinFabrica) || '1234';
-  if (pinBuffer === pinFabrica) {
+  // Buscar operario con ese PIN
+  const op = (DATA.catalogos && DATA.catalogos.operarios || []).find(o => o.pin === pinBuffer);
+  if (op) {
     SESSION.loggedIn = true;
+    SESSION.operario = op;
     SESSION.turno = detectarTurnoAuto();
     SESSION.inicio = new Date().toISOString();
+    SESSION.planilla = null; // se elige en la siguiente pantalla
     pinBuffer = '';
     refreshPin();
-    // Ir directo a OPs (sin pantalla de selección de turno)
-    showScreen('Ops');
-    actualizarBarraTurno();
-    renderOps();
+    // Ir a pantalla de elegir planilla
+    showScreen('Planilla');
+    actualizarSaludo();
   } else {
     document.getElementById('loginErr').textContent = 'PIN incorrecto';
     pinBuffer = '';
@@ -445,8 +458,23 @@ async function tryLogin() {
   }
 }
 function logout() {
-  SESSION = { loggedIn: false, operarioRegistros: null, operarioBobinas: null, operarioActual: null, turno: null, inicio: null, opSeleccionada: null };
+  SESSION = { loggedIn: false, operario: null, planilla: null, turno: null, inicio: null, opSeleccionada: null };
   showScreen('Login');
+}
+
+// Elegir planilla
+function elegirPlanilla(tipo) {
+  SESSION.planilla = tipo; // 'bobinas' o 'registros'
+  showScreen('Ops');
+  actualizarBarraTurno();
+  renderOps();
+}
+
+function actualizarSaludo() {
+  const lbl = document.getElementById('planillaSaludo');
+  if (lbl) lbl.textContent = SESSION.operario ? `Hola ${SESSION.operario.nombre}` : '';
+  const turnoLbl = document.getElementById('planillaTurnoLbl');
+  if (turnoLbl) turnoLbl.textContent = SESSION.turno === 'dia' ? '☀️ Turno DÍA' : '🌙 Turno NOCHE';
 }
 
 // Cambiar turno manualmente (para cuando la auto-detección falla)
@@ -462,19 +490,29 @@ function cambiarTurnoManual() {
 }
 
 function actualizarBarraTurno() {
-  const lbl = document.getElementById('opsTurno');
-  if (lbl) lbl.textContent = SESSION.turno === 'dia' ? '☀️ Turno DÍA' : '🌙 Turno NOCHE';
-  const lbl2 = document.getElementById('opDetailTurno');
-  if (lbl2) lbl2.textContent = SESSION.turno === 'dia' ? '☀️ DÍA' : '🌙 NOCHE';
+  const opsTurnoEl = document.getElementById('opsTurno');
+  if (opsTurnoEl) opsTurnoEl.textContent = SESSION.turno === 'dia' ? '☀️ Turno DÍA' : '🌙 Turno NOCHE';
+  const opsOperEl = document.getElementById('opsOperario');
+  if (opsOperEl) opsOperEl.textContent = SESSION.operario ? SESSION.operario.nombre : '—';
+  const opsHeader = document.getElementById('opsHeaderTitle');
+  if (opsHeader) opsHeader.textContent = SESSION.planilla === 'bobinas' ? '🎯 Bobinas' : SESSION.planilla === 'registros' ? '📊 Registros' : 'OPs activas';
   const horaEl = document.getElementById('opsHora');
   if (horaEl) horaEl.textContent = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  const planillaHora = document.getElementById('planillaHora');
+  if (planillaHora) planillaHora.textContent = new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  const opDetailBanner = document.getElementById('opDetailBanner');
+  if (opDetailBanner) {
+    const pl = SESSION.planilla === 'bobinas' ? '🎯 Bobinas' : '📊 Registros';
+    const tur = SESSION.turno === 'dia' ? '☀ DÍA' : '🌙 NOCHE';
+    opDetailBanner.textContent = `${pl} · ${SESSION.operario ? SESSION.operario.nombre : '—'} · ${tur}`;
+  }
 }
 
 // ============================================================
 // SCREENS
 // ============================================================
 function showScreen(name) {
-  ['Login','Ops','OpDetail'].forEach(s => {
+  ['Login','Planilla','Ops','OpDetail'].forEach(s => {
     const el = document.getElementById('screen'+s);
     if (el) el.classList.add('hidden');
   });
@@ -485,107 +523,68 @@ function showScreen(name) {
 // CIERRE DE PLANILLAS — DOS PDFs SEPARADOS (uno por operario)
 // ============================================================
 // ============================================================
-// CIERRE DE TURNO — un solo botón que genera PDFs y logout
+// CIERRE DE TURNO — solo resumen + logout (los PDFs se generan en PC)
 // ============================================================
 async function cerrarTurnoCompleto() {
   const today = new Date().toISOString().slice(0,10);
-  const registros = (DATA.registrosProduccion || []).filter(r => r.turno === SESSION.turno && r.fecha === today);
-  const bobinas = (DATA.producciones || []).filter(b => b.turno === SESSION.turno && b.fecha === today);
-  const totalKg = bobinas.reduce((s,b) => s+(+b.kg||0), 0);
+  const operName = SESSION.operario ? SESSION.operario.nombre : '';
+  // Solo lo cargado por ESTE operario en este turno
+  const misBobinas = (DATA.producciones || []).filter(b =>
+    b.turno === SESSION.turno && b.fecha === today && b.operario === operName
+  );
+  const misRegistros = (DATA.registrosProduccion || []).filter(r =>
+    r.turno === SESSION.turno && r.fecha === today && r.operario === operName
+  );
+  const totalKg = misBobinas.reduce((s,b) => s+(+b.kg||0), 0);
 
-  if (registros.length === 0 && bobinas.length === 0) {
-    if (confirm('No hay nada cargado en este turno. ¿Salir igual sin generar PDFs?')) {
-      logout();
-    }
-    return;
-  }
+  // Verificar pendientes de sync
+  const todosIds = [...(DATA.producciones||[]).map(b=>b.id), ...(DATA.registrosProduccion||[]).map(r=>r.id)];
+  const pendientes = window._remoteIds ? todosIds.filter(id => !window._remoteIds.has(id)) : [];
 
-  const operariosBob = [...new Set(bobinas.map(b => b.operario).filter(Boolean))];
-  const operariosReg = [...new Set(registros.map(r => r.operario).filter(Boolean))];
+  let html = `
+    <div class="modal-bg">
+      <div class="modal" style="max-width:480px">
+        <h3>🚪 Cerrar turno <button class="close" onclick="closeModal()">✕</button></h3>
+        <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Resumen de lo que cargaste en este turno:</p>
+        <div style="background:#f0fdf4;padding:14px;border-radius:10px;border:1px solid #86efac;margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;font-size:13px;color:#15803d;margin-bottom:6px"><span><b>${operName}</b></span><span>${SESSION.turno==='dia'?'☀ DÍA':'🌙 NOCHE'} · ${today}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:600;color:#15803d;margin-top:8px">
+            <span>${SESSION.planilla==='bobinas'?'🎯 Bobinas':'📊 Registros'}</span>
+            <span>${SESSION.planilla==='bobinas' ? `${misBobinas.length} · ${fmt(totalKg)} kg` : `${misRegistros.length} registros`}</span>
+          </div>
+        </div>
+        ${pendientes.length > 0 ? `<div style="background:#fef3c7;padding:10px;border-radius:8px;border:1px solid #fde68a;margin-bottom:14px;font-size:12px;color:#92400e">⚠️ Hay ${pendientes.length} items sin sincronizar todavía. Vamos a intentar subirlos antes de cerrar.</div>` : ''}
+        <p style="font-size:12px;color:#6b7280;margin-bottom:14px">Los PDFs de la planilla se generan después desde la app PC. Acá solo cerramos tu sesión para que entre el próximo operario.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+          <button class="btn-big btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn-big btn-success" onclick="confirmarCierreTurno()">✓ Confirmar y cerrar</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('modalContainer').innerHTML = html;
+}
 
-  let msg = `¿Cerrar el turno?\n\nTurno ${SESSION.turno.toUpperCase()} · ${today}\n\n`;
-  if (registros.length > 0) {
-    msg += `📊 ${registros.length} registros (${operariosReg.join(', ') || '-'})\n`;
-  }
-  if (bobinas.length > 0) {
-    msg += `🎯 ${bobinas.length} bobinas · ${fmt(totalKg)} kg (${operariosBob.join(', ') || '-'})\n`;
-  }
-  msg += `\nVamos a generar:`;
-  if (registros.length > 0) msg += `\n  • PDF de Registros del turno`;
-  if (bobinas.length > 0) msg += `\n  • PDF de Bobinas del turno`;
-  msg += `\n\nDespués se cierra la sesión.`;
-
-  if (!confirm(msg)) return;
-
-  // Verificar items pendientes
+async function confirmarCierreTurno() {
+  // Cerrar modal primero
+  closeModal();
+  // Intentar sync final
   const todosIds = [...(DATA.producciones||[]).map(b=>b.id), ...(DATA.registrosProduccion||[]).map(r=>r.id)];
   const pendientes = window._remoteIds ? todosIds.filter(id => !window._remoteIds.has(id)) : [];
   if (pendientes.length > 0) {
     setSync('Sincronizando antes de cerrar...', 'warn');
     await saveData();
   }
-
-  // Generar PDFs según haya datos
-  try {
-    if (!ensureJsPDF()) return;
-    if (registros.length > 0) {
-      const operName = operariosReg.join(', ') || '-';
-      generarPDFRegistros(registros, operName);
-      // Pequeña espera para que el navegador procese cada descarga
-      await new Promise(r => setTimeout(r, 800));
-    }
-    if (bobinas.length > 0) {
-      const operName = operariosBob.join(', ') || '-';
-      generarPDFBobinas(bobinas, operName, totalKg);
-      await new Promise(r => setTimeout(r, 800));
-    }
-    toast('PDFs descargados. Cerrando sesión...', 'success');
-    setTimeout(() => logout(), 1500);
-  } catch (e) {
-    console.error('cerrarTurnoCompleto error:', e);
-    alert('Error generando PDFs: ' + (e.message || e) + '\n\nLa sesión NO se cerró. Los datos siguen guardados.');
-  }
+  toast('Turno cerrado · que descanses 👋', 'success');
+  setTimeout(() => logout(), 1200);
 }
 
-// LEGACY — las funciones viejas siguen existiendo por compat pero ya no se usan en UI
+// LEGACY — para compat (ya no se usa en UI)
 function cerrarTurnoSalir() {
-  if (confirm('¿Salir sin cerrar planillas?\n\nLos datos quedan guardados. Podés volver más tarde a generar los PDFs.')) {
-    logout();
-  }
+  if (confirm('¿Salir sin cerrar?')) logout();
 }
-
 async function finalizarDia() {
-  const today = new Date().toISOString().slice(0,10);
-  const bobinas = (DATA.producciones || []).filter(b => b.fecha === today);
-  const registros = (DATA.registrosProduccion || []).filter(r => r.fecha === today);
-  const totalKg = bobinas.reduce((s, b) => s + (+b.kg || 0), 0);
-
-  // Verificar si hay items pendientes de sincronizar
-  const todosIds = [...(DATA.producciones||[]).map(b=>b.id), ...(DATA.registrosProduccion||[]).map(r=>r.id)];
-  const pendientes = window._remoteIds
-    ? todosIds.filter(id => !window._remoteIds.has(id))
-    : [];
-
-  let msg = `¿Cerrar el día y salir?\n\nResumen del día ${today}:\n• ${bobinas.length} bobinas (${fmt(totalKg)} kg)\n• ${registros.length} registros horarios`;
-  if (pendientes.length > 0) {
-    msg += `\n\n⚠️ ATENCIÓN: hay ${pendientes.length} items todavía sin sincronizar. Voy a intentar subirlos antes de salir.`;
-  }
-  msg += '\n\n¿Continuar?';
-  if (!confirm(msg)) return;
-
-  // Forzar un sync final antes de salir
-  if (pendientes.length > 0) {
-    setSync('Sincronizando antes de salir...', 'warn');
-    await saveData();
-    // Verificar de nuevo si quedaron pendientes
-    const stillPending = todosIds.filter(id => !window._remoteIds || !window._remoteIds.has(id));
-    if (stillPending.length > 0) {
-      if (!confirm(`Aún quedan ${stillPending.length} items sin sincronizar (probablemente sin conexión).\n\nQuedan guardados en esta tablet y se subirán cuando vuelva la conexión.\n\n¿Salir igual?`)) return;
-    } else {
-      toast('Todos los datos sincronizados ✓', 'success');
-    }
-  }
-  logout();
+  cerrarTurnoCompleto();
 }
 
 function cerrarPlanillaRegistros() {
@@ -599,7 +598,7 @@ function cerrarPlanillaRegistros() {
     return;
   }
   const operarios = [...new Set(registros.map(r => r.operario).filter(Boolean))];
-  const operName = operarios.join(', ') || (SESSION.operarioRegistros ? SESSION.operarioRegistros.nombre : '-');
+  const operName = operarios.join(', ') || ((SESSION.operario ? SESSION.operario.nombre : '-'));
   const msg = `¿Cerrar planilla de Registros?\n\n• ${registros.length} registros del turno\n• Operario(s): ${operName}\n\nSe genera el PDF para descargar y enviar.`;
   if (!confirm(msg)) return;
 
@@ -623,7 +622,7 @@ function cerrarPlanillaBobinas() {
     return;
   }
   const operarios = [...new Set(bobinas.map(b => b.operario).filter(Boolean))];
-  const operName = operarios.join(', ') || (SESSION.operarioBobinas ? SESSION.operarioBobinas.nombre : '-');
+  const operName = operarios.join(', ') || ((SESSION.operario ? SESSION.operario.nombre : '-'));
   const totalKg = bobinas.reduce((s, b) => s + (+b.kg || 0), 0);
   const msg = `¿Cerrar planilla de Bobinas?\n\n• ${bobinas.length} bobinas del turno (${fmt(totalKg)} kg)\n• Operario(s): ${operName}\n\nSe genera el PDF para descargar y enviar.`;
   if (!confirm(msg)) return;
@@ -1138,8 +1137,9 @@ function renderOpDetail() {
 
   const lista = document.getElementById('bobinasList');
   if (gruposArr.length === 0) {
-    lista.innerHTML = '<div class="empty" style="padding:20px"><p>Todavía no hay nada cargado para esta OP.</p></div>';
-    actualizarOperariosLabel();
+    lista.innerHTML = '<div class="empty" style="padding:20px"><p>Todavía no hay nada cargado para esta OP. Tocá el botón de arriba para empezar.</p></div>';
+    renderLoadButton();
+    actualizarBarraTurno();
     return;
   }
 
@@ -1207,77 +1207,27 @@ function renderOpDetail() {
     html += '</div></div>';
   });
   lista.innerHTML = html;
-  actualizarOperariosLabel();
+  renderLoadButton();
+  actualizarBarraTurno();
 }
 
-// ============================================================
-// PIN OPERARIO — pedido antes de cargar bobinas/registros
-// Soporta operarios distintos para cada planilla
-// ============================================================
-function ensureOperarioPin(tipo, callback) {
-  // tipo: 'registros' o 'bobinas'
-  const key = tipo === 'registros' ? 'operarioRegistros' : 'operarioBobinas';
-  if (SESSION[key]) {
-    SESSION.operarioActual = SESSION[key]; // alias compat
-    callback();
-    return;
+// Renderiza el botón de carga grande según la planilla activa
+function renderLoadButton() {
+  const btnContainer = document.getElementById('opDetailLoadBtn');
+  if (!btnContainer) return;
+  if (SESSION.planilla === 'bobinas') {
+    btnContainer.innerHTML = `
+      <button class="btn-big btn-success" style="width:100%;padding:24px;font-size:18px;display:flex;align-items:center;justify-content:center;gap:12px" onclick="openBobinaModal()">
+        <span style="font-size:32px">🎯</span>
+        <span>CARGAR BOBINA</span>
+      </button>`;
+  } else if (SESSION.planilla === 'registros') {
+    btnContainer.innerHTML = `
+      <button class="btn-big btn-pri" style="width:100%;padding:24px;font-size:18px;display:flex;align-items:center;justify-content:center;gap:12px" onclick="openRegistroModal()">
+        <span style="font-size:32px">📊</span>
+        <span>CARGAR REGISTRO HORARIO</span>
+      </button>`;
   }
-  promptOperarioPin(tipo, callback);
-}
-
-function promptOperarioPin(tipo, callback) {
-  const label = tipo === 'registros' ? '📊 Registros de producción' : '🎯 Bobinas';
-  document.getElementById('modalContainer').innerHTML = `
-    <div class="modal-bg">
-      <div class="modal">
-        <h3>👤 PIN del operario <button class="close" onclick="closeModal()">✕</button></h3>
-        <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Planilla: <b>${label}</b></p>
-        <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Ingresá tu PIN para registrar tu nombre en esta carga.</p>
-        <div class="field">
-          <input type="password" inputmode="numeric" id="opPinInput" maxlength="6" autocomplete="off" autofocus
-            style="text-align:center;font-size:32px;letter-spacing:8px;padding:14px"
-            oninput="document.getElementById('opPinErr').textContent=''">
-        </div>
-        <div id="opPinErr" style="color:#dc2626;font-size:13px;text-align:center;min-height:18px;margin-bottom:10px"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
-          <button class="btn-big btn-sec" onclick="closeModal()">Cancelar</button>
-          <button class="btn-big btn-pri" onclick="checkOperarioPin('${tipo}')">Confirmar</button>
-        </div>
-      </div>
-    </div>
-  `;
-  window._operarioPinCallback = callback;
-  window._operarioPinTipo = tipo;
-  setTimeout(() => { try { document.getElementById('opPinInput').focus(); } catch(e){} }, 100);
-}
-
-function checkOperarioPin(tipo) {
-  const pin = document.getElementById('opPinInput').value.trim();
-  if (!pin) return;
-  const op = (DATA.catalogos.operarios || []).find(o => o.pin === pin);
-  if (!op) {
-    document.getElementById('opPinErr').textContent = 'PIN incorrecto';
-    document.getElementById('opPinInput').value = '';
-    return;
-  }
-  const key = tipo === 'registros' ? 'operarioRegistros' : 'operarioBobinas';
-  SESSION[key] = op;
-  SESSION.operarioActual = op;
-  closeModal();
-  toast(`👤 ${op.nombre} (${tipo})`, 'success');
-  actualizarOperariosLabel();
-  if (window._operarioPinCallback) {
-    const cb = window._operarioPinCallback;
-    window._operarioPinCallback = null;
-    setTimeout(cb, 100);
-  }
-}
-
-function actualizarOperariosLabel() {
-  const elR = document.getElementById('opRegistrosLbl');
-  const elB = document.getElementById('opBobinasLbl');
-  if (elR) elR.textContent = SESSION.operarioRegistros ? SESSION.operarioRegistros.nombre : '— (PIN al cargar)';
-  if (elB) elB.textContent = SESSION.operarioBobinas ? SESSION.operarioBobinas.nombre : '— (PIN al cargar)';
 }
 
 // Hook: antes de abrir bobina o registro, pedir PIN
@@ -1287,11 +1237,7 @@ const _origOpenBobinaModal = null; // se setea abajo
 // MODAL CARGAR BOBINA
 // ============================================================
 function openBobinaModal(bobinaId) {
-  if (!bobinaId && !SESSION.operarioBobinas) {
-    ensureOperarioPin('bobinas', () => openBobinaModal(bobinaId));
-    return;
-  }
-  SESSION.operarioActual = SESSION.operarioBobinas; // para que el modal lo lea
+  // El operario ya está logueado con su PIN personal - no necesita confirmar de nuevo
   _openBobinaModalImpl(bobinaId);
 }
 
@@ -1314,7 +1260,7 @@ function _openBobinaModalImpl(bobinaId) {
     b = {
       id: 'BOB-' + Date.now(),
       pedidoId: p.id,
-      operario: SESSION.operarioActual ? SESSION.operarioActual.nombre : "",
+      operario: (SESSION.operario ? SESSION.operario.nombre : ""),
       turno: SESSION.turno,
       fecha: new Date().toISOString().slice(0,10),
       timestamp: new Date().toISOString(),
@@ -1336,7 +1282,7 @@ function _openBobinaModalImpl(bobinaId) {
     <div class="modal-bg" >
       <div class="modal">
         <h3>${isEdit ? 'Editar bobina' : 'Nueva bobina'} <button class="close" onclick="closeModal()">✕</button></h3>
-        <p style="font-size:12px;color:#15803d;background:#f0fdf4;padding:8px 12px;border-radius:6px;margin-bottom:14px">🎯 Operario: <b>${SESSION.operarioActual ? SESSION.operarioActual.nombre : '—'}</b></p>
+        <p style="font-size:12px;color:#15803d;background:#f0fdf4;padding:8px 12px;border-radius:6px;margin-bottom:14px">🎯 Operario: <b>${(SESSION.operario ? SESSION.operario.nombre : '—')}</b></p>
         <div class="field-row-3">
           <div class="field"><label>Hora</label><input type="time" id="b_hora" value="${b.hora||new Date().toTimeString().slice(0,5)}"></div>
           <div class="field"><label>N° Bobina</label><input type="number" id="b_nro" value="${b.nroBobina}" min="1"></div>
@@ -1410,7 +1356,7 @@ async function saveBobina(id, isEdit) {
   const data = {
     id,
     pedidoId: p.id,
-    operario: (SESSION.operarioActual ? SESSION.operarioActual.nombre : ""),
+    operario: SESSION.operario.nombre,
     turno: SESSION.turno,
     fecha: new Date().toISOString().slice(0,10),
     timestamp: isEdit ? (DATA.producciones.find(x => x.id === id)?.timestamp || new Date().toISOString()) : new Date().toISOString(),
@@ -1469,11 +1415,6 @@ function recalcKgReales(pedidoId) {
 // Cargar parámetros de control de proceso cada hora
 // ============================================================
 function openRegistroModal(registroId) {
-  if (!registroId && !SESSION.operarioRegistros) {
-    ensureOperarioPin('registros', () => openRegistroModal(registroId));
-    return;
-  }
-  SESSION.operarioActual = SESSION.operarioRegistros; // para que el modal lo lea
   _openRegistroModalImpl(registroId);
 }
 
@@ -1490,7 +1431,7 @@ function _openRegistroModalImpl(registroId) {
     r = {
       id: 'REG-' + Date.now(),
       pedidoId: p.id,
-      operario: (SESSION.operarioActual ? SESSION.operarioActual.nombre : ""),
+      operario: SESSION.operario.nombre,
       turno: SESSION.turno,
       fecha: new Date().toISOString().slice(0,10),
       timestamp: new Date().toISOString(),
@@ -1510,7 +1451,7 @@ function _openRegistroModalImpl(registroId) {
     <div class="modal-bg" >
       <div class="modal">
         <h3>${isEdit ? 'Editar registro' : 'Nuevo registro horario'} <button class="close" onclick="closeModal()">✕</button></h3>
-        <p style="font-size:12px;color:#15803d;background:#f0fdf4;padding:8px 12px;border-radius:6px;margin-bottom:14px">📊 Control de proceso (planilla WEC001) · Operario: <b>${SESSION.operarioActual ? SESSION.operarioActual.nombre : '—'}</b></p>
+        <p style="font-size:12px;color:#15803d;background:#f0fdf4;padding:8px 12px;border-radius:6px;margin-bottom:14px">📊 Control de proceso (planilla WEC001) · Operario: <b>${(SESSION.operario ? SESSION.operario.nombre : '—')}</b></p>
         <div class="field-row-3">
           <div class="field"><label>Hora</label><input type="time" id="r_hora" value="${r.hora||''}"></div>
           <div class="field"><label>N° Bobina</label><input type="number" id="r_nroBobina" value="${r.nroBobina||''}" min="1"></div>
@@ -1563,7 +1504,7 @@ async function saveRegistro(id, isEdit) {
   const data = {
     id,
     pedidoId: p.id,
-    operario: (SESSION.operarioActual ? SESSION.operarioActual.nombre : ""),
+    operario: SESSION.operario.nombre,
     turno: SESSION.turno,
     fecha: new Date().toISOString().slice(0,10),
     timestamp: isEdit ? ((DATA.registrosProduccion||[]).find(x => x.id === id)?.timestamp || new Date().toISOString()) : new Date().toISOString(),

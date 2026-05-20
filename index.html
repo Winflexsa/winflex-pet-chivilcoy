@@ -1258,7 +1258,10 @@ function renderProducciones() {
       </select>
       <button class="btn-ghost" onclick="prodFilters={desde:'',hasta:'',opId:'',operario:'',turno:''};renderProducciones()" style="font-size:12px;padding:6px 10px">Limpiar</button>
       <div style="flex:1"></div>
-      <button class="btn btn-pri" onclick="openInformeOpModal()" style="padding:8px 14px;font-size:13px">📊 Informe por OP (PDF)</button>
+      <button class="btn btn-pri" onclick="openInformeOpModal()" style="padding:8px 12px;font-size:12px" title="Informe completo de una OP">📊 Por OP</button>
+      <button class="btn btn-pri" onclick="openInformeDiaModal()" style="padding:8px 12px;font-size:12px;background:#0891b2" title="Resumen de un día completo">📅 Por día</button>
+      <button class="btn btn-pri" onclick="openInformeClienteModal()" style="padding:8px 12px;font-size:12px;background:#7c3aed" title="Histórico de un cliente">👥 Por cliente</button>
+      <button class="btn btn-pri" onclick="openInformeComparativaModal()" style="padding:8px 12px;font-size:12px;background:#dc2626" title="Comparar eficiencia entre OPs / operarios">⚡ Comparativa</button>
     </div>
   `;
 
@@ -2799,6 +2802,629 @@ function generarInformeOpPDF() {
 
   const fname = `Informe_OP${p.nroOP || ''}_${p.cliente.replace(/[^a-zA-Z0-9]/g,'_').substring(0,15)}.pdf`;
   doc.save(fname);
+  closeModal();
+  toast('Informe descargado', 'success');
+}
+
+// ============================================================
+// INFORME POR DÍA — todo lo que se hizo un día específico
+// ============================================================
+function openInformeDiaModal() {
+  // Listar días que tienen producción cargada
+  const dias = [...new Set([
+    ...(DATA.producciones || []).map(b => b.fecha),
+    ...(DATA.registrosProduccion || []).map(r => r.fecha)
+  ].filter(Boolean))].sort().reverse();
+  if (dias.length === 0) { alert('Aún no hay días con producción cargada.'); return; }
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg">
+      <div class="modal" style="max-width:600px">
+        <div class="modal-h">
+          <h3>📅 Informe por día</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Resumen del día completo separado por turno (día/noche) y por operario, con totales y detalle de bobinas y registros.</p>
+          <div class="field">
+            <label>Día</label>
+            <select id="informe_dia" onchange="actualizarPreviewDia()">
+              <option value="">— Seleccionar día —</option>
+              ${dias.map(d => `<option value="${d}">${fmtFecha(d)}</option>`).join('')}
+            </select>
+          </div>
+          <div id="informeDiaPreview" style="margin-top:14px"></div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="generarInformeDiaPDF()">📄 Descargar informe PDF</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function actualizarPreviewDia() {
+  const d = document.getElementById('informe_dia').value;
+  const p = document.getElementById('informeDiaPreview');
+  if (!d) { p.innerHTML = ''; return; }
+  const bob = (DATA.producciones || []).filter(b => b.fecha === d);
+  const reg = (DATA.registrosProduccion || []).filter(r => r.fecha === d);
+  const opsCount = [...new Set([...bob.map(b => b.pedidoId), ...reg.map(r => r.pedidoId)])].length;
+  const operDia = [...new Set([...bob.filter(b => b.turno==='dia').map(b => b.operario), ...reg.filter(r => r.turno==='dia').map(r => r.operario)].filter(Boolean))];
+  const operNoche = [...new Set([...bob.filter(b => b.turno==='noche').map(b => b.operario), ...reg.filter(r => r.turno==='noche').map(r => r.operario)].filter(Boolean))];
+  const kgDia = bob.filter(b => b.turno==='dia').reduce((s,b)=>s+(+b.kg||0),0);
+  const kgNoche = bob.filter(b => b.turno==='noche').reduce((s,b)=>s+(+b.kg||0),0);
+  p.innerHTML = `
+    <div style="background:#f9fafb;padding:14px;border-radius:8px;border:1px solid #e5e7eb">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px">
+        <div style="background:#fffbeb;padding:8px 10px;border-radius:6px;border:1px solid #fde68a">
+          <div style="font-size:11px;color:#92400e;font-weight:600">☀ TURNO DÍA</div>
+          <div style="font-size:14px;font-weight:600;margin-top:4px">${bob.filter(b=>b.turno==='dia').length} bob · ${fmt(kgDia)} kg · ${reg.filter(r=>r.turno==='dia').length} reg</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">${operDia.join(', ') || '—'}</div>
+        </div>
+        <div style="background:#eef2ff;padding:8px 10px;border-radius:6px;border:1px solid #c7d2fe">
+          <div style="font-size:11px;color:#3730a3;font-weight:600">🌙 TURNO NOCHE</div>
+          <div style="font-size:14px;font-weight:600;margin-top:4px">${bob.filter(b=>b.turno==='noche').length} bob · ${fmt(kgNoche)} kg · ${reg.filter(r=>r.turno==='noche').length} reg</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">${operNoche.join(', ') || '—'}</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:#6b7280">Total: ${bob.length} bobinas · ${fmt(kgDia+kgNoche)} kg · ${reg.length} registros · ${opsCount} OPs distintas</div>
+    </div>
+  `;
+}
+
+function generarInformeDiaPDF() {
+  const dia = document.getElementById('informe_dia').value;
+  if (!dia) { alert('Seleccioná un día'); return; }
+  if (typeof window.jspdf === 'undefined') {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload = () => generarInformeDiaPDF();
+    document.head.appendChild(s);
+    return;
+  }
+
+  const bob = (DATA.producciones || []).filter(b => b.fecha === dia);
+  const reg = (DATA.registrosProduccion || []).filter(r => r.fecha === dia);
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, H = 297, M = 10;
+  const C_PRI = [22, 163, 74], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
+  const safeS = (s) => (s===null||s===undefined?'-':String(s).replace(/[^\x20-\x7Eáéíóúñü°ÁÉÍÓÚÑÜ²³%·\/\-\(\):,.°]/g,' '));
+  const txt = (s, x, y, opts={}) => {
+    doc.setFont('helvetica', opts.bold?'bold':'normal');
+    doc.setFontSize(opts.size||9);
+    doc.setTextColor(...(opts.color||C_DARK));
+    doc.text(safeS(s), x, y, { align: opts.align||'left' });
+  };
+
+  // Header
+  doc.setFillColor(...C_PRI); doc.rect(0,0,W,26,'F');
+  txt('WINFLEX PET - INFORME DEL DIA', M, 11, { bold:true, size:14, color:[255,255,255] });
+  txt(fmtFecha(dia), M, 19, { size:11, color:[220,252,231] });
+  txt('Generado ' + new Date().toLocaleDateString('es-AR'), W-M, 19, { size:9, color:[220,252,231], align:'right' });
+
+  let y = 32;
+
+  // Procesar por turno
+  ['dia','noche'].forEach(t => {
+    const bobT = bob.filter(b => b.turno === t);
+    const regT = reg.filter(r => r.turno === t);
+    if (bobT.length === 0 && regT.length === 0) return;
+
+    if (y > H - 40) { doc.addPage(); y = M + 5; }
+
+    // Header turno
+    const tColor = t === 'dia' ? [217, 119, 6] : [79, 70, 229];
+    doc.setFillColor(...tColor); doc.rect(M, y, W-2*M, 8, 'F');
+    txt((t==='dia'?'TURNO DIA':'TURNO NOCHE'), M+3, y+5.5, { bold:true, size:11, color:[255,255,255] });
+    const kgT = bobT.reduce((s,b)=>s+(+b.kg||0),0);
+    txt(bobT.length + ' bobinas · ' + fmt(kgT) + ' kg · ' + regT.length + ' registros horarios', W-M-3, y+5.5, { size:9, color:[255,255,255], align:'right' });
+    y += 11;
+
+    // Agrupar por operario
+    const operariosTurno = [...new Set([...bobT.map(b => b.operario), ...regT.map(r => r.operario)].filter(Boolean))];
+    operariosTurno.forEach(op => {
+      const bobOp = bobT.filter(b => b.operario === op);
+      const regOp = regT.filter(r => r.operario === op);
+      const kgOp = bobOp.reduce((s,b)=>s+(+b.kg||0),0);
+
+      if (y > H - 25) { doc.addPage(); y = M+5; }
+
+      doc.setFillColor(...C_LIGHT); doc.rect(M, y, W-2*M, 6, 'F');
+      txt(op, M+3, y+4, { bold:true, size:10 });
+      txt(bobOp.length + ' bob · ' + fmt(kgOp) + ' kg · ' + regOp.length + ' reg', W-M-3, y+4, { size:9, color:C_GRAY, align:'right' });
+      y += 7;
+
+      // Tabla bobinas
+      if (bobOp.length > 0) {
+        const cols = [
+          { lbl:'Hora', x:M+2, w:14 },
+          { lbl:'OP', x:M+17, w:18 },
+          { lbl:'Cliente', x:M+36, w:40 },
+          { lbl:'Bob#', x:M+77, w:12 },
+          { lbl:'Pallet', x:M+90, w:12 },
+          { lbl:'Kg', x:M+103, w:14 },
+          { lbl:'Metros', x:M+118, w:16 },
+          { lbl:'Partida', x:M+135, w:55 }
+        ];
+        doc.setFillColor(229,231,235); doc.rect(M, y, W-2*M, 5, 'F');
+        cols.forEach(c => txt(c.lbl, c.x, y+3.5, { bold:true, size:7 }));
+        y += 5;
+        bobOp.sort((a,b) => (a.hora||'').localeCompare(b.hora||'')).forEach((b,i) => {
+          if (y > H - 8) { doc.addPage(); y = M+5; }
+          if (i%2===0) { doc.setFillColor(249,250,251); doc.rect(M, y, W-2*M, 4.5, 'F'); }
+          const ped = DATA.pedidos.find(x => x.id === b.pedidoId);
+          const vals = [b.hora||'-', ped?ped.nroOP:'-', ped?ped.cliente.substring(0,18):'-', b.nroBobina||'-', b.nroPallet||'-', fmt(b.kg||0), b.metros||'-', (b.partida||'').substring(0,28)];
+          vals.forEach((v,j) => txt(v, cols[j].x, y+3.3, { size:7 }));
+          y += 4.5;
+        });
+        y += 2;
+      }
+
+      // Registros (más resumido)
+      if (regOp.length > 0) {
+        txt('Registros: ' + regOp.length + ' horarios · prom kg/h: ' + (regOp.map(r=>+r.kgH).filter(n=>!isNaN(n)&&n>0).reduce((s,n,i,a)=>s+n/(a.length||1),0)).toFixed(1), M+2, y+3, { size:8, color:C_GRAY });
+        y += 5;
+      }
+    });
+    y += 4;
+  });
+
+  // Resumen final por OP
+  if (y > H - 30) { doc.addPage(); y = M+5; }
+  doc.setFillColor(...C_PRI); doc.rect(M, y, W-2*M, 7, 'F');
+  txt('RESUMEN POR OP', M+3, y+5, { bold:true, size:10, color:[255,255,255] });
+  y += 9;
+
+  const opsConProd = [...new Set([...bob.map(b=>b.pedidoId), ...reg.map(r=>r.pedidoId)].filter(Boolean))];
+  opsConProd.forEach(pid => {
+    if (y > H - 8) { doc.addPage(); y = M+5; }
+    const p = DATA.pedidos.find(x => x.id === pid);
+    if (!p) return;
+    const bobOP = bob.filter(b => b.pedidoId === pid);
+    const regOP = reg.filter(r => r.pedidoId === pid);
+    const kg = bobOP.reduce((s,b)=>s+(+b.kg||0),0);
+    txt('OP ' + (p.nroOP||'-') + ' · ' + p.cliente, M+2, y+3, { size:9, bold:true });
+    txt(bobOP.length + ' bob · ' + fmt(kg) + ' kg · ' + regOP.length + ' reg', W-M-3, y+3, { size:9, color:C_GRAY, align:'right' });
+    y += 5;
+  });
+
+  doc.setTextColor(...C_GRAY); doc.setFontSize(7);
+  doc.text('Winflex S.A. - Planta Chivilcoy - Informe del dia', M, H-6);
+
+  const fname = `Informe_dia_${dia}.pdf`;
+  doc.save(fname);
+  closeModal();
+  toast('Informe descargado', 'success');
+}
+
+// ============================================================
+// INFORME POR CLIENTE — todas las cargas de un cliente en rango
+// ============================================================
+function openInformeClienteModal() {
+  const clientes = [...new Set((DATA.pedidos || []).map(p => p.cliente).filter(Boolean))].sort();
+  const today = new Date().toISOString().slice(0,10);
+  const monthAgo = new Date(); monthAgo.setMonth(monthAgo.getMonth() - 1);
+  const monthAgoStr = monthAgo.toISOString().slice(0,10);
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg">
+      <div class="modal" style="max-width:600px">
+        <div class="modal-h">
+          <h3>👥 Informe por cliente</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Todas las OPs del cliente en un rango de fechas, con bobinas y kg producidos.</p>
+          <div class="field">
+            <label>Cliente</label>
+            <select id="informe_cliente" onchange="actualizarPreviewCliente()">
+              <option value="">— Seleccionar cliente —</option>
+              ${clientes.map(c => `<option value="${c}">${c}</option>`).join('')}
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+            <div class="field">
+              <label>Desde</label>
+              <input type="date" id="informe_cli_desde" value="${monthAgoStr}" onchange="actualizarPreviewCliente()">
+            </div>
+            <div class="field">
+              <label>Hasta</label>
+              <input type="date" id="informe_cli_hasta" value="${today}" onchange="actualizarPreviewCliente()">
+            </div>
+          </div>
+          <div id="informeClientePreview" style="margin-top:14px"></div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="generarInformeClientePDF()">📄 Descargar informe PDF</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function actualizarPreviewCliente() {
+  const cli = document.getElementById('informe_cliente').value;
+  const desde = document.getElementById('informe_cli_desde').value;
+  const hasta = document.getElementById('informe_cli_hasta').value;
+  const p = document.getElementById('informeClientePreview');
+  if (!cli) { p.innerHTML = ''; return; }
+  const ops = (DATA.pedidos || []).filter(x => x.cliente === cli);
+  const opIds = ops.map(o => o.id);
+  const bob = (DATA.producciones || []).filter(b =>
+    opIds.includes(b.pedidoId) &&
+    (!desde || b.fecha >= desde) &&
+    (!hasta || b.fecha <= hasta)
+  );
+  const reg = (DATA.registrosProduccion || []).filter(r =>
+    opIds.includes(r.pedidoId) &&
+    (!desde || r.fecha >= desde) &&
+    (!hasta || r.fecha <= hasta)
+  );
+  const opsConProd = [...new Set(bob.map(b => b.pedidoId))].length;
+  const totalKg = bob.reduce((s,b)=>s+(+b.kg||0),0);
+  p.innerHTML = `
+    <div style="background:#f9fafb;padding:14px;border-radius:8px;border:1px solid #e5e7eb">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:13px">
+        <div><div style="font-size:11px;color:#6b7280">Total OPs cliente</div><div style="font-weight:600">${ops.length}</div></div>
+        <div><div style="font-size:11px;color:#6b7280">OPs c/ producción</div><div style="font-weight:600;color:#16a34a">${opsConProd}</div></div>
+        <div><div style="font-size:11px;color:#6b7280">Bobinas</div><div style="font-weight:600">${bob.length}</div></div>
+        <div><div style="font-size:11px;color:#6b7280">Kg producidos</div><div style="font-weight:600;color:#16a34a">${fmt(totalKg)}</div></div>
+      </div>
+    </div>
+  `;
+}
+
+function generarInformeClientePDF() {
+  const cli = document.getElementById('informe_cliente').value;
+  if (!cli) { alert('Seleccioná un cliente'); return; }
+  const desde = document.getElementById('informe_cli_desde').value;
+  const hasta = document.getElementById('informe_cli_hasta').value;
+  if (typeof window.jspdf === 'undefined') {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload = () => generarInformeClientePDF();
+    document.head.appendChild(s);
+    return;
+  }
+
+  const ops = (DATA.pedidos || []).filter(x => x.cliente === cli);
+  const opIds = ops.map(o => o.id);
+  const bob = (DATA.producciones || []).filter(b =>
+    opIds.includes(b.pedidoId) &&
+    (!desde || b.fecha >= desde) &&
+    (!hasta || b.fecha <= hasta)
+  );
+  const reg = (DATA.registrosProduccion || []).filter(r =>
+    opIds.includes(r.pedidoId) &&
+    (!desde || r.fecha >= desde) &&
+    (!hasta || r.fecha <= hasta)
+  );
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, H = 297, M = 10;
+  const C_PRI = [22, 163, 74], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
+  const safeS = (s) => (s===null||s===undefined?'-':String(s).replace(/[^\x20-\x7Eáéíóúñü°ÁÉÍÓÚÑÜ²³%·\/\-\(\):,.°]/g,' '));
+  const txt = (s, x, y, opts={}) => {
+    doc.setFont('helvetica', opts.bold?'bold':'normal');
+    doc.setFontSize(opts.size||9);
+    doc.setTextColor(...(opts.color||C_DARK));
+    doc.text(safeS(s), x, y, { align: opts.align||'left' });
+  };
+
+  // Header
+  doc.setFillColor(...C_PRI); doc.rect(0,0,W,26,'F');
+  txt('WINFLEX PET - INFORME POR CLIENTE', M, 11, { bold:true, size:14, color:[255,255,255] });
+  txt(cli + ' · ' + (desde?fmtFecha(desde):'inicio') + ' a ' + (hasta?fmtFecha(hasta):'hoy'), M, 19, { size:11, color:[220,252,231] });
+
+  let y = 32;
+
+  // Resumen general
+  const totalKg = bob.reduce((s,b)=>s+(+b.kg||0),0);
+  const opsConProd = [...new Set(bob.map(b => b.pedidoId))].length;
+  doc.setFillColor(...C_LIGHT); doc.rect(M, y, W-2*M, 18, 'F');
+  txt('RESUMEN', M+3, y+5, { bold:true, size:10 });
+  const cells = [
+    ['OPs totales', String(ops.length)],
+    ['OPs c/producción', String(opsConProd)],
+    ['Bobinas', String(bob.length)],
+    ['Kg producidos', fmt(totalKg)],
+    ['Registros', String(reg.length)]
+  ];
+  const cW = (W-2*M)/cells.length;
+  cells.forEach((c, i) => {
+    txt(c[0], M + i*cW + 3, y+11, { size:7, color:C_GRAY });
+    txt(c[1], M + i*cW + 3, y+15, { size:11, bold:true });
+  });
+  y += 22;
+
+  // Por OP
+  doc.setFillColor(...C_PRI); doc.rect(M, y, W-2*M, 7, 'F');
+  txt('DETALLE POR OP', M+3, y+5, { bold:true, size:10, color:[255,255,255] });
+  y += 10;
+
+  ops.forEach(p => {
+    const bobOP = bob.filter(b => b.pedidoId === p.id);
+    const regOP = reg.filter(r => r.pedidoId === p.id);
+    if (bobOP.length === 0 && regOP.length === 0) return;
+    if (y > H - 30) { doc.addPage(); y = M+5; }
+    const kg = bobOP.reduce((s,b)=>s+(+b.kg||0),0);
+
+    doc.setFillColor(...C_LIGHT); doc.rect(M, y, W-2*M, 6, 'F');
+    txt('OP ' + (p.nroOP||'-') + ' · ' + (p.ancho||'-') + 'x' + (p.espesor||'-') + ' mic · ' + safeS(p.color), M+3, y+4, { bold:true, size:9 });
+    txt(fmt(kg) + ' / ' + fmt(p.kgPedidos||0) + ' kg · ' + bobOP.length + ' bob', W-M-3, y+4, { size:9, color:C_GRAY, align:'right' });
+    y += 7;
+
+    // Mini tabla
+    const cols2 = [
+      { lbl:'Fecha', x:M+2, w:18 },
+      { lbl:'Hora', x:M+21, w:12 },
+      { lbl:'Turno', x:M+34, w:12 },
+      { lbl:'Bob#', x:M+47, w:10 },
+      { lbl:'Kg', x:M+58, w:14 },
+      { lbl:'Operario', x:M+73, w:40 },
+      { lbl:'Mezcla real', x:M+114, w:80 }
+    ];
+    if (bobOP.length > 0) {
+      doc.setFillColor(229,231,235); doc.rect(M, y, W-2*M, 4.5, 'F');
+      cols2.forEach(c => txt(c.lbl, c.x, y+3.3, { bold:true, size:7 }));
+      y += 4.5;
+      bobOP.sort((a,b)=>(a.fecha+a.hora||'').localeCompare(b.fecha+b.hora||'')).forEach((b,i) => {
+        if (y > H - 8) { doc.addPage(); y = M+5; }
+        if (i%2===0) { doc.setFillColor(249,250,251); doc.rect(M, y, W-2*M, 4, 'F'); }
+        const vals = [fmtFecha(b.fecha), b.hora||'-', b.turno==='dia'?'Dia':b.turno==='noche'?'Noche':'-', b.nroBobina||'-', fmt(b.kg||0), (b.operario||'').substring(0,18), (b.mezclaReal||'').substring(0,42)];
+        vals.forEach((v, j) => txt(v, cols2[j].x, y+3, { size:7 }));
+        y += 4;
+      });
+    }
+    y += 3;
+  });
+
+  doc.setTextColor(...C_GRAY); doc.setFontSize(7);
+  doc.text('Winflex S.A. - Planta Chivilcoy - Informe por cliente', M, H-6);
+
+  doc.save(`Informe_cliente_${cli.replace(/[^a-zA-Z0-9]/g,'_').substring(0,20)}.pdf`);
+  closeModal();
+  toast('Informe descargado', 'success');
+}
+
+// ============================================================
+// COMPARATIVA DE EFICIENCIA — entre OPs y entre operarios
+// ============================================================
+function openInformeComparativaModal() {
+  const opsConProd = [...new Set([
+    ...(DATA.producciones || []).map(b => b.pedidoId),
+    ...(DATA.registrosProduccion || []).map(r => r.pedidoId)
+  ].filter(Boolean))];
+
+  if (opsConProd.length === 0) { alert('Aún no hay OPs con producción cargada.'); return; }
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg">
+      <div class="modal" style="max-width:700px">
+        <div class="modal-h">
+          <h3>⚡ Comparativa de eficiencia</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Ranking de eficiencia entre OPs (kg/h real vs teórico) y entre operarios (kg producidos en su turno).</p>
+          <div id="comparativaPreview"></div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="generarInformeComparativaPDF()">📄 Descargar PDF</button>
+        </div>
+      </div>
+    </div>
+  `;
+  actualizarPreviewComparativa();
+}
+
+function actualizarPreviewComparativa() {
+  const opsConProd = [...new Set([
+    ...(DATA.producciones || []).map(b => b.pedidoId),
+    ...(DATA.registrosProduccion || []).map(r => r.pedidoId)
+  ].filter(Boolean))];
+
+  // Eficiencias de OPs
+  const opsEf = opsConProd.map(id => {
+    const ef = calcularEficiencia(id);
+    return ef;
+  }).filter(Boolean).sort((a,b) => b.eficienciaKgH - a.eficienciaKgH);
+
+  // Ranking operarios: kg producidos
+  const operarios = {};
+  (DATA.producciones || []).forEach(b => {
+    if (!b.operario) return;
+    if (!operarios[b.operario]) operarios[b.operario] = { bob: 0, kg: 0, reg: 0 };
+    operarios[b.operario].bob++;
+    operarios[b.operario].kg += (+b.kg || 0);
+  });
+  (DATA.registrosProduccion || []).forEach(r => {
+    if (!r.operario) return;
+    if (!operarios[r.operario]) operarios[r.operario] = { bob: 0, kg: 0, reg: 0 };
+    operarios[r.operario].reg++;
+  });
+  const operRanking = Object.entries(operarios).sort((a,b) => b[1].kg - a[1].kg);
+
+  const efColor = (pct) => pct >= 100 ? '#16a34a' : pct >= 80 ? '#d97706' : '#dc2626';
+
+  let html = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <h4 style="font-size:13px;font-weight:700;margin-bottom:8px;color:#374151">🏆 Ranking OPs por eficiencia kg/h</h4>
+        <div style="background:#f9fafb;border-radius:8px;padding:8px;font-size:12px">
+          ${opsEf.slice(0, 10).map((ef, i) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 4px;border-bottom:1px solid #e5e7eb">
+              <span style="display:flex;gap:6px;align-items:center">
+                <span style="color:#9ca3af;font-size:11px">${i+1}.</span>
+                <span style="font-weight:600">OP ${ef.p.nroOP||'-'}</span>
+                <span style="color:#6b7280;font-size:11px">· ${ef.p.cliente.substring(0,12)}</span>
+              </span>
+              <span style="font-weight:700;color:${efColor(ef.eficienciaKgH)}">${ef.eficienciaKgH}%</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div>
+        <h4 style="font-size:13px;font-weight:700;margin-bottom:8px;color:#374151">👥 Ranking operarios por kg</h4>
+        <div style="background:#f9fafb;border-radius:8px;padding:8px;font-size:12px">
+          ${operRanking.slice(0, 10).map(([nombre, d], i) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 4px;border-bottom:1px solid #e5e7eb">
+              <span style="display:flex;gap:6px;align-items:center">
+                <span style="color:#9ca3af;font-size:11px">${i+1}.</span>
+                <span style="font-weight:600">${nombre.substring(0,18)}</span>
+              </span>
+              <span style="font-weight:700;color:#16a34a">${fmt(d.kg)} kg · ${d.bob} bob</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('comparativaPreview').innerHTML = html;
+}
+
+function generarInformeComparativaPDF() {
+  if (typeof window.jspdf === 'undefined') {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload = () => generarInformeComparativaPDF();
+    document.head.appendChild(s);
+    return;
+  }
+
+  const opsConProd = [...new Set([
+    ...(DATA.producciones || []).map(b => b.pedidoId),
+    ...(DATA.registrosProduccion || []).map(r => r.pedidoId)
+  ].filter(Boolean))];
+
+  const opsEf = opsConProd.map(id => calcularEficiencia(id)).filter(Boolean).sort((a,b) => b.eficienciaKgH - a.eficienciaKgH);
+
+  const operarios = {};
+  (DATA.producciones || []).forEach(b => {
+    if (!b.operario) return;
+    if (!operarios[b.operario]) operarios[b.operario] = { bob:0, kg:0, reg:0, ops:new Set() };
+    operarios[b.operario].bob++;
+    operarios[b.operario].kg += (+b.kg||0);
+    operarios[b.operario].ops.add(b.pedidoId);
+  });
+  (DATA.registrosProduccion || []).forEach(r => {
+    if (!r.operario) return;
+    if (!operarios[r.operario]) operarios[r.operario] = { bob:0, kg:0, reg:0, ops:new Set() };
+    operarios[r.operario].reg++;
+    operarios[r.operario].ops.add(r.pedidoId);
+  });
+  const operRanking = Object.entries(operarios).sort((a,b) => b[1].kg - a[1].kg);
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, H = 297, M = 10;
+  const C_PRI = [22, 163, 74], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
+  const safeS = (s) => (s===null||s===undefined?'-':String(s).replace(/[^\x20-\x7Eáéíóúñü°ÁÉÍÓÚÑÜ²³%·\/\-\(\):,.°]/g,' '));
+  const txt = (s, x, y, opts={}) => {
+    doc.setFont('helvetica', opts.bold?'bold':'normal');
+    doc.setFontSize(opts.size||9);
+    doc.setTextColor(...(opts.color||C_DARK));
+    doc.text(safeS(s), x, y, { align: opts.align||'left' });
+  };
+
+  // Header
+  doc.setFillColor(...C_PRI); doc.rect(0,0,W,26,'F');
+  txt('WINFLEX PET - COMPARATIVA DE EFICIENCIA', M, 11, { bold:true, size:14, color:[255,255,255] });
+  txt(opsConProd.length + ' OPs · ' + operRanking.length + ' operarios', M, 19, { size:11, color:[220,252,231] });
+  txt(new Date().toLocaleDateString('es-AR'), W-M, 19, { size:9, color:[220,252,231], align:'right' });
+
+  let y = 32;
+
+  // Sección OPs
+  doc.setFillColor(...C_PRI); doc.rect(M, y, W-2*M, 7, 'F');
+  txt('RANKING OPs POR EFICIENCIA KG/H', M+3, y+5, { bold:true, size:10, color:[255,255,255] });
+  y += 10;
+
+  const colsOp = [
+    { lbl:'#', x:M+2, w:8 },
+    { lbl:'OP', x:M+10, w:16 },
+    { lbl:'Cliente', x:M+27, w:38 },
+    { lbl:'Medida', x:M+66, w:24 },
+    { lbl:'Kg ped', x:M+91, w:16, num:true },
+    { lbl:'Kg real', x:M+108, w:16, num:true },
+    { lbl:'Avance', x:M+125, w:14, num:true },
+    { lbl:'Kg/h teo', x:M+140, w:16, num:true },
+    { lbl:'Kg/h real', x:M+157, w:16, num:true },
+    { lbl:'Eficiencia', x:M+174, w:18, num:true }
+  ];
+  doc.setFillColor(229,231,235); doc.rect(M, y, W-2*M, 5, 'F');
+  colsOp.forEach(c => txt(c.lbl, c.x + (c.num?c.w-1:0), y+3.7, { bold:true, size:7, align: c.num?'right':'left' }));
+  y += 5;
+
+  opsEf.forEach((ef, i) => {
+    if (y > H - 8) { doc.addPage(); y = M+5; }
+    if (i%2===0) { doc.setFillColor(249,250,251); doc.rect(M, y, W-2*M, 4.5, 'F'); }
+    const efColor = ef.eficienciaKgH >= 100 ? [22,163,74] : ef.eficienciaKgH >= 80 ? [217,119,6] : [220,38,38];
+    const vals = [
+      { v: String(i+1), col: colsOp[0] },
+      { v: ef.p.nroOP || '-', col: colsOp[1] },
+      { v: (ef.p.cliente||'').substring(0,20), col: colsOp[2] },
+      { v: (ef.p.ancho||'-') + 'x' + (ef.p.espesor||'-') + ' mic', col: colsOp[3] },
+      { v: fmt(ef.kgPedido), col: colsOp[4] },
+      { v: fmt(ef.kgReal), col: colsOp[5] },
+      { v: ef.pctAvance + '%', col: colsOp[6] },
+      { v: fmt(ef.kgHoraTeo), col: colsOp[7] },
+      { v: fmt(Math.round(ef.kgHoraReal)), col: colsOp[8] },
+      { v: ef.eficienciaKgH + '%', col: colsOp[9], color: efColor, bold: true }
+    ];
+    vals.forEach(item => {
+      txt(item.v, item.col.x + (item.col.num?item.col.w-1:0), y+3.2, {
+        size:7, align: item.col.num?'right':'left', color: item.color, bold: item.bold
+      });
+    });
+    y += 4.5;
+  });
+
+  y += 6;
+
+  // Sección operarios
+  if (y > H - 30) { doc.addPage(); y = M+5; }
+  doc.setFillColor(...C_PRI); doc.rect(M, y, W-2*M, 7, 'F');
+  txt('RANKING OPERARIOS POR KG PRODUCIDOS', M+3, y+5, { bold:true, size:10, color:[255,255,255] });
+  y += 10;
+
+  const colsOper = [
+    { lbl:'#', x:M+2, w:8 },
+    { lbl:'Operario', x:M+10, w:60 },
+    { lbl:'Bobinas', x:M+72, w:20, num:true },
+    { lbl:'Kg producidos', x:M+93, w:30, num:true },
+    { lbl:'Registros', x:M+124, w:20, num:true },
+    { lbl:'OPs distintas', x:M+145, w:25, num:true },
+    { lbl:'Prom kg/bob', x:M+171, w:22, num:true }
+  ];
+  doc.setFillColor(229,231,235); doc.rect(M, y, W-2*M, 5, 'F');
+  colsOper.forEach(c => txt(c.lbl, c.x + (c.num?c.w-1:0), y+3.7, { bold:true, size:7, align: c.num?'right':'left' }));
+  y += 5;
+
+  operRanking.forEach(([nombre, d], i) => {
+    if (y > H - 8) { doc.addPage(); y = M+5; }
+    if (i%2===0) { doc.setFillColor(249,250,251); doc.rect(M, y, W-2*M, 4.5, 'F'); }
+    const promKgBob = d.bob > 0 ? Math.round(d.kg / d.bob) : 0;
+    const vals = [String(i+1), nombre.substring(0,30), String(d.bob), fmt(d.kg), String(d.reg), String(d.ops.size), d.bob>0?fmt(promKgBob):'-'];
+    vals.forEach((v, j) => {
+      txt(v, colsOper[j].x + (colsOper[j].num?colsOper[j].w-1:0), y+3.2, {
+        size:7, align: colsOper[j].num?'right':'left'
+      });
+    });
+    y += 4.5;
+  });
+
+  doc.setTextColor(...C_GRAY); doc.setFontSize(7);
+  doc.text('Winflex S.A. - Planta Chivilcoy - Comparativa de eficiencia', M, H-6);
+
+  doc.save(`Comparativa_eficiencia_${new Date().toISOString().slice(0,10)}.pdf`);
   closeModal();
   toast('Informe descargado', 'success');
 }
