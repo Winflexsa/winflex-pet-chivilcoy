@@ -122,6 +122,26 @@ tbody tr:hover { background: #f9fafb; }
 input[type=text], input[type=number], input[type=date], select, textarea { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; font-family: inherit; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,0.1); }
 
+/* Multi-select dropdown */
+.msel { position: relative; min-width: 180px; }
+.msel-btn { display: flex; align-items: center; width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; background: white; font-size: 13px; cursor: pointer; text-align: left; min-height: 36px; }
+.msel-btn:hover { border-color: #9ca3af; }
+.msel.open .msel-btn { border-color: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,0.1); }
+.msel-dropdown { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; min-width: 220px; max-height: 320px; overflow-y: auto; background: white; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.12); z-index: 100; }
+.msel.open .msel-dropdown { display: block; }
+.msel-dropdown .msel-search { padding: 8px; border-bottom: 1px solid #f3f4f6; position: sticky; top: 0; background: white; }
+.msel-dropdown .msel-search input { width: 100%; padding: 6px 10px; font-size: 12px; border: 1px solid #e5e7eb; border-radius: 4px; }
+.msel-dropdown .msel-actions { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid #f3f4f6; background: #f9fafb; }
+.msel-dropdown .msel-actions button { flex: 1; padding: 4px 8px; font-size: 11px; background: transparent; border: 1px solid #e5e7eb; border-radius: 4px; cursor: pointer; color: #374151; }
+.msel-dropdown .msel-actions button:hover { background: #f3f4f6; }
+.msel-opt { display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px; color: #1f2937; }
+.msel-opt:hover { background: #f0fdf4; }
+.msel-opt input[type=checkbox] { margin: 0; cursor: pointer; }
+.msel-opt.selected { background: #ecfdf5; color: #15803d; font-weight: 500; }
+.msel-count { display: inline-block; background: #16a34a; color: white; font-size: 9px; border-radius: 10px; padding: 1px 6px; margin-left: 4px; }
+.msel-count:empty { display: none; }
+
+
 /* Buttons */
 .btn { padding: 8px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; border: 1px solid transparent; font-weight: 500; }
 .btn-pri { background: #16a34a; color: white; }
@@ -238,26 +258,25 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
             <input type="text" id="fBuscar" placeholder="Cliente, OC, partida, medida...">
           </div>
           <div class="filter-group">
-            <label>Cliente</label>
-            <select id="fCliente"><option value="">Todos</option></select>
+            <label>Cliente <span id="fClienteCount" class="msel-count"></span></label>
+            <div class="msel" id="fClienteMsel">
+              <button type="button" class="msel-btn" onclick="toggleMsel('fClienteMsel')"><span id="fClienteLabel">Todos</span> <span style="margin-left:auto;color:#9ca3af">▾</span></button>
+              <div class="msel-dropdown" id="fClienteOptions"></div>
+            </div>
           </div>
           <div class="filter-group">
-            <label>Estado</label>
-            <select id="fEstado">
-              <option value="">Todos</option>
-              <option value="OC">OC</option>
-              <option value="OP">OP</option>
-              <option value="En producción">En producción</option>
-              <option value="Parcial">Parcial</option>
-              <option value="Despachada">Despachada</option>
-              <option value="Finalizada">Finalizada</option>
-              <option value="Cancelada">Cancelada</option>
-              <option value="VENCIDO">⚠ Vencidos</option>
-            </select>
+            <label>Estado <span id="fEstadoCount" class="msel-count"></span></label>
+            <div class="msel" id="fEstadoMsel">
+              <button type="button" class="msel-btn" onclick="toggleMsel('fEstadoMsel')"><span id="fEstadoLabel">Todos</span> <span style="margin-left:auto;color:#9ca3af">▾</span></button>
+              <div class="msel-dropdown" id="fEstadoOptions"></div>
+            </div>
           </div>
           <div class="filter-group">
-            <label>Mes pedido</label>
-            <select id="fMes"><option value="">Todos</option></select>
+            <label>Mes pedido <span id="fMesCount" class="msel-count"></span></label>
+            <div class="msel" id="fMesMsel">
+              <button type="button" class="msel-btn" onclick="toggleMsel('fMesMsel')"><span id="fMesLabel">Todos</span> <span style="margin-left:auto;color:#9ca3af">▾</span></button>
+              <div class="msel-dropdown" id="fMesOptions"></div>
+            </div>
           </div>
           <button class="btn btn-ghost" onclick="clearFilters()">Limpiar</button>
         </div>
@@ -944,7 +963,8 @@ function renderDashboard() {
   const totalPed = pedsAnio.length;
   const totalKgPed = pedsAnio.reduce((s,p) => s + (+p.kgPedidos || 0), 0);
   const totalKgReal = pedsAnio.reduce((s,p) => s + (+p.kgReales || 0), 0);
-  const totalPend = totalKgPed - totalKgReal;
+  // Sumamos pendientes pedido por pedido para no compensar sobreproducciones con faltantes
+  const totalPend = pedsAnio.reduce((s,p) => s + calcPendiente(p), 0);
   const finalizados = pedsAnio.filter(p => calcEstado(p) === 'FINALIZADO').length;
   const pendientes = pedsAnio.filter(p => ['PENDIENTE','PARCIAL'].includes(calcEstado(p))).length;
   const vencidos = pedsAnio.filter(p => isVencido(p)).length;
@@ -972,7 +992,7 @@ function renderDashboard() {
     <div class="kpi alert"><div class="label">Vencidos</div><div class="val">${vencidos}</div><div class="sub">${fmtNum(kgVencidos)} kg</div></div>
     <div class="kpi"><div class="label">Kg pedidos</div><div class="val">${fmtNum(totalKgPed)}</div></div>
     <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(totalKgReal)}</div></div>
-    <div class="kpi ${totalPend > 0 ? 'warn' : 'ok'}"><div class="label">Kg pendientes</div><div class="val">${fmtNum(Math.max(0,totalPend))}</div></div>
+    <div class="kpi ${totalPend > 0 ? 'warn' : 'ok'}"><div class="label">Kg pendientes</div><div class="val">${fmtNum(totalPend)}</div></div>
   `;
 
   // Tabla por mes (solo del año seleccionado)
@@ -1011,15 +1031,21 @@ function renderPedidos() {
       const blob = `${p.cliente} ${p.oc} ${p.op||p.partida||''} ${p.ancho}x${p.espesor} ${p.color}`.toLowerCase();
       if (!blob.includes(q)) return false;
     }
-    if (filtros.cliente && p.cliente !== filtros.cliente) return false;
-    if (filtros.estado) {
-      if (filtros.estado === 'VENCIDO') {
-        if (!isVencido(p)) return false;
-      } else {
-        if ((p.estadoWorkflow || 'Confirmada') !== filtros.estado) return false;
-      }
+    // Cliente: multi (vacío = todos)
+    if (filtros.clientes.length > 0 && !filtros.clientes.includes(p.cliente)) return false;
+    // Estado: multi. Si incluye VENCIDO, filtra vencidos. Si incluye estados de workflow, matchea contra estadoWorkflow.
+    if (filtros.estados.length > 0) {
+      const wf = p.estadoWorkflow || 'Confirmada';
+      const esVencido = isVencido(p);
+      const matchVencido = filtros.estados.includes('VENCIDO') && esVencido;
+      const matchWf = filtros.estados.includes(wf);
+      if (!matchVencido && !matchWf) return false;
     }
-    if (filtros.mes && mesDe(p.fechaIngreso) !== filtros.mes) return false;
+    // Mes: multi
+    if (filtros.meses.length > 0) {
+      const m = mesDe(p.fechaIngreso);
+      if (!m || !filtros.meses.includes(m)) return false;
+    }
     return true;
   });
 
@@ -1062,45 +1088,182 @@ function renderPedidos() {
   if (lista.length === 0) tbody.innerHTML = '<tr><td colspan="15" class="muted" style="text-align:center;padding:30px">Sin resultados</td></tr>';
 }
 
+// --- MULTI-SELECT FILTROS (pedidos) ---
+// Estado interno: arrays de valores seleccionados
+let mselState = {
+  fCliente: [],
+  fEstado: [],
+  fMes: []
+};
+const ESTADOS_WORKFLOW = ['OC','OP','En producción','Parcial','Despachada','Finalizada','Cancelada','VENCIDO'];
+
 function getPedidosFilters() {
   return {
     buscar: document.getElementById('fBuscar').value,
-    cliente: document.getElementById('fCliente').value,
-    estado: document.getElementById('fEstado').value,
-    mes: document.getElementById('fMes').value
+    clientes: mselState.fCliente.slice(),
+    estados:  mselState.fEstado.slice(),
+    meses:    mselState.fMes.slice()
   };
 }
+
 function clearFilters() {
-  ['fBuscar','fCliente','fEstado','fMes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fBuscar').value = '';
+  mselState.fCliente = [];
+  mselState.fEstado = [];
+  mselState.fMes = [];
+  refreshMselUI('fCliente');
+  refreshMselUI('fEstado');
+  refreshMselUI('fMes');
   renderPedidos();
 }
+
 function populateFilters() {
+  // Cliente: lista única
   const clientes = [...new Set(DATA.pedidos.map(p => p.cliente).filter(Boolean))].sort();
-  const fc = document.getElementById('fCliente');
-  fc.innerHTML = '<option value="">Todos</option>' + clientes.map(c => `<option value="${c}">${c}</option>`).join('');
+  buildMselOptions('fCliente', clientes.map(c => ({ value: c, label: c })));
+
+  // Estado: fijo
+  const estadosOpts = [
+    { value: 'OC', label: 'OC' },
+    { value: 'OP', label: 'OP' },
+    { value: 'En producción', label: 'En producción' },
+    { value: 'Parcial', label: 'Parcial' },
+    { value: 'Despachada', label: 'Despachada' },
+    { value: 'Finalizada', label: 'Finalizada' },
+    { value: 'Cancelada', label: 'Cancelada' },
+    { value: 'VENCIDO', label: '⚠ Vencidos' }
+  ];
+  buildMselOptions('fEstado', estadosOpts);
+
+  // Mes: fijos
+  buildMselOptions('fMes', MESES.map(m => ({ value: m, label: m })));
+
+  // Query (Consulta) — sigue siendo select simple
   const qc = document.getElementById('qCliente');
-  qc.innerHTML = '<option value="">Todos</option>' + clientes.map(c => `<option value="${c}">${c}</option>`).join('');
+  if (qc) qc.innerHTML = '<option value="">Todos</option>' + clientes.map(c => `<option value="${c}">${c}</option>`).join('');
 
-  const fm = document.getElementById('fMes');
-  fm.innerHTML = '<option value="">Todos</option>' + MESES.map(m => `<option value="${m}">${m}</option>`).join('');
+  // Listeners se registran solo una vez (idempotente)
+  if (!window._filterListenersDone) {
+    window._filterListenersDone = true;
 
-  ['fBuscar','fCliente','fEstado','fMes'].forEach(id => {
-    document.getElementById(id).addEventListener('input', renderPedidos);
-    document.getElementById(id).addEventListener('change', renderPedidos);
-  });
+    document.getElementById('fBuscar').addEventListener('input', renderPedidos);
 
-  document.querySelectorAll('#tablaPedidos th[data-sort]').forEach(th => {
-    th.addEventListener('click', () => {
-      const f = th.dataset.sort;
-      if (sortField === f) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-      else { sortField = f; sortDir = 'asc'; }
-      renderPedidos();
+    document.querySelectorAll('#tablaPedidos th[data-sort]').forEach(th => {
+      th.addEventListener('click', () => {
+        const f = th.dataset.sort;
+        if (sortField === f) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        else { sortField = f; sortDir = 'asc'; }
+        renderPedidos();
+      });
     });
-  });
 
-  ['qCliente','qOc','qPartida','qMedida'].forEach(id => {
-    document.getElementById(id).addEventListener('change', renderConsulta);
+    ['qCliente','qOc','qPartida','qMedida'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', renderConsulta);
+    });
+
+    // Cerrar dropdowns al hacer click fuera
+    document.addEventListener('click', (e) => {
+      document.querySelectorAll('.msel.open').forEach(m => {
+        if (!m.contains(e.target)) m.classList.remove('open');
+      });
+    });
+  }
+}
+
+// Construir las opciones de un multi-select. items: [{value,label}]
+function buildMselOptions(filterId, items) {
+  const cont = document.getElementById(filterId + 'Options');
+  if (!cont) return;
+  cont.innerHTML = `
+    <div class="msel-search">
+      <input type="text" placeholder="Buscar..." oninput="filterMselOpts('${filterId}', this.value)">
+    </div>
+    <div class="msel-actions">
+      <button type="button" onclick="mselSelectAll('${filterId}', true)">Todos</button>
+      <button type="button" onclick="mselSelectAll('${filterId}', false)">Ninguno</button>
+    </div>
+    <div class="msel-list">
+      ${items.map(it => `
+        <label class="msel-opt" data-label="${it.label.toLowerCase()}">
+          <input type="checkbox" value="${it.value.replace(/"/g,'&quot;')}" onchange="mselToggle('${filterId}', this.value, this.checked)">
+          <span>${it.label}</span>
+        </label>
+      `).join('')}
+    </div>
+  `;
+  refreshMselUI(filterId);
+}
+
+function filterMselOpts(filterId, query) {
+  const q = (query||'').toLowerCase();
+  document.querySelectorAll('#' + filterId + 'Options .msel-opt').forEach(opt => {
+    opt.style.display = !q || opt.dataset.label.includes(q) ? 'flex' : 'none';
   });
+}
+
+function mselSelectAll(filterId, select) {
+  const cont = document.getElementById(filterId + 'Options');
+  if (!cont) return;
+  const cbs = cont.querySelectorAll('.msel-opt:not([style*="display: none"]) input[type=checkbox]');
+  if (select) {
+    cbs.forEach(cb => {
+      if (!mselState[filterId].includes(cb.value)) mselState[filterId].push(cb.value);
+    });
+  } else {
+    // Solo deselecciona los visibles
+    const visibleVals = [...cbs].map(cb => cb.value);
+    mselState[filterId] = mselState[filterId].filter(v => !visibleVals.includes(v));
+  }
+  refreshMselUI(filterId);
+  renderPedidos();
+}
+
+function mselToggle(filterId, value, checked) {
+  if (checked) {
+    if (!mselState[filterId].includes(value)) mselState[filterId].push(value);
+  } else {
+    mselState[filterId] = mselState[filterId].filter(v => v !== value);
+  }
+  refreshMselUI(filterId);
+  renderPedidos();
+}
+
+function refreshMselUI(filterId) {
+  const sel = mselState[filterId] || [];
+  // Marcar checkboxes
+  const cont = document.getElementById(filterId + 'Options');
+  if (cont) {
+    cont.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      const isSel = sel.includes(cb.value);
+      cb.checked = isSel;
+      cb.closest('.msel-opt').classList.toggle('selected', isSel);
+    });
+  }
+  // Actualizar label
+  const lbl = document.getElementById(filterId + 'Label');
+  const count = document.getElementById(filterId + 'Count');
+  if (lbl) {
+    if (sel.length === 0) {
+      lbl.textContent = 'Todos';
+      lbl.style.color = '#9ca3af';
+    } else if (sel.length === 1) {
+      lbl.textContent = sel[0];
+      lbl.style.color = '#1f2937';
+    } else {
+      lbl.textContent = sel.length + ' seleccionados';
+      lbl.style.color = '#16a34a';
+    }
+  }
+  if (count) count.textContent = sel.length > 0 ? sel.length : '';
+}
+
+function toggleMsel(mselId) {
+  const el = document.getElementById(mselId);
+  if (!el) return;
+  // Cerrar otros
+  document.querySelectorAll('.msel.open').forEach(m => { if (m !== el) m.classList.remove('open'); });
+  el.classList.toggle('open');
 }
 
 // --- MODAL PEDIDO (datos generales solamente) ---
@@ -1322,7 +1485,9 @@ function renderConsulta() {
 
   const kgPed = filtered.reduce((s,p) => s + (+p.kgPedidos || 0), 0);
   const kgReal = filtered.reduce((s,p) => s + (+p.kgReales || 0), 0);
-  const pend = Math.max(0, kgPed - kgReal);
+  // Sumamos los pendientes pedido por pedido (Math.max 0). Así, una OP sobreproducida (kgReal > kgPed)
+  // no compensa otra OP que tiene producción faltante. Esto es lo que el usuario espera ver.
+  const pend = filtered.reduce((s,p) => s + calcPendiente(p), 0);
 
   document.getElementById('consultaKpis').innerHTML = `
     <div class="kpi"><div class="label">Pedidos</div><div class="val">${filtered.length}</div></div>
@@ -1619,14 +1784,16 @@ let currentCatalogTab = 'clientes';
 function renderCatalogos() {
   const c = DATA.catalogos;
   const tabs = [
-    { id: 'clientes',  label: 'Clientes',  count: (c.clientes||[]).length },
-    { id: 'colores',   label: 'Colores',   count: (c.colores||[]).length },
-    { id: 'productos', label: 'Productos', count: (c.productos||[]).length },
-    { id: 'recetas',   label: 'Recetas',   count: (c.recetas||[]).length },
-    { id: 'operarios', label: 'Operarios', count: (c.operarios||[]).length },
-    { id: 'tolvas',    label: 'Tolvas',    count: (c.tolvas||[]).length },
-    { id: 'destinos',  label: 'Destinos',  count: (c.destinos||[]).length },
-    { id: 'mezclas',   label: 'Mezclas',   count: (c.mezclasTeoricas||[]).length }
+    { id: 'clientes',       label: 'Clientes',       count: (c.clientes||[]).length },
+    { id: 'emailsCliente',  label: 'Emails',         count: Object.keys(c.emailsCliente||{}).length },
+    { id: 'colores',        label: 'Colores',        count: (c.colores||[]).length },
+    { id: 'productos',      label: 'Productos',      count: (c.productos||[]).length },
+    { id: 'recetas',        label: 'Recetas',        count: (c.recetas||[]).length },
+    { id: 'operarios',      label: 'Operarios',      count: (c.operarios||[]).length },
+    { id: 'tolvas',         label: 'Tolvas',         count: (c.tolvas||[]).length },
+    { id: 'destinos',       label: 'Destinos',       count: (c.destinos||[]).length },
+    { id: 'mezclas',        label: 'Mezclas',        count: (c.mezclasTeoricas||[]).length },
+    { id: 'transportistas', label: 'Transportistas', count: (c.transportistas||[]).length }
   ];
   let html = `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:18px;border-bottom:1px solid #e5e7eb;padding-bottom:6px">`;
   tabs.forEach(t => {
@@ -1644,29 +1811,70 @@ function renderCatalogTab() {
   const el = document.getElementById('catalogTabContent');
   const t = currentCatalogTab;
   if (t === 'clientes')  el.innerHTML = renderSimpleList('clientes', 'Cliente', c.clientes || []);
-  else if (t === 'colores')   el.innerHTML = renderSimpleList('colores', 'Color', c.colores || []);
-  else if (t === 'tolvas')    el.innerHTML = renderSimpleList('tolvas', 'Tolva', c.tolvas || []);
-  else if (t === 'mezclas')   el.innerHTML = renderSimpleList('mezclasTeoricas', 'Mezcla teórica', c.mezclasTeoricas || []);
-  else if (t === 'productos') el.innerHTML = renderObjectList('productos', c.productos || [], ['nombre','codigo'], ['Nombre','Código']);
-  else if (t === 'destinos')  el.innerHTML = renderObjectList('destinos', c.destinos || [], ['codigo','nombre'], ['Código','Nombre']);
-  else if (t === 'operarios') el.innerHTML = renderOperariosTable(c.operarios || []);
-  else if (t === 'recetas')   el.innerHTML = renderRecetasTable(c.recetas || []);
+  else if (t === 'colores')        el.innerHTML = renderSimpleList('colores', 'Color', c.colores || []);
+  else if (t === 'tolvas')         el.innerHTML = renderSimpleList('tolvas', 'Tolva', c.tolvas || []);
+  else if (t === 'mezclas')        el.innerHTML = renderSimpleList('mezclasTeoricas', 'Mezcla teórica', c.mezclasTeoricas || []);
+  else if (t === 'productos')      el.innerHTML = renderObjectList('productos', c.productos || [], ['nombre','codigo'], ['Nombre','Código']);
+  else if (t === 'destinos')       el.innerHTML = renderObjectList('destinos', c.destinos || [], ['codigo','nombre'], ['Código','Nombre']);
+  else if (t === 'operarios')      el.innerHTML = renderOperariosTable(c.operarios || []);
+  else if (t === 'recetas')        el.innerHTML = renderRecetasTable(c.recetas || []);
+  else if (t === 'transportistas') el.innerHTML = renderObjectList('transportistas', c.transportistas || [], ['nombre','cuit','domicilio'], ['Nombre','CUIT','Domicilio']);
+  else if (t === 'emailsCliente')  el.innerHTML = renderEmailsCliente(c.emailsCliente || {}, c.clientes || []);
 }
 
 function renderSimpleList(key, label, arr) {
   return `
     <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
-      <input type="text" id="newSimple_${key}" placeholder="Nuevo ${label.toLowerCase()}..." style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px">
+      <input type="text" id="newSimple_${key}" placeholder="Nuevo ${label.toLowerCase()}..." style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px" onkeydown="if(event.key==='Enter'){event.preventDefault();addSimpleItem('${key}')}">
       <button class="btn btn-pri" onclick="addSimpleItem('${key}')">+ Agregar</button>
     </div>
-    <table><thead><tr><th>${label}</th><th style="width:120px"></th></tr></thead><tbody>
-      ${arr.map((item, i) => `<tr>
-        <td><input type="text" id="simpItem_${key}_${i}" value="${(item+'').replace(/"/g,'&quot;')}" style="width:100%;padding:6px 8px;border:1px solid transparent;background:transparent" onfocus="this.style.border='1px solid #d1d5db';this.style.background='white'" onblur="updateSimpleItem('${key}',${i},this.value);this.style.border='1px solid transparent';this.style.background='transparent'"></td>
-        <td><button class="btn-ghost" onclick="removeSimpleItem('${key}',${i})">🗑️</button></td>
-      </tr>`).join('')}
+    <table><thead><tr><th>${label}</th><th style="width:160px;text-align:right">Acciones</th></tr></thead><tbody>
+      ${arr.map((item, i) => {
+        const editing = (editingSimpleItem && editingSimpleItem.key === key && editingSimpleItem.idx === i);
+        if (editing) {
+          return `<tr style="background:#fef9c3">
+            <td><input type="text" id="editSimp_${key}_${i}" value="${(item+'').replace(/"/g,'&quot;')}" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px" autofocus onkeydown="if(event.key==='Enter'){event.preventDefault();saveSimpleEdit('${key}',${i})}else if(event.key==='Escape'){cancelSimpleEdit()}"></td>
+            <td style="text-align:right">
+              <button class="btn-ghost" style="color:#16a34a" onclick="saveSimpleEdit('${key}',${i})" title="Guardar">💾 Guardar</button>
+              <button class="btn-ghost" onclick="cancelSimpleEdit()" title="Cancelar">✕</button>
+            </td>
+          </tr>`;
+        }
+        return `<tr>
+          <td>${(item+'').replace(/</g,'&lt;')}</td>
+          <td style="text-align:right">
+            <button class="btn-ghost" onclick="startSimpleEdit('${key}',${i})" title="Editar">✏️ Editar</button>
+            <button class="btn-ghost" style="color:#dc2626" onclick="removeSimpleItem('${key}',${i})" title="Eliminar">🗑️</button>
+          </td>
+        </tr>`;
+      }).join('')}
     </tbody></table>
     ${arr.length === 0 ? '<p class="muted" style="padding:20px;text-align:center">Vacío. Agregá items con el campo de arriba.</p>' : ''}
   `;
+}
+
+let editingSimpleItem = null;
+function startSimpleEdit(key, idx) {
+  editingSimpleItem = { key, idx };
+  renderCatalogos();
+  setTimeout(() => { const el = document.getElementById(`editSimp_${key}_${idx}`); if (el) { el.focus(); el.select(); } }, 50);
+}
+function cancelSimpleEdit() {
+  editingSimpleItem = null;
+  renderCatalogos();
+}
+async function saveSimpleEdit(key, idx) {
+  const el = document.getElementById(`editSimp_${key}_${idx}`);
+  const newVal = (el.value || '').trim();
+  if (!newVal) { alert('No puede quedar vacío'); return; }
+  if (DATA.catalogos[key][idx] !== newVal) {
+    DATA.catalogos[key][idx] = newVal;
+    if (key === 'clientes' || key === 'colores' || key === 'tolvas') DATA.catalogos[key].sort();
+    await saveData();
+    toast('Actualizado', 'success');
+  }
+  editingSimpleItem = null;
+  renderCatalogos();
 }
 
 async function addSimpleItem(key) {
@@ -1683,6 +1891,7 @@ async function addSimpleItem(key) {
   toast('Agregado', 'success');
 }
 
+// DEPRECATED — reemplazada por startSimpleEdit/saveSimpleEdit/cancelSimpleEdit. Se deja por compatibilidad.
 async function updateSimpleItem(key, idx, newVal) {
   newVal = newVal.trim();
   if (!newVal) { alert('No puede quedar vacío'); renderCatalogos(); return; }
@@ -1702,19 +1911,61 @@ async function removeSimpleItem(key, idx) {
 }
 
 function renderObjectList(key, arr, fields, labels) {
+  const fieldsAttr = JSON.stringify(fields).replace(/"/g,'&quot;');
   return `
-    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
-      ${fields.map((f, i) => `<input type="text" id="newObj_${key}_${f}" placeholder="${labels[i]}..." style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px">`).join('')}
-      <button class="btn btn-pri" onclick="addObjectItem('${key}', ${JSON.stringify(fields).replace(/"/g,'&quot;')})">+ Agregar</button>
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+      ${fields.map((f, i) => `<input type="text" id="newObj_${key}_${f}" placeholder="${labels[i]}..." style="flex:1;min-width:120px;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px">`).join('')}
+      <button class="btn btn-pri" onclick="addObjectItem('${key}', ${fieldsAttr})">+ Agregar</button>
     </div>
-    <table><thead><tr>${labels.map(l => `<th>${l}</th>`).join('')}<th style="width:120px"></th></tr></thead><tbody>
-      ${arr.map((item, i) => `<tr>
-        ${fields.map(f => `<td><input type="text" id="objItem_${key}_${i}_${f}" value="${(item[f]+'').replace(/"/g,'&quot;')}" style="width:100%;padding:6px 8px;border:1px solid transparent;background:transparent" onfocus="this.style.border='1px solid #d1d5db';this.style.background='white'" onblur="updateObjectItem('${key}',${i},'${f}',this.value);this.style.border='1px solid transparent';this.style.background='transparent'"></td>`).join('')}
-        <td><button class="btn-ghost" onclick="removeObjectItem('${key}',${i})">🗑️</button></td>
-      </tr>`).join('')}
+    <table><thead><tr>${labels.map(l => `<th>${l}</th>`).join('')}<th style="width:160px;text-align:right">Acciones</th></tr></thead><tbody>
+      ${arr.map((item, i) => {
+        const editing = (editingObjectItem && editingObjectItem.key === key && editingObjectItem.idx === i);
+        if (editing) {
+          return `<tr style="background:#fef9c3">
+            ${fields.map(f => `<td><input type="text" id="editObj_${key}_${i}_${f}" value="${((item[f]||'')+'').replace(/"/g,'&quot;')}" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px"></td>`).join('')}
+            <td style="text-align:right">
+              <button class="btn-ghost" style="color:#16a34a" onclick="saveObjectEdit('${key}',${i}, ${fieldsAttr})" title="Guardar">💾 Guardar</button>
+              <button class="btn-ghost" onclick="cancelObjectEdit()" title="Cancelar">✕</button>
+            </td>
+          </tr>`;
+        }
+        return `<tr>
+          ${fields.map(f => `<td>${((item[f]||'')+'').replace(/</g,'&lt;')}</td>`).join('')}
+          <td style="text-align:right">
+            <button class="btn-ghost" onclick="startObjectEdit('${key}',${i})" title="Editar">✏️ Editar</button>
+            <button class="btn-ghost" style="color:#dc2626" onclick="removeObjectItem('${key}',${i})" title="Eliminar">🗑️</button>
+          </td>
+        </tr>`;
+      }).join('')}
     </tbody></table>
     ${arr.length === 0 ? '<p class="muted" style="padding:20px;text-align:center">Vacío.</p>' : ''}
   `;
+}
+
+let editingObjectItem = null;
+function startObjectEdit(key, idx) {
+  editingObjectItem = { key, idx };
+  renderCatalogos();
+}
+function cancelObjectEdit() {
+  editingObjectItem = null;
+  renderCatalogos();
+}
+async function saveObjectEdit(key, idx, fields) {
+  const item = DATA.catalogos[key][idx];
+  let cambios = false;
+  for (const f of fields) {
+    const el = document.getElementById(`editObj_${key}_${idx}_${f}`);
+    if (!el) continue;
+    const v = (el.value || '').trim();
+    if ((item[f] || '') !== v) { item[f] = v; cambios = true; }
+  }
+  if (cambios) {
+    await saveData();
+    toast('Actualizado', 'success');
+  }
+  editingObjectItem = null;
+  renderCatalogos();
 }
 
 async function addObjectItem(key, fields) {
@@ -1732,6 +1983,7 @@ async function addObjectItem(key, fields) {
   toast('Agregado', 'success');
 }
 
+// DEPRECATED — reemplazada por startObjectEdit/saveObjectEdit/cancelObjectEdit. Se deja por compatibilidad.
 async function updateObjectItem(key, idx, field, newVal) {
   newVal = newVal.trim();
   if (DATA.catalogos[key][idx][field] === newVal) return;
@@ -1743,6 +1995,78 @@ async function updateObjectItem(key, idx, field, newVal) {
 async function removeObjectItem(key, idx) {
   if (!confirm('¿Eliminar este item?')) return;
   DATA.catalogos[key].splice(idx, 1);
+  await saveData();
+  renderCatalogos();
+  toast('Eliminado', 'success');
+}
+
+// --- EMAILS DE CLIENTE (objeto: { cliente: 'mail1, mail2' }) ---
+function renderEmailsCliente(emails, clientes) {
+  const entries = Object.entries(emails);
+  return `
+    <p class="muted" style="margin-bottom:12px;font-size:13px">📧 Emails asociados a cada cliente (separá múltiples emails con coma). Se usan al enviar remitos y otras notificaciones.</p>
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+      <select id="newEmailCli_cliente" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px">
+        <option value="">Elegí un cliente...</option>
+        ${clientes.filter(c => !emails[c]).map(c => `<option value="${c}">${c}</option>`).join('')}
+      </select>
+      <input type="text" id="newEmailCli_emails" placeholder="email1@dominio.com, email2@dominio.com" style="flex:2;min-width:240px;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px">
+      <button class="btn btn-pri" onclick="addEmailCliente()">+ Agregar</button>
+    </div>
+    <table><thead><tr><th>Cliente</th><th>Emails</th><th style="width:160px;text-align:right">Acciones</th></tr></thead><tbody>
+      ${entries.map(([cli, mails], i) => {
+        const editing = (editingEmailCli === cli);
+        if (editing) {
+          return `<tr style="background:#fef9c3">
+            <td><b>${cli}</b></td>
+            <td><input type="text" id="editEmailCli_${i}" value="${(mails||'').replace(/"/g,'&quot;')}" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px" onkeydown="if(event.key==='Enter'){event.preventDefault();saveEmailCliEdit('${cli.replace(/'/g,'\\\'')}',${i})}else if(event.key==='Escape'){cancelEmailCliEdit()}"></td>
+            <td style="text-align:right">
+              <button class="btn-ghost" style="color:#16a34a" onclick="saveEmailCliEdit('${cli.replace(/'/g,'\\\'')}',${i})" title="Guardar">💾 Guardar</button>
+              <button class="btn-ghost" onclick="cancelEmailCliEdit()" title="Cancelar">✕</button>
+            </td>
+          </tr>`;
+        }
+        return `<tr>
+          <td><b>${cli}</b></td>
+          <td><code style="font-size:12px">${(mails||'').replace(/</g,'&lt;')}</code></td>
+          <td style="text-align:right">
+            <button class="btn-ghost" onclick="startEmailCliEdit('${cli.replace(/'/g,'\\\'')}')" title="Editar">✏️ Editar</button>
+            <button class="btn-ghost" style="color:#dc2626" onclick="removeEmailCliente('${cli.replace(/'/g,'\\\'')}')" title="Eliminar">🗑️</button>
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody></table>
+    ${entries.length === 0 ? '<p class="muted" style="padding:20px;text-align:center">Sin emails cargados.</p>' : ''}
+  `;
+}
+
+let editingEmailCli = null;
+async function addEmailCliente() {
+  const cli = document.getElementById('newEmailCli_cliente').value;
+  const mails = document.getElementById('newEmailCli_emails').value.trim();
+  if (!cli) { alert('Elegí un cliente'); return; }
+  if (!mails) { alert('Cargá al menos un email'); return; }
+  if (!DATA.catalogos.emailsCliente) DATA.catalogos.emailsCliente = {};
+  DATA.catalogos.emailsCliente[cli] = mails;
+  await saveData();
+  renderCatalogos();
+  toast('Email agregado', 'success');
+}
+function startEmailCliEdit(cli) { editingEmailCli = cli; renderCatalogos(); }
+function cancelEmailCliEdit() { editingEmailCli = null; renderCatalogos(); }
+async function saveEmailCliEdit(cli, idx) {
+  const el = document.getElementById(`editEmailCli_${idx}`);
+  const v = (el.value || '').trim();
+  if (!v) { alert('No puede quedar vacío. Usá "Eliminar" si querés borrar el registro'); return; }
+  DATA.catalogos.emailsCliente[cli] = v;
+  editingEmailCli = null;
+  await saveData();
+  renderCatalogos();
+  toast('Actualizado', 'success');
+}
+async function removeEmailCliente(cli) {
+  if (!confirm(`¿Eliminar los emails de "${cli}"?`)) return;
+  delete DATA.catalogos.emailsCliente[cli];
   await saveData();
   renderCatalogos();
   toast('Eliminado', 'success');
@@ -9616,9 +9940,10 @@ function renderRemitosHistorico() {
     c.innerHTML += '<p class="muted" style="padding:30px;text-align:center">Todavía no hay remitos emitidos.</p>';
     return;
   }
-  let html = '<table style="width:100%"><thead><tr><th>N° Remito</th><th>Fecha</th><th>Destinatario</th><th>Transportista</th><th>Patente</th><th class="num">Pallets</th><th class="num">Bobinas</th><th class="num">Kg total</th><th>Acciones</th></tr></thead><tbody>';
+  let html = '<table style="width:100%"><thead><tr><th>N° Remito</th><th>Fecha</th><th>Destinatario</th><th>Transportista</th><th>Patente</th><th class="num">Pallets</th><th class="num">Bobinas</th><th class="num">Kg total</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>';
   remitos.forEach(r => {
-    html += `<tr>
+    const anulado = !!r.anulado;
+    html += `<tr style="${anulado ? 'background:#fef2f2;color:#991b1b;text-decoration:line-through' : ''}">
       <td><code style="font-size:12px">${r.puntoVenta||'0001'}-${(r.nroRemito||'').toString().padStart(8,'0')}</code></td>
       <td>${fmtFecha(r.fecha)}</td>
       <td>${r.destinatario?.nombre || '-'}</td>
@@ -9627,11 +9952,17 @@ function renderRemitosHistorico() {
       <td class="num">${r.totalPallets || 0}</td>
       <td class="num">${(r.bobinaIds||[]).length}</td>
       <td class="num">${fmtNum(r.totalKg||0)}</td>
-      <td>
+      <td>${anulado
+            ? `<span class="chip" style="background:#fee2e2;color:#991b1b;font-weight:600">ANULADO</span>`
+            : `<span class="chip" style="background:#dcfce7;color:#166534">Vigente</span>`}</td>
+      <td style="white-space:nowrap">
         <button class="btn-action" onclick="generarRemitoPDF('${r.id}')" title="PDF Remito">📄 Remito</button>
         <button class="btn-action" onclick="generarDetalleEnvioPDF('${r.id}')" title="PDF Detalle WBAN-001">📋 Detalle</button>
-        <button class="btn-action" onclick="enviarMailRemito('${r.id}')" title="Enviar mail">📧 Mail</button>
-        <button class="btn-action" style="background:#fee2e2;color:#991b1b" onclick="anularRemito('${r.id}')" title="Anular este remito">✕ Anular</button>
+        ${anulado
+          ? `<button class="btn-action" style="background:#fee2e2;color:#991b1b;font-weight:600" onclick="eliminarRemito('${r.id}')" title="Eliminar definitivamente este remito anulado">🗑️ Eliminar</button>`
+          : `<button class="btn-action" onclick="enviarMailRemito('${r.id}')" title="Enviar mail">📧 Mail</button>
+             <button class="btn-action" style="background:#fef3c7;color:#92400e" onclick="anularRemito('${r.id}')" title="Anular este remito (las bobinas vuelven a estar disponibles, queda registrado el N° anulado)">✕ Anular</button>
+             <button class="btn-action" style="background:#fee2e2;color:#991b1b" onclick="eliminarRemito('${r.id}')" title="Eliminar definitivamente">🗑️ Eliminar</button>`}
       </td>
     </tr>`;
   });
@@ -9864,6 +10195,34 @@ async function anularRemito(remitoId) {
   if (r) { r.anulado = true; r.anuladoFecha = new Date().toISOString(); }
   await saveData();
   toast('Remito anulado', 'success');
+  renderRemitos();
+}
+
+async function eliminarRemito(remitoId) {
+  const r = (DATA.remitos || []).find(x => x.id === remitoId);
+  if (!r) { alert('Remito no encontrado'); return; }
+  const nro = (r.puntoVenta || '0001') + '-' + (r.nroRemito || '').toString().padStart(8,'0');
+  const advertencia = r.anulado
+    ? `¿Eliminar DEFINITIVAMENTE el remito ${nro} (ANULADO)?\n\nNo va a quedar rastro de este remito. Esta acción NO se puede deshacer.`
+    : `⚠️ ATENCIÓN ⚠️\n\nEl remito ${nro} todavía está VIGENTE. Si lo eliminás:\n• Las bobinas asociadas vuelven a estar disponibles\n• Se borra todo registro del remito\n• El número de remito NO se reutiliza\n\nLo recomendable es ANULAR primero, no eliminar. ¿Igualmente querés eliminar?`;
+  if (!confirm(advertencia)) return;
+  // Segunda confirmación con escritura para los vigentes
+  if (!r.anulado) {
+    const respuesta = prompt('Para confirmar, escribí "ELIMINAR" (en mayúsculas):');
+    if (respuesta !== 'ELIMINAR') { toast('Eliminación cancelada', 'success'); return; }
+  }
+  // Liberar bobinas si estaba vigente
+  (DATA.producciones || []).forEach(b => {
+    if (b.remitoId === remitoId) {
+      delete b.remitoId;
+      delete b.fechaDespacho;
+    }
+  });
+  // Eliminar el remito
+  const idx = DATA.remitos.findIndex(x => x.id === remitoId);
+  if (idx >= 0) DATA.remitos.splice(idx, 1);
+  await saveData();
+  toast('Remito eliminado', 'success');
   renderRemitos();
 }
 
