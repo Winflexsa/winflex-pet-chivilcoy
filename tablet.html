@@ -318,7 +318,13 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
     <button class="btn-big btn-sec" style="margin-top:4px;background:#374151;color:white;border:none" onclick="cerrarConsolidadoDiario()">📅 PDF consolidado del día completo</button>
   </div>
 
-  <button class="btn-big btn-sec" style="margin-top:14px;background:transparent;color:#6b7280;border:1px solid #d1d5db" onclick="cerrarTurnoSalir()">Salir sin cerrar nada</button>
+  <div style="margin-top:20px;padding:14px;background:#fef2f2;border-radius:10px;border:1px solid #fca5a5">
+    <div style="font-size:13px;font-weight:600;color:#991b1b;margin-bottom:8px">🚪 Finalizar día</div>
+    <p style="font-size:11px;color:#7f1d1d;margin-bottom:8px">Cerrar la app y volver al login. Asegurate de haber generado los PDFs antes.</p>
+    <button class="btn-big btn-sec" style="margin-top:4px;background:#dc2626;color:white;border:none" onclick="finalizarDia()">🚪 Cerrar día y salir</button>
+  </div>
+
+  <button class="btn-ghost" style="margin-top:8px;font-size:12px;width:100%;color:#9ca3af" onclick="cerrarTurnoSalir()">Salir sin cerrar nada</button>
 </div>
 
 <!-- OP DETAIL (Carga de bobinas) -->
@@ -480,6 +486,40 @@ function cerrarTurnoSalir() {
   if (confirm('¿Salir sin cerrar planillas?\n\nLos datos quedan guardados. Podés volver más tarde a generar los PDFs.')) {
     logout();
   }
+}
+
+async function finalizarDia() {
+  const today = new Date().toISOString().slice(0,10);
+  const bobinas = (DATA.producciones || []).filter(b => b.fecha === today);
+  const registros = (DATA.registrosProduccion || []).filter(r => r.fecha === today);
+  const totalKg = bobinas.reduce((s, b) => s + (+b.kg || 0), 0);
+
+  // Verificar si hay items pendientes de sincronizar
+  const todosIds = [...(DATA.producciones||[]).map(b=>b.id), ...(DATA.registrosProduccion||[]).map(r=>r.id)];
+  const pendientes = window._remoteIds
+    ? todosIds.filter(id => !window._remoteIds.has(id))
+    : [];
+
+  let msg = `¿Cerrar el día y salir?\n\nResumen del día ${today}:\n• ${bobinas.length} bobinas (${fmt(totalKg)} kg)\n• ${registros.length} registros horarios`;
+  if (pendientes.length > 0) {
+    msg += `\n\n⚠️ ATENCIÓN: hay ${pendientes.length} items todavía sin sincronizar. Voy a intentar subirlos antes de salir.`;
+  }
+  msg += '\n\n¿Continuar?';
+  if (!confirm(msg)) return;
+
+  // Forzar un sync final antes de salir
+  if (pendientes.length > 0) {
+    setSync('Sincronizando antes de salir...', 'warn');
+    await saveData();
+    // Verificar de nuevo si quedaron pendientes
+    const stillPending = todosIds.filter(id => !window._remoteIds || !window._remoteIds.has(id));
+    if (stillPending.length > 0) {
+      if (!confirm(`Aún quedan ${stillPending.length} items sin sincronizar (probablemente sin conexión).\n\nQuedan guardados en esta tablet y se subirán cuando vuelva la conexión.\n\n¿Salir igual?`)) return;
+    } else {
+      toast('Todos los datos sincronizados ✓', 'success');
+    }
+  }
+  logout();
 }
 
 function cerrarPlanillaRegistros() {
@@ -1030,9 +1070,10 @@ function renderOpDetail() {
       const t = new Date(item.ts).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
       if (item.type === 'bobina') {
         const b = item.data;
+        const pendiente = !window._remoteIds || !window._remoteIds.has(b.id);
         return `<div class="bobina-item">
           <div class="bobina-info">
-            <div class="bobina-nro">🎯 Bobina #${b.nroBobina} · ${fmt(b.kg)} kg</div>
+            <div class="bobina-nro">🎯 Bobina #${b.nroBobina} · ${fmt(b.kg)} kg${pendiente ? ' <span style="font-size:10px;color:#d97706;background:#fef3c7;padding:1px 6px;border-radius:3px;margin-left:4px">⏳ sin sync</span>' : ''}</div>
             <div class="bobina-detail">Pallet ${b.nroPallet} · ${t} · ${b.operario||'-'}${b.observaciones?' · '+b.observaciones:''}</div>
           </div>
           <div class="bobina-actions">
@@ -1042,9 +1083,10 @@ function renderOpDetail() {
         </div>`;
       } else {
         const r = item.data;
+        const pendiente = !window._remoteIds || !window._remoteIds.has(r.id);
         return `<div class="bobina-item" style="background:#f0fdf4;border-color:#86efac">
           <div class="bobina-info">
-            <div class="bobina-nro" style="color:#15803d">📊 Registro ${r.hora||'--:--'} · Bob #${r.nroBobina||'-'}</div>
+            <div class="bobina-nro" style="color:#15803d">📊 Registro ${r.hora||'--:--'} · Bob #${r.nroBobina||'-'}${pendiente ? ' <span style="font-size:10px;color:#d97706;background:#fef3c7;padding:1px 6px;border-radius:3px;margin-left:4px">⏳ sin sync</span>' : ''}</div>
             <div class="bobina-detail">Temp ${r.tempEntrada||'-'}° · ${r.kgH||'-'} kg/h · ${r.velMin||'-'} m/min · ${r.operario||'-'}</div>
           </div>
           <div class="bobina-actions">
@@ -1470,6 +1512,10 @@ async function deleteRegistro(id) {
 async function loadData() {
   setSync('Cargando...', 'warn');
   const creds = getCredentials();
+  // 1. Leer local primero (puede tener items pendientes de sincronizar)
+  const cached = localStorage.getItem(LS_KEY);
+  const localData = cached ? JSON.parse(cached) : null;
+
   if (creds) {
     try {
       const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, {
@@ -1477,7 +1523,44 @@ async function loadData() {
       });
       if (r.ok) {
         const j = await r.json();
-        DATA = j.record;
+        const remote = j.record;
+        // 2. Merge inteligente: combinar remote + local (preserva items locales que aún no subieron)
+        if (localData && (localData.producciones || localData.registrosProduccion)) {
+          console.log('[loadData] Mergeando remoto con local. Local prod:', (localData.producciones||[]).length, 'reg:', (localData.registrosProduccion||[]).length);
+          DATA = JSON.parse(JSON.stringify(remote));
+          DATA.producciones = mergeArrayPorId(
+            remote.producciones || [],
+            localData.producciones || [],
+            DELETED.bobinas
+          );
+          DATA.registrosProduccion = mergeArrayPorId(
+            remote.registrosProduccion || [],
+            localData.registrosProduccion || [],
+            DELETED.registros
+          );
+          // Si hay items locales que no estaban en remoto, marcar para subir
+          const remoteIds = new Set([
+            ...(remote.producciones || []).map(b => b.id),
+            ...(remote.registrosProduccion || []).map(r => r.id)
+          ]);
+          const localIds = new Set([
+            ...(localData.producciones || []).map(b => b.id),
+            ...(localData.registrosProduccion || []).map(r => r.id)
+          ]);
+          const pendientes = [...localIds].filter(id => !remoteIds.has(id));
+          if (pendientes.length > 0) {
+            console.warn('[loadData] Hay', pendientes.length, 'items locales no sincronizados aún:', pendientes);
+            // Forzar un saveData para subirlos
+            setTimeout(() => saveData(), 500);
+          }
+        } else {
+          DATA = remote;
+        }
+        // Trackear qué IDs ya están en remoto para el badge visual
+        window._remoteIds = new Set([
+          ...(remote.producciones || []).map(b => b.id),
+          ...(remote.registrosProduccion || []).map(r => r.id)
+        ]);
         localStorage.setItem(LS_KEY, JSON.stringify(DATA));
         setSync('Sincronizado', 'ok');
         return DATA;
@@ -1488,9 +1571,9 @@ async function loadData() {
       }
     } catch (e) { console.warn('JSONBin offline:', e); }
   }
-  const cached = localStorage.getItem(LS_KEY);
-  if (cached) {
-    DATA = JSON.parse(cached);
+  // 3. Sin conexión, usar local
+  if (localData) {
+    DATA = localData;
     setSync('Offline (cache)', 'err');
     return DATA;
   }
@@ -1533,38 +1616,61 @@ function mergeArrayPorId(remoteArr, localArr, deletedSet) {
 }
 
 async function saveData() {
+  // Garantizar que el local SIEMPRE tenga lo más reciente antes de tocar nada
   DATA.lastUpdate = new Date().toISOString();
   localStorage.setItem(LS_KEY, JSON.stringify(DATA));
   setSync('Guardando...', 'warn');
   const creds = getCredentials();
   if (!creds) { setSync('Sin credenciales', 'err'); return; }
+
+  const localProdCount = (DATA.producciones || []).length;
+  const localRegCount = (DATA.registrosProduccion || []).length;
+  console.log('[saveData] iniciado. Local prod:', localProdCount, 'reg:', localRegCount);
+
   try {
     // 1) GET fresco del bin remoto
     const fresh = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, {
       headers: { 'X-Master-Key': creds.masterKey }
     });
-    if (!fresh.ok) { setSync('Error fetch fresh', 'err'); return; }
+    if (!fresh.ok) {
+      console.error('[saveData] GET falló:', fresh.status, fresh.statusText);
+      setSync('Error fetch (HTTP ' + fresh.status + ')', 'err');
+      return;
+    }
     const j = await fresh.json();
     const remote = j.record;
+    console.log('[saveData] GET ok. Remote prod:', (remote.producciones||[]).length, 'reg:', (remote.registrosProduccion||[]).length);
 
     // 2) MERGE INTELIGENTE
     const merged = JSON.parse(JSON.stringify(remote));
-
-    // 2a) Producciones (bobinas) — merge por ID, respetando borrados locales
     merged.producciones = mergeArrayPorId(
       remote.producciones || [],
       DATA.producciones || [],
       DELETED.bobinas
     );
-
-    // 2b) Registros de producción — igual
     merged.registrosProduccion = mergeArrayPorId(
       remote.registrosProduccion || [],
       DATA.registrosProduccion || [],
       DELETED.registros
     );
+    console.log('[saveData] merged. Final prod:', merged.producciones.length, 'reg:', merged.registrosProduccion.length);
 
-    // 2c) Recalcular kgReales de los pedidos afectados a partir del array MERGED
+    // Validación: el merged DEBE tener al menos lo que tenía mi local
+    // Si tengo X bobinas locales y el merged tiene menos, algo está mal (excepto borrados)
+    const expectedProdMin = (DATA.producciones || []).filter(b => !DELETED.bobinas.has(b.id)).length;
+    if (merged.producciones.length < expectedProdMin) {
+      console.error('[saveData] INCONSISTENCIA: merged tiene', merged.producciones.length, 'bobinas pero mi local sin borradas tenía', expectedProdMin);
+      setSync('Error: inconsistencia (revisar consola)', 'err');
+      return; // NO subir nada hasta no entender
+    }
+    const expectedRegMin = (DATA.registrosProduccion || []).filter(r => !DELETED.registros.has(r.id)).length;
+    if (merged.registrosProduccion.length < expectedRegMin) {
+      console.error('[saveData] INCONSISTENCIA: merged tiene', merged.registrosProduccion.length, 'registros pero mi local sin borrados tenía', expectedRegMin);
+      setSync('Error: inconsistencia (revisar consola)', 'err');
+      return;
+    }
+
+    // 2c) Recalcular kgReales de los pedidos afectados
     const pedidosAfectados = new Set([
       ...(remote.producciones || []).map(b => b.pedidoId),
       ...(DATA.producciones || []).map(b => b.pedidoId)
@@ -1576,7 +1682,6 @@ async function saveData() {
         .filter(b => b.pedidoId === pid)
         .reduce((s, b) => s + (+b.kg || 0), 0);
       p.kgReales = Math.round(total * 100) / 100;
-      // Si mi local ya marcó "En producción" pero el remoto está en OP, propagar
       const localP = (DATA.pedidos || []).find(x => x.id === pid);
       if (localP && localP.estadoWorkflow === 'En producción' &&
           (p.estadoWorkflow === 'OP' || p.estadoWorkflow === 'Confirmada')) {
@@ -1592,15 +1697,27 @@ async function saveData() {
       headers: { 'Content-Type':'application/json', 'X-Master-Key': creds.masterKey },
       body: JSON.stringify(merged)
     });
-    if (!r.ok) { setSync('Error sync', 'err'); return; }
+    if (!r.ok) {
+      console.error('[saveData] PUT falló:', r.status, r.statusText);
+      setSync('Error PUT (HTTP ' + r.status + ')', 'err');
+      // Importante: NO tocar DATA, queda local con los items pendientes
+      return;
+    }
+    console.log('[saveData] PUT ok. Bin actualizado con', merged.producciones.length, 'bobinas y', merged.registrosProduccion.length, 'registros');
 
-    // 4) Actualizar local con el merged (ahora veo lo que cargó la otra tablet)
+    // 4) Actualizar local con el merged
     DATA = merged;
     localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+    // Actualizar set de IDs remotos (todo lo que está en merged ya está en remoto)
+    window._remoteIds = new Set([
+      ...(merged.producciones || []).map(b => b.id),
+      ...(merged.registrosProduccion || []).map(r => r.id)
+    ]);
     setSync('Sincronizado', 'ok');
   } catch (e) {
-    console.error('saveData error', e);
-    setSync('Sin conexión', 'err');
+    console.error('[saveData] EXCEPCIÓN:', e);
+    setSync('Sin conexión (datos guardados en local)', 'err');
+    // NO tocar DATA - sigue local con los pending hasta próximo intento
   }
 }
 
@@ -1679,7 +1796,6 @@ async function silentReload() {
     });
     if (!r.ok) return;
     const j = await r.json();
-    // Hacer merge inteligente con lo remoto (por si tengo cargas locales aún sin sync)
     const remote = j.record;
     const merged = JSON.parse(JSON.stringify(remote));
     merged.producciones = mergeArrayPorId(
@@ -1688,19 +1804,35 @@ async function silentReload() {
     merged.registrosProduccion = mergeArrayPorId(
       remote.registrosProduccion || [], DATA.registrosProduccion || [], DELETED.registros
     );
+
+    // Validación de seguridad: nunca dejar al usuario sin items que sí cargó
+    const expectedProdMin = (DATA.producciones || []).filter(b => !DELETED.bobinas.has(b.id)).length;
+    const expectedRegMin = (DATA.registrosProduccion || []).filter(r => !DELETED.registros.has(r.id)).length;
+    if (merged.producciones.length < expectedProdMin) {
+      console.warn('[silentReload] Skip: merged tiene', merged.producciones.length, 'bobinas pero local sin borradas tenía', expectedProdMin);
+      return;
+    }
+    if (merged.registrosProduccion.length < expectedRegMin) {
+      console.warn('[silentReload] Skip: merged tiene', merged.registrosProduccion.length, 'registros pero local sin borrados tenía', expectedRegMin);
+      return;
+    }
+
     DATA = merged;
     localStorage.setItem(LS_KEY, JSON.stringify(DATA));
-    // Re-renderizar la vista actual sin tocar el modal
+    window._remoteIds = new Set([
+      ...(remote.producciones || []).map(b => b.id),
+      ...(remote.registrosProduccion || []).map(r => r.id)
+    ]);
     if (!document.getElementById('screenOpDetail').classList.contains('hidden')) {
       renderOpDetail();
     } else if (!document.getElementById('screenOps').classList.contains('hidden')) {
       renderOps();
     }
     setSync('Sincronizado', 'ok');
-  } catch (e) { /* silent */ }
+  } catch (e) { console.warn('[silentReload]', e); }
 }
-// Empezar el auto-refresh al cargar
-setInterval(silentReload, 30000);
+// Empezar el auto-refresh al cargar (más frecuente: 20s para detectar problemas antes)
+setInterval(silentReload, 20000);
 
 function setSync(text, cls) {
   ['syncStatus','syncStatusOps','syncStatusDetail'].forEach(id => {
