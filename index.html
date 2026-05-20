@@ -213,6 +213,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <main>
     <!-- DASHBOARD -->
     <div id="tab-dashboard" class="tab-content">
+      <div id="dashYearSelector"></div>
       <div class="kpi-grid" id="kpiGrid"></div>
       <div class="panel">
         <div class="panel-h"><h2>Resumen por mes</h2></div>
@@ -707,31 +708,29 @@ function renderDashboard() {
   const vencidos = pedsAnio.filter(p => isVencido(p)).length;
   const kgVencidos = pedsAnio.filter(p => isVencido(p)).reduce((s,p) => s + calcPendiente(p), 0);
 
-  // Selector de año
+  // Selector de año (en su propio contenedor)
   const aniosDisponibles = [...new Set(peds.map(p => {
     if (!p.fechaIngreso) return null;
     return new Date(p.fechaIngreso).getFullYear();
   }).filter(Boolean))].sort((a,b) => b - a);
-  const yearSelector = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+  document.getElementById('dashYearSelector').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:10px 14px;background:white;border-radius:10px;border:1px solid #e5e7eb">
       <label style="font-size:13px;color:#6b7280;font-weight:600">Año:</label>
-      <select onchange="dashYear = +this.value; renderDashboard()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-weight:600;color:#16a34a">
+      <select onchange="dashYear = +this.value; renderDashboard()" style="padding:6px 12px;border:1px solid #16a34a;border-radius:6px;font-size:14px;font-weight:600;color:#16a34a;background:#f0fdf4">
         ${aniosDisponibles.map(y => `<option value="${y}" ${y===dashYear?'selected':''}>${y}</option>`).join('')}
       </select>
-      <span style="font-size:12px;color:#9ca3af">${totalPed} pedidos en ${dashYear}</span>
+      <span style="font-size:13px;color:#9ca3af">${totalPed} pedidos · ${fmtNum(totalKgPed)} kg pedidos · ${fmtNum(totalKgReal)} kg producidos</span>
     </div>
   `;
 
-  document.getElementById('kpiGrid').innerHTML = yearSelector + `
-    <div class="kpi-row">
-      <div class="kpi"><div class="label">Pedidos totales</div><div class="val">${totalPed}</div></div>
-      <div class="kpi ok"><div class="label">Finalizados</div><div class="val">${finalizados}</div></div>
-      <div class="kpi warn"><div class="label">Pendientes</div><div class="val">${pendientes}</div></div>
-      <div class="kpi alert"><div class="label">Vencidos</div><div class="val">${vencidos}</div><div class="sub">${fmtNum(kgVencidos)} kg</div></div>
-      <div class="kpi"><div class="label">Kg pedidos</div><div class="val">${fmtNum(totalKgPed)}</div></div>
-      <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(totalKgReal)}</div></div>
-      <div class="kpi ${totalPend > 0 ? 'warn' : 'ok'}"><div class="label">Kg pendientes</div><div class="val">${fmtNum(Math.max(0,totalPend))}</div></div>
-    </div>
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi"><div class="label">Pedidos totales</div><div class="val">${totalPed}</div></div>
+    <div class="kpi ok"><div class="label">Finalizados</div><div class="val">${finalizados}</div></div>
+    <div class="kpi warn"><div class="label">Pendientes</div><div class="val">${pendientes}</div></div>
+    <div class="kpi alert"><div class="label">Vencidos</div><div class="val">${vencidos}</div><div class="sub">${fmtNum(kgVencidos)} kg</div></div>
+    <div class="kpi"><div class="label">Kg pedidos</div><div class="val">${fmtNum(totalKgPed)}</div></div>
+    <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(totalKgReal)}</div></div>
+    <div class="kpi ${totalPend > 0 ? 'warn' : 'ok'}"><div class="label">Kg pendientes</div><div class="val">${fmtNum(Math.max(0,totalPend))}</div></div>
   `;
 
   // Tabla por mes (solo del año seleccionado)
@@ -1101,19 +1100,208 @@ function renderConsulta() {
 }
 
 // --- PRODUCCIONES ---
+// ============================================================
+// PRODUCCIONES — vista detallada con filtros y sub-pestañas
+// ============================================================
+let prodSubTab = 'bobinas'; // 'bobinas' | 'registros'
+let prodFilters = { desde: '', hasta: '', opId: '', operario: '', turno: '' };
+
 function renderProducciones() {
   const c = document.getElementById('produccionesContent');
-  if (!DATA.producciones || DATA.producciones.length === 0) {
-    c.innerHTML = '<p class="muted">Todavía no hay producciones cargadas. Los operarios las cargan desde la app tablet. Esta pestaña se completa en v2.</p>';
+  const bobinas = DATA.producciones || [];
+  const registros = DATA.registrosProduccion || [];
+
+  if (bobinas.length === 0 && registros.length === 0) {
+    c.innerHTML = '<p class="muted" style="padding:30px;text-align:center">Todavía no hay producciones cargadas. Los operarios las cargan desde la tablet (Bobinas) o como Registro horario (WEC001).</p>';
     return;
   }
-  let html = '<table><thead><tr><th>Fecha</th><th>Turno</th><th>Operario</th><th>Pedido</th><th class="num">Kg</th><th class="num">Bobinas</th><th>Observaciones</th></tr></thead><tbody>';
-  [...DATA.producciones].reverse().forEach(p => {
-    const ped = DATA.pedidos.find(x => x.id === p.pedidoId);
-    html += `<tr><td>${fmtFecha(p.fecha)}</td><td>${p.turno||''}</td><td>${p.operario||''}</td><td>${ped ? ped.cliente + ' · ' + ped.partida : p.pedidoId}</td><td class="num">${fmtNum(p.kgProducidos)}</td><td class="num">${p.bobinas||''}</td><td>${p.observaciones||''}</td></tr>`;
-  });
-  html += '</tbody></table>';
+
+  // Operarios y OPs únicos para los filtros
+  const operarios = [...new Set([
+    ...bobinas.map(b => b.operario),
+    ...registros.map(r => r.operario)
+  ].filter(Boolean))].sort();
+  const opsConProduccion = [...new Set([
+    ...bobinas.map(b => b.pedidoId),
+    ...registros.map(r => r.pedidoId)
+  ].filter(Boolean))];
+  const opsList = opsConProduccion.map(id => {
+    const ped = DATA.pedidos.find(x => x.id === id);
+    return ped ? { id, label: `OP ${ped.nroOP||'-'} · ${ped.cliente} · ${ped.ancho||'-'}×${ped.espesor||'-'}` } : null;
+  }).filter(Boolean).sort((a,b) => a.label.localeCompare(b.label));
+
+  // Filtros UI
+  let html = `
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;background:white;padding:12px;border-radius:10px;border:1px solid #e5e7eb">
+      <div style="font-size:13px;font-weight:600;color:#374151">Filtros:</div>
+      <input type="date" id="prodDesde" value="${prodFilters.desde||''}" onchange="prodFilters.desde=this.value;renderProducciones()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <span style="font-size:12px;color:#9ca3af">a</span>
+      <input type="date" id="prodHasta" value="${prodFilters.hasta||''}" onchange="prodFilters.hasta=this.value;renderProducciones()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+      <select onchange="prodFilters.opId=this.value;renderProducciones()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;max-width:280px">
+        <option value="">Todas las OPs</option>
+        ${opsList.map(o => `<option value="${o.id}" ${o.id===prodFilters.opId?'selected':''}>${o.label}</option>`).join('')}
+      </select>
+      <select onchange="prodFilters.operario=this.value;renderProducciones()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        <option value="">Todos operarios</option>
+        ${operarios.map(o => `<option value="${o}" ${o===prodFilters.operario?'selected':''}>${o}</option>`).join('')}
+      </select>
+      <select onchange="prodFilters.turno=this.value;renderProducciones()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        <option value="">Todos turnos</option>
+        <option value="dia" ${prodFilters.turno==='dia'?'selected':''}>Día</option>
+        <option value="noche" ${prodFilters.turno==='noche'?'selected':''}>Noche</option>
+      </select>
+      <button class="btn-ghost" onclick="prodFilters={desde:'',hasta:'',opId:'',operario:'',turno:''};renderProducciones()" style="font-size:12px;padding:6px 10px">Limpiar</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-pri" onclick="openInformeOpModal()" style="padding:8px 14px;font-size:13px">📊 Informe por OP (PDF)</button>
+    </div>
+  `;
+
+  // Aplicar filtros
+  function pasaFiltros(item) {
+    if (prodFilters.desde && item.fecha < prodFilters.desde) return false;
+    if (prodFilters.hasta && item.fecha > prodFilters.hasta) return false;
+    if (prodFilters.opId && item.pedidoId !== prodFilters.opId) return false;
+    if (prodFilters.operario && item.operario !== prodFilters.operario) return false;
+    if (prodFilters.turno && item.turno !== prodFilters.turno) return false;
+    return true;
+  }
+  const bobinasFilt = bobinas.filter(pasaFiltros);
+  const registrosFilt = registros.filter(pasaFiltros);
+
+  // KPIs del filtro
+  const totalKg = bobinasFilt.reduce((s,b) => s + (+b.kg || 0), 0);
+  const totalMetros = bobinasFilt.reduce((s,b) => s + (+b.metros || 0), 0);
+  html += `
+    <div class="kpi-grid" style="margin-bottom:16px">
+      <div class="kpi"><div class="label">Bobinas</div><div class="val">${bobinasFilt.length}</div></div>
+      <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(totalKg)}</div></div>
+      <div class="kpi"><div class="label">Metros</div><div class="val">${fmtNum(totalMetros)}</div></div>
+      <div class="kpi"><div class="label">Registros horarios</div><div class="val">${registrosFilt.length}</div></div>
+      <div class="kpi"><div class="label">Operarios</div><div class="val">${[...new Set([...bobinasFilt.map(b=>b.operario),...registrosFilt.map(r=>r.operario)].filter(Boolean))].length}</div></div>
+    </div>
+  `;
+
+  // Sub-tabs
+  html += `
+    <div style="display:flex;gap:4px;margin-bottom:0;border-bottom:2px solid #e5e7eb">
+      <button onclick="prodSubTab='bobinas';renderProducciones()" style="padding:10px 18px;border:none;background:${prodSubTab==='bobinas'?'#16a34a':'transparent'};color:${prodSubTab==='bobinas'?'white':'#6b7280'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">🎯 Bobinas (${bobinasFilt.length})</button>
+      <button onclick="prodSubTab='registros';renderProducciones()" style="padding:10px 18px;border:none;background:${prodSubTab==='registros'?'#16a34a':'transparent'};color:${prodSubTab==='registros'?'white':'#6b7280'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">📊 Registros horarios (${registrosFilt.length})</button>
+      <div style="flex:1"></div>
+      <button class="btn-ghost" onclick="exportarProduccionesCSV()" style="font-size:12px;padding:6px 12px;align-self:center">⬇️ Exportar CSV</button>
+    </div>
+  `;
+
+  if (prodSubTab === 'bobinas') {
+    if (bobinasFilt.length === 0) {
+      html += '<p class="muted" style="padding:30px;text-align:center">Sin bobinas con esos filtros.</p>';
+    } else {
+      html += '<div style="overflow-x:auto"><table style="font-size:12px"><thead><tr><th>Fecha</th><th>Hora</th><th>Turno</th><th>OP</th><th>Cliente</th><th>Partida</th><th class="num">Bob#</th><th class="num">Pallet</th><th class="num">Ancho</th><th class="num">Esp</th><th class="num">Kg</th><th class="num">Metros</th><th>Mezcla real</th><th>Operario</th><th>Obs</th></tr></thead><tbody>';
+      const sorted = [...bobinasFilt].sort((a,b) => (b.fecha+b.hora||'').localeCompare(a.fecha+a.hora||''));
+      sorted.forEach(b => {
+        const ped = DATA.pedidos.find(x => x.id === b.pedidoId);
+        html += `<tr>
+          <td>${fmtFecha(b.fecha)}</td>
+          <td>${b.hora||'-'}</td>
+          <td>${b.turno==='dia'?'☀ Día':b.turno==='noche'?'🌙 Noche':'-'}</td>
+          <td><b>${ped?ped.nroOP:'-'}</b></td>
+          <td>${ped?ped.cliente:'-'}</td>
+          <td><code style="font-size:11px">${b.partida||ped?.op||'-'}</code></td>
+          <td class="num">${b.nroBobina||'-'}</td>
+          <td class="num">${b.nroPallet||'-'}</td>
+          <td class="num">${b.ancho||'-'}</td>
+          <td class="num">${b.espesor||'-'}</td>
+          <td class="num"><b>${fmtNum(b.kg)}</b></td>
+          <td class="num">${fmtNum(b.metros)}</td>
+          <td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(b.mezclaReal||'').replace(/"/g,'&quot;')}">${b.mezclaReal||'-'}</td>
+          <td style="font-size:11px">${b.operario||'-'}</td>
+          <td style="font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(b.observaciones||'').replace(/"/g,'&quot;')}">${b.observaciones||''}</td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+    }
+  } else {
+    if (registrosFilt.length === 0) {
+      html += '<p class="muted" style="padding:30px;text-align:center">Sin registros horarios con esos filtros.</p>';
+    } else {
+      html += '<div style="overflow-x:auto"><table style="font-size:11px"><thead><tr><th>Fecha</th><th>Hora</th><th>Turno</th><th>OP</th><th>Partida</th><th class="num">Bob</th><th class="num">T°Ent</th><th class="num">Kg/h</th><th class="num">Vel</th><th class="num">SP Esp</th><th class="num">Torq</th><th class="num">P1</th><th class="num">P2</th><th class="num">P3</th><th class="num">Vacc</th><th class="num">Gap</th><th>Sil</th><th class="num">E izq</th><th class="num">E cen</th><th class="num">E der</th><th>Operario</th></tr></thead><tbody>';
+      const sorted = [...registrosFilt].sort((a,b) => (b.fecha+b.hora||'').localeCompare(a.fecha+a.hora||''));
+      sorted.forEach(r => {
+        const ped = DATA.pedidos.find(x => x.id === r.pedidoId);
+        html += `<tr>
+          <td>${fmtFecha(r.fecha)}</td>
+          <td>${r.hora||'-'}</td>
+          <td>${r.turno==='dia'?'☀':'🌙'}</td>
+          <td><b>${ped?ped.nroOP:'-'}</b></td>
+          <td><code style="font-size:10px">${r.partida||'-'}</code></td>
+          <td class="num">${r.nroBobina||'-'}</td>
+          <td class="num">${r.tempEntrada||'-'}</td>
+          <td class="num">${r.kgH||'-'}</td>
+          <td class="num">${r.velMin||'-'}</td>
+          <td class="num">${r.spEspesor||'-'}</td>
+          <td class="num">${r.torqueM||'-'}</td>
+          <td class="num">${r.p1||'-'}</td>
+          <td class="num">${r.p2||'-'}</td>
+          <td class="num">${r.p3||'-'}</td>
+          <td class="num">${r.vacc||'-'}</td>
+          <td class="num">${r.gap||'-'}</td>
+          <td>${r.sil||'-'}</td>
+          <td class="num">${r.eIzq||'-'}</td>
+          <td class="num">${r.eCen||'-'}</td>
+          <td class="num">${r.eDer||'-'}</td>
+          <td style="font-size:10px">${r.operario||'-'}</td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+    }
+  }
+
   c.innerHTML = html;
+}
+
+// Exportar CSV de la vista activa con los filtros aplicados
+function exportarProduccionesCSV() {
+  const bobinas = (DATA.producciones || []).filter(b => {
+    if (prodFilters.desde && b.fecha < prodFilters.desde) return false;
+    if (prodFilters.hasta && b.fecha > prodFilters.hasta) return false;
+    if (prodFilters.opId && b.pedidoId !== prodFilters.opId) return false;
+    if (prodFilters.operario && b.operario !== prodFilters.operario) return false;
+    if (prodFilters.turno && b.turno !== prodFilters.turno) return false;
+    return true;
+  });
+  const registros = (DATA.registrosProduccion || []).filter(r => {
+    if (prodFilters.desde && r.fecha < prodFilters.desde) return false;
+    if (prodFilters.hasta && r.fecha > prodFilters.hasta) return false;
+    if (prodFilters.opId && r.pedidoId !== prodFilters.opId) return false;
+    if (prodFilters.operario && r.operario !== prodFilters.operario) return false;
+    if (prodFilters.turno && r.turno !== prodFilters.turno) return false;
+    return true;
+  });
+
+  let csv = '';
+  if (prodSubTab === 'bobinas') {
+    csv = 'Fecha,Hora,Turno,N° OP,Cliente,Partida,N° Bobina,Pallet,Ancho,Espesor,Kg,Metros,Mezcla real,Silicona %,Operario,Observaciones\n';
+    bobinas.forEach(b => {
+      const ped = DATA.pedidos.find(x => x.id === b.pedidoId);
+      const row = [b.fecha, b.hora, b.turno, ped?ped.nroOP:'', ped?ped.cliente:'', b.partida, b.nroBobina, b.nroPallet, b.ancho, b.espesor, b.kg, b.metros, b.mezclaReal, b.siliconaPct, b.operario, b.observaciones];
+      csv += row.map(v => `"${(v??'').toString().replace(/"/g,'""')}"`).join(',') + '\n';
+    });
+  } else {
+    csv = 'Fecha,Hora,Turno,N° OP,Partida,N° Bobina,Temp.Entrada,Kg/h,Vel,SP Esp,SP Av,Torque,P1,P2,P3,Vacc,Gap,Sil,E izq,E cen,E der,Operario,Observaciones\n';
+    registros.forEach(r => {
+      const ped = DATA.pedidos.find(x => x.id === r.pedidoId);
+      const row = [r.fecha, r.hora, r.turno, ped?ped.nroOP:'', r.partida, r.nroBobina, r.tempEntrada, r.kgH, r.velMin, r.spEspesor, r.spAvEspesor, r.torqueM, r.p1, r.p2, r.p3, r.vacc, r.gap, r.sil, r.eIzq, r.eCen, r.eDer, r.operario, r.observaciones];
+      csv += row.map(v => `"${(v??'').toString().replace(/"/g,'""')}"`).join(',') + '\n';
+    });
+  }
+
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Producciones_${prodSubTab}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('CSV descargado', 'success');
 }
 
 // --- COSTOS ---
@@ -2199,6 +2387,316 @@ Matías`;
 // ============================================================
 // GENERACIÓN DE OP (mailto a planta + PDF)
 // ============================================================
+// ============================================================
+// INFORME POR OP — PDF de eficiencia
+// Para análisis post-producción: bobinas reales vs teóricas, kg/h reales, etc.
+// ============================================================
+function openInformeOpModal() {
+  // Lista de OPs que tengan al menos una bobina o registro cargado
+  const opsConProd = [...new Set([
+    ...(DATA.producciones || []).map(b => b.pedidoId),
+    ...(DATA.registrosProduccion || []).map(r => r.pedidoId)
+  ].filter(Boolean))];
+  const ops = opsConProd.map(id => {
+    const p = DATA.pedidos.find(x => x.id === id);
+    return p ? p : null;
+  }).filter(Boolean).sort((a,b) => (b.fechaIngreso||'').localeCompare(a.fechaIngreso||''));
+
+  if (ops.length === 0) {
+    alert('No hay OPs con producciones cargadas todavía.');
+    return;
+  }
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg">
+      <div class="modal" style="max-width:600px">
+        <div class="modal-h">
+          <h3>📊 Informe de eficiencia por OP</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:13px;color:#6b7280;margin-bottom:14px">Seleccioná la OP. El informe incluye datos teóricos, lo realmente producido, comparativa de eficiencia y todas las bobinas y registros horarios cargados.</p>
+          <div class="field">
+            <label>OP</label>
+            <select id="informe_opId" onchange="actualizarPreviewInforme()">
+              <option value="">— Seleccionar OP —</option>
+              ${ops.map(p => `<option value="${p.id}">N° ${p.nroOP||'-'} · ${p.cliente} · ${p.ancho||'-'}×${p.espesor||'-'} · ${fmtNum(p.kgPedidos)} kg pedidos</option>`).join('')}
+            </select>
+          </div>
+          <div id="informePreview" style="margin-top:14px"></div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="generarInformeOpPDF()">📄 Descargar informe PDF</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function actualizarPreviewInforme() {
+  const id = document.getElementById('informe_opId').value;
+  const preview = document.getElementById('informePreview');
+  if (!id) { preview.innerHTML = ''; return; }
+  const ef = calcularEficiencia(id);
+  if (!ef) { preview.innerHTML = '<p class="muted">Sin datos de producción para esta OP.</p>'; return; }
+
+  preview.innerHTML = `
+    <div style="background:#f9fafb;padding:14px;border-radius:8px;border:1px solid #e5e7eb">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:13px">
+        <div><div style="font-size:11px;color:#6b7280">Bobinas</div><div style="font-weight:600;color:#16a34a">${ef.bobinas} de ${ef.bobinasEst} estimadas</div></div>
+        <div><div style="font-size:11px;color:#6b7280">Kg producidos</div><div style="font-weight:600;color:#16a34a">${fmtNum(ef.kgReal)} kg / ${fmtNum(ef.kgPedido)} kg</div></div>
+        <div><div style="font-size:11px;color:#6b7280">Avance</div><div style="font-weight:600;color:${ef.pctAvance>=100?'#16a34a':'#d97706'}">${ef.pctAvance}%</div></div>
+        <div><div style="font-size:11px;color:#6b7280">Horas reales</div><div style="font-weight:600">${ef.horasReal.toFixed(1)} h</div></div>
+        <div><div style="font-size:11px;color:#6b7280">Kg/h real</div><div style="font-weight:600">${fmtNum(ef.kgHoraReal)} (teórico: ${fmtNum(ef.kgHoraTeo)})</div></div>
+        <div><div style="font-size:11px;color:#6b7280">Eficiencia kg/h</div><div style="font-weight:600;color:${ef.eficienciaKgH>=100?'#16a34a':ef.eficienciaKgH>=80?'#d97706':'#dc2626'}">${ef.eficienciaKgH}%</div></div>
+        <div><div style="font-size:11px;color:#6b7280">Registros horarios</div><div style="font-weight:600">${ef.registros}</div></div>
+        <div><div style="font-size:11px;color:#6b7280">Operarios distintos</div><div style="font-weight:600">${ef.operarios.length}</div></div>
+        <div><div style="font-size:11px;color:#6b7280">Estado</div><div style="font-weight:600">${ef.estado}</div></div>
+      </div>
+    </div>
+  `;
+}
+
+// Calcula métricas de eficiencia para una OP
+function calcularEficiencia(pedidoId) {
+  const p = DATA.pedidos.find(x => x.id === pedidoId);
+  if (!p) return null;
+  const bobinas = (DATA.producciones || []).filter(b => b.pedidoId === pedidoId);
+  const registros = (DATA.registrosProduccion || []).filter(r => r.pedidoId === pedidoId);
+  if (bobinas.length === 0 && registros.length === 0) return null;
+
+  const kgPedido = +p.kgPedidos || 0;
+  const kgReal = bobinas.reduce((s,b) => s + (+b.kg || 0), 0);
+  const pctAvance = kgPedido > 0 ? Math.round(kgReal/kgPedido*100) : 0;
+  const kgPorBob = +p.kgPorBobina6 || +p.kgPorBobina || 1;
+  const bobinasEst = Math.ceil(kgPedido / kgPorBob);
+
+  // Tiempo real: desde el primer timestamp hasta el último
+  const timestamps = [
+    ...bobinas.map(b => b.timestamp),
+    ...registros.map(r => r.timestamp)
+  ].filter(Boolean).sort();
+  let horasReal = 0;
+  if (timestamps.length >= 2) {
+    const inicio = new Date(timestamps[0]);
+    const fin = new Date(timestamps[timestamps.length - 1]);
+    horasReal = (fin - inicio) / (1000 * 60 * 60);
+  }
+
+  const kgHoraTeo = +p.kgPorHora || 0;
+  const kgHoraReal = horasReal > 0 ? kgReal / horasReal : 0;
+  const eficienciaKgH = kgHoraTeo > 0 ? Math.round((kgHoraReal / kgHoraTeo) * 100) : 0;
+
+  // Días reales vs teóricos
+  const horasPorDiaTeo = +p.horasPorDia || 11;
+  const diasTeoricos = kgHoraTeo > 0 && horasPorDiaTeo > 0 ? kgPedido / (kgHoraTeo * horasPorDiaTeo) : 0;
+  const diasReales = horasPorDiaTeo > 0 ? horasReal / horasPorDiaTeo : 0;
+
+  // Scrap real estimado: (kg materia prima ingresada vs kg final)
+  // Simplificación: scrap teórico vs avance — si producimos menos que pedido siendo "finalizado"
+  // se asume scrap mayor. Aproximación gruesa.
+  const scrapTeo = (+p.scrapTeorico || 0.20) * 100;
+  // Operarios involucrados
+  const operarios = [...new Set([
+    ...bobinas.map(b => b.operario),
+    ...registros.map(r => r.operario)
+  ].filter(Boolean))];
+
+  return {
+    p,
+    bobinas, registros,
+    kgPedido, kgReal, pctAvance,
+    bobinasEst, kgPorBob,
+    horasReal, kgHoraTeo, kgHoraReal, eficienciaKgH,
+    diasTeoricos, diasReales,
+    scrapTeo,
+    operarios,
+    estado: p.estadoWorkflow || 'OP'
+  };
+}
+
+function generarInformeOpPDF() {
+  const id = document.getElementById('informe_opId').value;
+  if (!id) { alert('Seleccioná una OP primero.'); return; }
+  const ef = calcularEficiencia(id);
+  if (!ef) { alert('Sin datos de producción para esta OP.'); return; }
+  if (typeof window.jspdf === 'undefined') {
+    // Cargar jsPDF dinámicamente si no está
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload = () => generarInformeOpPDF();
+    document.head.appendChild(s);
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, H = 297, M = 10;
+  const C_PRI = [22, 163, 74], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
+  const setFill = (rgb) => doc.setFillColor(...rgb);
+  const setText = (rgb) => doc.setTextColor(...rgb);
+  function safeS(s) { return (s === null || s === undefined) ? '-' : String(s).replace(/[^\x20-\x7Eáéíóúñü°ÁÉÍÓÚÑÜ²³%·\/\-\(\):,.°]/g, ' '); }
+  const txt = (s, x, y, opts={}) => {
+    doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+    doc.setFontSize(opts.size || 9);
+    setText(opts.color || C_DARK);
+    doc.text(safeS(s), x, y, { align: opts.align || 'left' });
+  };
+
+  const p = ef.p;
+  // Header
+  setFill(C_PRI); doc.rect(0, 0, W, 26, 'F');
+  txt('WINFLEX PET - INFORME DE EFICIENCIA POR OP', M, 11, { bold: true, size: 14, color: [255,255,255] });
+  txt('OP N° ' + (p.nroOP || '-') + ' - ' + (p.cliente || '-') + ' - ' + (p.ancho||'-') + 'x' + (p.espesor||'-') + ' mic', M, 19, { size: 10, color: [220, 252, 231] });
+  txt('Generado ' + new Date().toLocaleDateString('es-AR') + ' ' + new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}), W - M, 19, { size: 9, color: [220, 252, 231], align: 'right' });
+
+  let y = 32;
+
+  // Sección 1: Datos de la OP (lo teórico)
+  setFill(C_LIGHT); doc.rect(M, y, W - 2*M, 7, 'F');
+  txt('DATOS DE LA OP (PLANIFICADO)', M + 3, y + 5, { bold: true, size: 10 });
+  y += 9;
+  const datosOP = [
+    ['Cliente', safeS(p.cliente)],
+    ['OC cliente', safeS(p.oc)],
+    ['Producto', (p.ancho||'-') + 'mm x ' + (p.espesor||'-') + ' mic ' + safeS(p.color)],
+    ['Silicona', p.silicona==='CON'?'CON '+(p.siliconaPct||0)+'%':'SIN'],
+    ['Cono', (p.conoTipo||'6')==='3'?'Cono 3" (rebobinar Lanus)':'Cono 6"'],
+    ['Kg pedidos', fmtNum(ef.kgPedido) + ' kg'],
+    ['Kg por bobina', fmtNum(ef.kgPorBob) + ' kg'],
+    ['Bobinas estimadas', ef.bobinasEst + ' bobinas'],
+    ['Kg/hora teorico', fmtNum(ef.kgHoraTeo) + ' kg/h'],
+    ['Horas/dia', (p.horasPorDia||11)],
+    ['Dias estimados', ef.diasTeoricos.toFixed(1) + ' dias'],
+    ['Receta', safeS(p.recetaCodigo) + ' - ' + safeS(p.mezclaTeoricaTexto)],
+    ['Codigo partida', safeS(p.op)],
+    ['Fecha entrega', fmtFecha(p.fechaEntrega || p.fechaDespacho) || '-']
+  ];
+  const colW = (W - 2*M) / 2;
+  datosOP.forEach((row, i) => {
+    const colIdx = i % 2;
+    const rowIdx = Math.floor(i / 2);
+    const xBase = M + colIdx * colW;
+    const yRow = y + rowIdx * 5;
+    txt(row[0] + ':', xBase + 2, yRow + 3.5, { size: 8, color: C_GRAY });
+    txt(row[1], xBase + 38, yRow + 3.5, { size: 9, bold: true });
+  });
+  y += Math.ceil(datosOP.length / 2) * 5 + 6;
+
+  // Sección 2: Resultado real
+  setFill(C_PRI); doc.rect(M, y, W - 2*M, 7, 'F');
+  txt('PRODUCCION REAL', M + 3, y + 5, { bold: true, size: 10, color: [255,255,255] });
+  y += 9;
+  // Cuadros visuales de eficiencia
+  const cuadros = [
+    { lbl: 'KG PRODUCIDOS', val: fmtNum(ef.kgReal) + ' kg', sub: `de ${fmtNum(ef.kgPedido)} kg`, color: C_PRI },
+    { lbl: 'AVANCE', val: ef.pctAvance + '%', sub: ef.pctAvance >= 100 ? 'COMPLETO' : 'EN CURSO', color: ef.pctAvance >= 100 ? C_PRI : [217, 119, 6] },
+    { lbl: 'BOBINAS', val: String(ef.bobinas.length), sub: `de ${ef.bobinasEst} est`, color: C_DARK },
+    { lbl: 'HORAS REALES', val: ef.horasReal.toFixed(1), sub: ef.diasTeoricos > 0 ? ef.diasReales.toFixed(1) + ' dias' : '-', color: C_DARK }
+  ];
+  const cW = (W - 2*M - 9) / 4;
+  cuadros.forEach((c, i) => {
+    const x = M + i * (cW + 3);
+    setFill([249, 250, 251]); doc.roundedRect(x, y, cW, 18, 2, 2, 'F');
+    txt(c.lbl, x + 3, y + 5, { size: 7, color: C_GRAY, bold: true });
+    txt(c.val, x + 3, y + 11, { size: 13, bold: true, color: c.color });
+    txt(c.sub, x + 3, y + 16, { size: 8, color: C_GRAY });
+  });
+  y += 22;
+
+  // Eficiencia comparativa
+  setFill(C_LIGHT); doc.roundedRect(M, y, W - 2*M, 20, 2, 2, 'F');
+  txt('Eficiencia kg/hora', M + 3, y + 5, { size: 9, bold: true });
+  txt('Teorico: ' + fmtNum(ef.kgHoraTeo) + ' kg/h', M + 3, y + 11, { size: 9, color: C_GRAY });
+  txt('Real: ' + fmtNum(Math.round(ef.kgHoraReal)) + ' kg/h', M + 3, y + 16, { size: 9, color: C_DARK, bold: true });
+  // Indicador eficiencia
+  const efColor = ef.eficienciaKgH >= 100 ? C_PRI : ef.eficienciaKgH >= 80 ? [217, 119, 6] : [220, 38, 38];
+  txt(ef.eficienciaKgH + '%', W - M - 3, y + 13, { size: 22, bold: true, color: efColor, align: 'right' });
+  y += 25;
+
+  // Sección 3: Lista de bobinas
+  if (ef.bobinas.length > 0) {
+    if (y > H - 50) { doc.addPage(); y = M + 5; }
+    setFill(C_PRI); doc.rect(M, y, W - 2*M, 7, 'F');
+    txt('BOBINAS CARGADAS (' + ef.bobinas.length + ')', M + 3, y + 5, { bold: true, size: 10, color: [255,255,255] });
+    y += 9;
+    // Header tabla
+    const cols = [
+      { lbl: 'Fecha', x: M+1, w: 22 },
+      { lbl: 'Hora', x: M+24, w: 13 },
+      { lbl: 'Turno', x: M+38, w: 12 },
+      { lbl: 'Bob#', x: M+51, w: 11 },
+      { lbl: 'Pallet', x: M+63, w: 12 },
+      { lbl: 'Kg', x: M+76, w: 14 },
+      { lbl: 'Metros', x: M+91, w: 14 },
+      { lbl: 'Mezcla real', x: M+106, w: 50 },
+      { lbl: 'Operario', x: M+157, w: 35 }
+    ];
+    setFill(C_LIGHT); doc.rect(M, y, W - 2*M, 6, 'F');
+    cols.forEach(c => txt(c.lbl, c.x + 1, y + 4, { bold: true, size: 8 }));
+    y += 6;
+    const sorted = [...ef.bobinas].sort((a,b) => (a.fecha + (a.hora||'')).localeCompare(b.fecha + (b.hora||'')));
+    sorted.forEach((b, i) => {
+      if (y > H - 14) { doc.addPage(); y = M + 5; setFill(C_LIGHT); doc.rect(M, y, W - 2*M, 6, 'F'); cols.forEach(c => txt(c.lbl, c.x + 1, y + 4, { bold: true, size: 8 })); y += 6; }
+      if (i % 2 === 0) { setFill([249, 250, 251]); doc.rect(M, y, W - 2*M, 5, 'F'); }
+      const vals = [fmtFecha(b.fecha), b.hora, b.turno==='dia'?'Dia':b.turno==='noche'?'Noche':'-', b.nroBobina, b.nroPallet, fmt(b.kg||0), b.metros, (b.mezclaReal||'').substring(0,32), (b.operario||'').substring(0,18)];
+      vals.forEach((v, j) => txt(safeS(v), cols[j].x + 1, y + 4, { size: 7 }));
+      y += 5;
+    });
+    y += 4;
+  }
+
+  // Sección 4: Registros horarios (resumen, no la tabla completa porque es muy grande)
+  if (ef.registros.length > 0) {
+    if (y > H - 30) { doc.addPage(); y = M + 5; }
+    setFill(C_PRI); doc.rect(M, y, W - 2*M, 7, 'F');
+    txt('REGISTROS HORARIOS DE PROCESO (' + ef.registros.length + ')', M + 3, y + 5, { bold: true, size: 10, color: [255,255,255] });
+    y += 9;
+    // Promedios de parámetros clave
+    const promedio = (arr, key) => {
+      const nums = arr.map(r => +r[key]).filter(n => !isNaN(n) && n > 0);
+      if (nums.length === 0) return '-';
+      return (nums.reduce((s,n) => s+n, 0) / nums.length).toFixed(1);
+    };
+    setFill(C_LIGHT); doc.roundedRect(M, y, W - 2*M, 14, 2, 2, 'F');
+    txt('Promedios del proceso', M + 3, y + 5, { size: 8, color: C_GRAY, bold: true });
+    const promCols = [
+      ['Temp.Ent', promedio(ef.registros, 'tempEntrada') + '°'],
+      ['Kg/h', promedio(ef.registros, 'kgH')],
+      ['Vel m/min', promedio(ef.registros, 'velMin')],
+      ['Torque', promedio(ef.registros, 'torqueM')],
+      ['P1', promedio(ef.registros, 'p1')],
+      ['Vacc', promedio(ef.registros, 'vacc')]
+    ];
+    const pcW = (W - 2*M) / promCols.length;
+    promCols.forEach((c, i) => {
+      txt(c[0], M + i * pcW + 3, y + 10, { size: 8, color: C_GRAY });
+      txt(c[1], M + i * pcW + 18, y + 10, { size: 9, bold: true });
+    });
+    y += 18;
+    txt('Ver detalle completo de registros en la pestaña Producciones de la app.', M + 3, y, { size: 8, color: C_GRAY });
+    y += 6;
+  }
+
+  // Sección 5: Operarios involucrados
+  if (ef.operarios.length > 0) {
+    if (y > H - 18) { doc.addPage(); y = M + 5; }
+    txt('Operarios involucrados: ', M + 1, y + 5, { size: 9, color: C_GRAY, bold: true });
+    txt(ef.operarios.join(', '), M + 45, y + 5, { size: 9 });
+    y += 8;
+  }
+
+  // Footer
+  setText(C_GRAY); doc.setFontSize(7);
+  doc.text('Winflex S.A. - Planta Chivilcoy - Informe de eficiencia OP', M, H - 6);
+
+  const fname = `Informe_OP${p.nroOP || ''}_${p.cliente.replace(/[^a-zA-Z0-9]/g,'_').substring(0,15)}.pdf`;
+  doc.save(fname);
+  closeModal();
+  toast('Informe descargado', 'success');
+}
+
 function generarOPpdf(id) {
   const p = DATA.pedidos.find(x => x.id === id);
   if (!p) return;
