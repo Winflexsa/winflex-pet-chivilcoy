@@ -3254,67 +3254,61 @@ function calcDiametroBobina(kgBobina, anchoMm) {
 // ============================================================
 function buildOCBody(p) {
   // ====== CASO LAMINADO ======
-  // Mail va a Agustín (PET-Chivilcoy) y Jonathan (PE-Lanús) con desglose completo
+  // Mail va a Agustín (PET-Chivilcoy) y Jonathan (PE-Lanús) con desglose completo.
+  // IMPORTANTE: usamos solo ASCII para que el URL mailto no supere los ~2000 chars de Outlook/Mail clásico.
+  // Si usáramos emojis o líneas con ═══, el URL se inflaba a 5500+ chars y muchos clientes lo cortaban.
   if (p.destinoCodigo === 'L') {
     const lam = (p.laminadoIdx !== undefined) ? (DATA.catalogos.laminados || [])[p.laminadoIdx] : null;
     const pf = lam?.producto || {};
     const pet = { ancho: p.ancho||0, espesor: p.espesor||0, peso: p.kgPorBobina6||p.kgPorBobina||0, metros: (lam?.pet?.metros||0) };
     const pe = p.lamPe || lam?.pe || { ancho:0, espesor:0, peso:0, metros:0 };
-    // Estimar kg de PE necesarios usando una regla simple: relación de pesos PET:PE de la base * kg pedidos
-    // Si la relación no se puede calcular, lo dejamos en blanco.
+    // Estimar kg de PE necesarios usando la relación de pesos PET:PE de la base
     let kgPENecesarios = 0;
     if (pet.peso > 0 && pe.peso > 0) {
       kgPENecesarios = Math.round((+p.kgPedidos || 0) * (pe.peso / pet.peso));
     }
+    const sil = p.silicona === 'CON'
+      ? `CON ${p.siliconaPct||0}%${p.siliconaCaras?' · '+p.siliconaCaras+(p.siliconaCaras==2?' caras':' cara'):''}`
+      : (p.silicona||'-');
     return `Hola Agustín y Jonathan,
 
-Entró un pedido de LAMINADO. Detallo abajo todo lo que necesita cada planta.
+Entró un pedido de LAMINADO. Abajo el detalle de cada planta.
 
-═══════════════════════════════════════
-PEDIDO
-═══════════════════════════════════════
-• Cliente:         ${p.cliente}
-• OC cliente:      ${p.oc || '-'}
-• Cantidad total:  ${fmtNum(p.kgPedidos)} kg (kg de PET pedidos a producir)
-• Fecha entrega:   ${fmtFecha(p.fechaEntrega) || 'a confirmar'}
-${lam ? '• Base laminado:   ' + lam.cliente + (lam.nota ? '  ⚠ ' + lam.nota : '') : ''}
+--- PEDIDO ---
+Cliente:         ${p.cliente}
+OC cliente:      ${p.oc || '-'}
+Cantidad total:  ${fmtNum(p.kgPedidos)} kg (PET a producir)
+Fecha entrega:   ${fmtFecha(p.fechaEntrega) || 'a confirmar'}
+${lam ? 'Base laminado:   ' + lam.cliente + (lam.nota ? '  (' + lam.nota + ')' : '') : ''}
 
-═══════════════════════════════════════
-🎯 PRODUCTO FINAL (lo que pide el cliente)
-═══════════════════════════════════════
-• Ancho:           ${pf.ancho || '-'} mm
-• Espesor:         ${pf.espesor || '-'} μm
-• Peso por bobina: ${pf.peso || '-'} kg
+--- PRODUCTO FINAL (lo que pide el cliente) ---
+Ancho:           ${pf.ancho || '-'} mm
+Espesor:         ${pf.espesor || '-'} um
+Peso por bobina: ${pf.peso || '-'} kg
 
-═══════════════════════════════════════
-🟡 PARA AGUSTÍN — Lámina PET (Chivilcoy)
-═══════════════════════════════════════
-• Ancho:           ${pet.ancho || '-'} mm
-• Espesor:         ${pet.espesor || '-'} μm
-• Color:           ${p.color || '-'}
-• Silicona:        ${p.silicona === 'CON' ? `CON ${p.siliconaPct||0}%${p.siliconaCaras?' · '+p.siliconaCaras+(p.siliconaCaras==2?' caras':' cara'):''}` : (p.silicona||'-')}
-• Kg por bobina:   ${pet.peso || '-'} kg
-• Mts por bobina:  ${pet.metros || '-'} mts
-• Kg a producir:   ${fmtNum(p.kgPedidos)} kg
+--- PARA AGUSTIN: Lamina PET (Chivilcoy) ---
+Ancho:           ${pet.ancho || '-'} mm
+Espesor:         ${pet.espesor || '-'} um
+Color:           ${p.color || '-'}
+Silicona:        ${sil}
+Kg por bobina:   ${pet.peso || '-'} kg
+Mts por bobina:  ${pet.metros || '-'} mts
+Kg a producir:   ${fmtNum(p.kgPedidos)} kg
 
-═══════════════════════════════════════
-🔵 PARA JONATHAN — Lámina PE (Lanús)
-═══════════════════════════════════════
-• Ancho:           ${pe.ancho || '-'} mm
-• Espesor:         ${pe.espesor || '-'} μm
-• Kg por bobina:   ${pe.peso || '-'} kg
-• Mts por bobina:  ${pe.metros || '-'} mts
-${kgPENecesarios > 0 ? '• Kg estimados:    ' + fmtNum(kgPENecesarios) + ' kg (≈ proporción ' + (pe.peso/pet.peso).toFixed(2) + ')' : '• Kg estimados:    a calcular según consumo'}
+--- PARA JONATHAN: Lamina PE (Lanus) ---
+Ancho:           ${pe.ancho || '-'} mm
+Espesor:         ${pe.espesor || '-'} um
+Kg por bobina:   ${pe.peso || '-'} kg
+Mts por bobina:  ${pe.metros || '-'} mts
+${kgPENecesarios > 0 ? 'Kg estimados:    ' + fmtNum(kgPENecesarios) + ' kg (proporcion ' + (pe.peso/pet.peso).toFixed(2) + ')' : 'Kg estimados:    a calcular segun consumo'}
 
-═══════════════════════════════════════
-🔧 EQUIPO
-═══════════════════════════════════════
-• Cilindro laminador: ${p.lamCilindro || lam?.cilindro || '-'}
+--- EQUIPO ---
+Cilindro laminador: ${p.lamCilindro || lam?.cilindro || '-'}
 ${p.observaciones ? '\nObservaciones:\n' + p.observaciones + '\n' : ''}
 Por favor confirmen disponibilidad y emitan las OPs correspondientes.
 
 Saludos,
-Matías`;
+Matias`;
   }
 
   // ====== CASO TERMOFORMADO / VENTA (sin cambios) ======
@@ -3363,7 +3357,7 @@ function enviarOCmail(id) {
     // Laminado: incluir Jonathan como CC (no destinatario principal porque la coordinación principal es Agustín)
     const lam = (p.laminadoIdx !== undefined) ? (DATA.catalogos.laminados || [])[p.laminadoIdx] : null;
     const refLam = lam?.cliente ? ` [${lam.cliente}]` : '';
-    subject = `🔗 Nuevo pedido LAMINADO ${p.cliente}${p.oc?' · '+p.oc:''}${refLam} — ${fmtNum(p.kgPedidos)} kg`;
+    subject = `Nuevo pedido LAMINADO ${p.cliente}${p.oc?' · '+p.oc:''}${refLam} — ${fmtNum(p.kgPedidos)} kg`;
     if (DATA.config.emailJonathan) ccList.push(DATA.config.emailJonathan.trim());
   } else {
     subject = `Nuevo pedido ${p.cliente}${p.oc?' · '+p.oc:''} — ${p.ancho||'-'}×${p.espesor||'-'} · ${fmtNum(p.kgPedidos)} kg${p.conoTipo==='3'?' · CONO 3':''}`;
@@ -3374,6 +3368,20 @@ function enviarOCmail(id) {
   let href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}`;
   if (ccList.length) href += `&cc=${encodeURIComponent(ccList.join(','))}`;
   href += `&body=${encodeURIComponent(body)}`;
+  // FALLBACK para Outlook clásico y Mail de macOS, que truncan o ignoran mailto > ~2000 chars.
+  // Si el URL final pasa de 1900 chars, copiamos el cuerpo al portapapeles y abrimos un mailto vacío.
+  if (href.length > 1900) {
+    const hrefCorto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}` +
+                     (ccList.length ? `&cc=${encodeURIComponent(ccList.join(','))}` : '');
+    navigator.clipboard.writeText(body).then(() => {
+      toast('Cuerpo del mail copiado al portapapeles — pegalo en el mail que se abre', 'success');
+      window.location.href = hrefCorto;
+    }).catch(() => {
+      // Si el portapapeles falla, abrir igual el mailto largo (mejor algo que nada)
+      window.location.href = href;
+    });
+    return;
+  }
   window.location.href = href;
 }
 
