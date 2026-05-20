@@ -2749,7 +2749,7 @@ function generarInformeOpPDF() {
     sorted.forEach((b, i) => {
       if (y > H - 14) { doc.addPage(); y = M + 5; setFill(C_LIGHT); doc.rect(M, y, W - 2*M, 6, 'F'); cols.forEach(c => txt(c.lbl, c.x + 1, y + 4, { bold: true, size: 8 })); y += 6; }
       if (i % 2 === 0) { setFill([249, 250, 251]); doc.rect(M, y, W - 2*M, 5, 'F'); }
-      const vals = [fmtFecha(b.fecha), b.hora, b.turno==='dia'?'Dia':b.turno==='noche'?'Noche':'-', b.nroBobina, b.nroPallet, fmt(b.kg||0), b.metros, (b.mezclaReal||'').substring(0,32), (b.operario||'').substring(0,18)];
+      const vals = [fmtFecha(b.fecha), b.hora, b.turno==='dia'?'Dia':b.turno==='noche'?'Noche':'-', b.nroBobina, b.nroPallet, fmtNum(b.kg||0), b.metros, (b.mezclaReal||'').substring(0,32), (b.operario||'').substring(0,18)];
       vals.forEach((v, j) => txt(safeS(v), cols[j].x + 1, y + 4, { size: 7 }));
       y += 5;
     });
@@ -2860,16 +2860,16 @@ function actualizarPreviewDia() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px">
         <div style="background:#fffbeb;padding:8px 10px;border-radius:6px;border:1px solid #fde68a">
           <div style="font-size:11px;color:#92400e;font-weight:600">☀ TURNO DÍA</div>
-          <div style="font-size:14px;font-weight:600;margin-top:4px">${bob.filter(b=>b.turno==='dia').length} bob · ${fmt(kgDia)} kg · ${reg.filter(r=>r.turno==='dia').length} reg</div>
+          <div style="font-size:14px;font-weight:600;margin-top:4px">${bob.filter(b=>b.turno==='dia').length} bob · ${fmtNum(kgDia)} kg · ${reg.filter(r=>r.turno==='dia').length} reg</div>
           <div style="font-size:11px;color:#6b7280;margin-top:2px">${operDia.join(', ') || '—'}</div>
         </div>
         <div style="background:#eef2ff;padding:8px 10px;border-radius:6px;border:1px solid #c7d2fe">
           <div style="font-size:11px;color:#3730a3;font-weight:600">🌙 TURNO NOCHE</div>
-          <div style="font-size:14px;font-weight:600;margin-top:4px">${bob.filter(b=>b.turno==='noche').length} bob · ${fmt(kgNoche)} kg · ${reg.filter(r=>r.turno==='noche').length} reg</div>
+          <div style="font-size:14px;font-weight:600;margin-top:4px">${bob.filter(b=>b.turno==='noche').length} bob · ${fmtNum(kgNoche)} kg · ${reg.filter(r=>r.turno==='noche').length} reg</div>
           <div style="font-size:11px;color:#6b7280;margin-top:2px">${operNoche.join(', ') || '—'}</div>
         </div>
       </div>
-      <div style="margin-top:10px;font-size:12px;color:#6b7280">Total: ${bob.length} bobinas · ${fmt(kgDia+kgNoche)} kg · ${reg.length} registros · ${opsCount} OPs distintas</div>
+      <div style="margin-top:10px;font-size:12px;color:#6b7280">Total: ${bob.length} bobinas · ${fmtNum(kgDia+kgNoche)} kg · ${reg.length} registros · ${opsCount} OPs distintas</div>
     </div>
   `;
 }
@@ -2921,7 +2921,7 @@ function generarInformeDiaPDF() {
     doc.setFillColor(...tColor); doc.rect(M, y, W-2*M, 8, 'F');
     txt((t==='dia'?'TURNO DIA':'TURNO NOCHE'), M+3, y+5.5, { bold:true, size:11, color:[255,255,255] });
     const kgT = bobT.reduce((s,b)=>s+(+b.kg||0),0);
-    txt(bobT.length + ' bobinas · ' + fmt(kgT) + ' kg · ' + regT.length + ' registros horarios', W-M-3, y+5.5, { size:9, color:[255,255,255], align:'right' });
+    txt(bobT.length + ' bobinas · ' + fmtNum(kgT) + ' kg · ' + regT.length + ' registros horarios', W-M-3, y+5.5, { size:9, color:[255,255,255], align:'right' });
     y += 11;
 
     // Agrupar por operario
@@ -2935,7 +2935,7 @@ function generarInformeDiaPDF() {
 
       doc.setFillColor(...C_LIGHT); doc.rect(M, y, W-2*M, 6, 'F');
       txt(op, M+3, y+4, { bold:true, size:10 });
-      txt(bobOp.length + ' bob · ' + fmt(kgOp) + ' kg · ' + regOp.length + ' reg', W-M-3, y+4, { size:9, color:C_GRAY, align:'right' });
+      txt(bobOp.length + ' bob · ' + fmtNum(kgOp) + ' kg · ' + regOp.length + ' reg', W-M-3, y+4, { size:9, color:C_GRAY, align:'right' });
       y += 7;
 
       // Tabla bobinas
@@ -2957,7 +2957,7 @@ function generarInformeDiaPDF() {
           if (y > H - 8) { doc.addPage(); y = M+5; }
           if (i%2===0) { doc.setFillColor(249,250,251); doc.rect(M, y, W-2*M, 4.5, 'F'); }
           const ped = DATA.pedidos.find(x => x.id === b.pedidoId);
-          const vals = [b.hora||'-', ped?ped.nroOP:'-', ped?ped.cliente.substring(0,18):'-', b.nroBobina||'-', b.nroPallet||'-', fmt(b.kg||0), b.metros||'-', (b.partida||'').substring(0,28)];
+          const vals = [b.hora||'-', ped?ped.nroOP:'-', ped?ped.cliente.substring(0,18):'-', b.nroBobina||'-', b.nroPallet||'-', fmtNum(b.kg||0), b.metros||'-', (b.partida||'').substring(0,28)];
           vals.forEach((v,j) => txt(v, cols[j].x, y+3.3, { size:7 }));
           y += 4.5;
         });
@@ -2988,7 +2988,7 @@ function generarInformeDiaPDF() {
     const regOP = reg.filter(r => r.pedidoId === pid);
     const kg = bobOP.reduce((s,b)=>s+(+b.kg||0),0);
     txt('OP ' + (p.nroOP||'-') + ' · ' + p.cliente, M+2, y+3, { size:9, bold:true });
-    txt(bobOP.length + ' bob · ' + fmt(kg) + ' kg · ' + regOP.length + ' reg', W-M-3, y+3, { size:9, color:C_GRAY, align:'right' });
+    txt(bobOP.length + ' bob · ' + fmtNum(kg) + ' kg · ' + regOP.length + ' reg', W-M-3, y+3, { size:9, color:C_GRAY, align:'right' });
     y += 5;
   });
 
@@ -3073,7 +3073,7 @@ function actualizarPreviewCliente() {
         <div><div style="font-size:11px;color:#6b7280">Total OPs cliente</div><div style="font-weight:600">${ops.length}</div></div>
         <div><div style="font-size:11px;color:#6b7280">OPs c/ producción</div><div style="font-weight:600;color:#16a34a">${opsConProd}</div></div>
         <div><div style="font-size:11px;color:#6b7280">Bobinas</div><div style="font-weight:600">${bob.length}</div></div>
-        <div><div style="font-size:11px;color:#6b7280">Kg producidos</div><div style="font-weight:600;color:#16a34a">${fmt(totalKg)}</div></div>
+        <div><div style="font-size:11px;color:#6b7280">Kg producidos</div><div style="font-weight:600;color:#16a34a">${fmtNum(totalKg)}</div></div>
       </div>
     </div>
   `;
@@ -3133,7 +3133,7 @@ function generarInformeClientePDF() {
     ['OPs totales', String(ops.length)],
     ['OPs c/producción', String(opsConProd)],
     ['Bobinas', String(bob.length)],
-    ['Kg producidos', fmt(totalKg)],
+    ['Kg producidos', fmtNum(totalKg)],
     ['Registros', String(reg.length)]
   ];
   const cW = (W-2*M)/cells.length;
@@ -3157,7 +3157,7 @@ function generarInformeClientePDF() {
 
     doc.setFillColor(...C_LIGHT); doc.rect(M, y, W-2*M, 6, 'F');
     txt('OP ' + (p.nroOP||'-') + ' · ' + (p.ancho||'-') + 'x' + (p.espesor||'-') + ' mic · ' + safeS(p.color), M+3, y+4, { bold:true, size:9 });
-    txt(fmt(kg) + ' / ' + fmt(p.kgPedidos||0) + ' kg · ' + bobOP.length + ' bob', W-M-3, y+4, { size:9, color:C_GRAY, align:'right' });
+    txt(fmtNum(kg) + ' / ' + fmtNum(p.kgPedidos||0) + ' kg · ' + bobOP.length + ' bob', W-M-3, y+4, { size:9, color:C_GRAY, align:'right' });
     y += 7;
 
     // Mini tabla
@@ -3177,7 +3177,7 @@ function generarInformeClientePDF() {
       bobOP.sort((a,b)=>(a.fecha+a.hora||'').localeCompare(b.fecha+b.hora||'')).forEach((b,i) => {
         if (y > H - 8) { doc.addPage(); y = M+5; }
         if (i%2===0) { doc.setFillColor(249,250,251); doc.rect(M, y, W-2*M, 4, 'F'); }
-        const vals = [fmtFecha(b.fecha), b.hora||'-', b.turno==='dia'?'Dia':b.turno==='noche'?'Noche':'-', b.nroBobina||'-', fmt(b.kg||0), (b.operario||'').substring(0,18), (b.mezclaReal||'').substring(0,42)];
+        const vals = [fmtFecha(b.fecha), b.hora||'-', b.turno==='dia'?'Dia':b.turno==='noche'?'Noche':'-', b.nroBobina||'-', fmtNum(b.kg||0), (b.operario||'').substring(0,18), (b.mezclaReal||'').substring(0,42)];
         vals.forEach((v, j) => txt(v, cols2[j].x, y+3, { size:7 }));
         y += 4;
       });
@@ -3280,7 +3280,7 @@ function actualizarPreviewComparativa() {
                 <span style="color:#9ca3af;font-size:11px">${i+1}.</span>
                 <span style="font-weight:600">${nombre.substring(0,18)}</span>
               </span>
-              <span style="font-weight:700;color:#16a34a">${fmt(d.kg)} kg · ${d.bob} bob</span>
+              <span style="font-weight:700;color:#16a34a">${fmtNum(d.kg)} kg · ${d.bob} bob</span>
             </div>
           `).join('')}
         </div>
@@ -3372,11 +3372,11 @@ function generarInformeComparativaPDF() {
       { v: ef.p.nroOP || '-', col: colsOp[1] },
       { v: (ef.p.cliente||'').substring(0,20), col: colsOp[2] },
       { v: (ef.p.ancho||'-') + 'x' + (ef.p.espesor||'-') + ' mic', col: colsOp[3] },
-      { v: fmt(ef.kgPedido), col: colsOp[4] },
-      { v: fmt(ef.kgReal), col: colsOp[5] },
+      { v: fmtNum(ef.kgPedido), col: colsOp[4] },
+      { v: fmtNum(ef.kgReal), col: colsOp[5] },
       { v: ef.pctAvance + '%', col: colsOp[6] },
-      { v: fmt(ef.kgHoraTeo), col: colsOp[7] },
-      { v: fmt(Math.round(ef.kgHoraReal)), col: colsOp[8] },
+      { v: fmtNum(ef.kgHoraTeo), col: colsOp[7] },
+      { v: fmtNum(Math.round(ef.kgHoraReal)), col: colsOp[8] },
       { v: ef.eficienciaKgH + '%', col: colsOp[9], color: efColor, bold: true }
     ];
     vals.forEach(item => {
@@ -3412,7 +3412,7 @@ function generarInformeComparativaPDF() {
     if (y > H - 8) { doc.addPage(); y = M+5; }
     if (i%2===0) { doc.setFillColor(249,250,251); doc.rect(M, y, W-2*M, 4.5, 'F'); }
     const promKgBob = d.bob > 0 ? Math.round(d.kg / d.bob) : 0;
-    const vals = [String(i+1), nombre.substring(0,30), String(d.bob), fmt(d.kg), String(d.reg), String(d.ops.size), d.bob>0?fmt(promKgBob):'-'];
+    const vals = [String(i+1), nombre.substring(0,30), String(d.bob), fmtNum(d.kg), String(d.reg), String(d.ops.size), d.bob>0?fmtNum(promKgBob):'-'];
     vals.forEach((v, j) => {
       txt(v, colsOper[j].x + (colsOper[j].num?colsOper[j].w-1:0), y+3.2, {
         size:7, align: colsOper[j].num?'right':'left'
