@@ -809,6 +809,8 @@ async function silentReloadPC() {
       merged.catalogos = remote.catalogos || merged.catalogos;
       merged.config = remote.config || merged.config;
     }
+    // Re-aplicar migración para asegurar estructuras nuevas (transportistas, remitos, etc)
+    migrateLegacyData(merged);
     // Recalcular kgReales SIEMPRE (importante después de borrados en tablet)
     pcRecalcularTodosKgReales(merged);
     // Detectar si hubo cambios reales antes de re-renderizar
@@ -9529,8 +9531,9 @@ function renderRemitosDisponibles() {
   }
 
   // Lista de pallets - cards
+  window._palletsActuales = palletsFilt; // expose for click handlers
   let listHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(380px, 1fr));gap:12px">';
-  palletsFilt.forEach(pl => {
+  palletsFilt.forEach((pl, idx) => {
     const ped = DATA.pedidos.find(x => x.id === pl.pedidoId);
     if (!ped) return;
     const bobIds = pl.bobinas.map(b => b.id);
@@ -9539,7 +9542,7 @@ function renderRemitosDisponibles() {
     const bobNros = pl.bobinas.map(b => b.nroBobina).filter(Boolean).sort((a,b) => +a - +b);
     const rangoBob = bobNros.length > 0 ? (bobNros.length === 1 ? '#' + bobNros[0] : '#' + bobNros[0] + ' a #' + bobNros[bobNros.length-1]) : '';
     listHtml += `
-      <div onclick="togglePalletSeleccion('${pl.nroPallet}', '${pl.pedidoId}')" style="background:white;border:2px solid ${allSelected?'#16a34a':'#e5e7eb'};border-radius:10px;padding:14px;cursor:pointer;transition:all 0.15s;${allSelected?'box-shadow:0 0 0 3px rgba(22,163,74,0.15)':''}">
+      <div onclick="togglePalletByIdx(${idx})" style="background:white;border:2px solid ${allSelected?'#16a34a':'#e5e7eb'};border-radius:10px;padding:14px;cursor:pointer;transition:all 0.15s;${allSelected?'box-shadow:0 0 0 3px rgba(22,163,74,0.15)':''}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
           <div style="flex:1;min-width:0">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
@@ -9566,10 +9569,17 @@ function renderRemitosDisponibles() {
   c.innerHTML += listHtml;
 }
 
+function togglePalletByIdx(idx) {
+  const pl = (window._palletsActuales || [])[idx];
+  if (!pl) { console.warn('Pallet idx no encontrado:', idx); return; }
+  togglePalletSeleccion(pl.nroPallet, pl.pedidoId);
+}
+
 function togglePalletSeleccion(nroPallet, pedidoId) {
   const bobinas = (DATA.producciones || []).filter(b =>
     b.nroPallet === nroPallet && b.pedidoId === pedidoId && !b.remitoId
   );
+  if (bobinas.length === 0) { console.warn('Sin bobinas para pallet:', nroPallet, pedidoId); return; }
   const allSelected = bobinas.every(b => remitosSeleccion.has(b.id));
   bobinas.forEach(b => {
     if (allSelected) remitosSeleccion.delete(b.id);
@@ -9620,6 +9630,7 @@ function renderRemitosHistorico() {
       <td>
         <button class="btn-action" onclick="generarRemitoPDF('${r.id}')" title="PDF Remito">📄 Remito</button>
         <button class="btn-action" onclick="generarDetalleEnvioPDF('${r.id}')" title="PDF Detalle WBAN-001">📋 Detalle</button>
+        <button class="btn-action" onclick="enviarMailRemito('${r.id}')" title="Enviar mail">📧 Mail</button>
         <button class="btn-action" style="background:#fee2e2;color:#991b1b" onclick="anularRemito('${r.id}')" title="Anular este remito">✕ Anular</button>
       </td>
     </tr>`;
@@ -9634,6 +9645,15 @@ function renderRemitosHistorico() {
 function openCrearRemitoModal() {
   const seleccionadas = (DATA.producciones || []).filter(b => remitosSeleccion.has(b.id) && !b.remitoId);
   if (seleccionadas.length === 0) { alert('No hay bobinas seleccionadas.'); return; }
+
+  // Asegurar que existan transportistas default
+  if (!DATA.catalogos.transportistas || DATA.catalogos.transportistas.length === 0) {
+    DATA.catalogos.transportistas = [
+      { nombre: 'Transporte Aguirre', cuit: '', domicilio: '' },
+      { nombre: 'Transporte Monti SA', cuit: '', domicilio: 'Lanús' },
+      { nombre: 'Expreso Chivilcoy', cuit: '', domicilio: 'Chivilcoy' }
+    ];
+  }
 
   // Agrupar para resumen
   const porPed = {};
@@ -9741,7 +9761,7 @@ function openCrearRemitoModal() {
         </div>
         <div class="modal-f">
           <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
-          <button class="btn btn-pri" onclick="confirmarYGenerarRemito()">✓ Emitir remito + descargar PDFs</button>
+          <button class="btn btn-pri" onclick="confirmarYGenerarRemito()">✓ Emitir remito · PDFs · Mail</button>
         </div>
       </div>
     </div>
@@ -9815,6 +9835,8 @@ async function confirmarYGenerarRemito() {
   try {
     generarRemitoPDF(remitoId);
     setTimeout(() => generarDetalleEnvioPDF(remitoId), 600);
+    // Abrir mail con resumen
+    setTimeout(() => enviarMailRemito(remitoId), 1500);
   } catch (e) {
     console.error('Error generando PDFs:', e);
     alert('Remito guardado pero error generando PDFs: ' + e.message);
@@ -10140,6 +10162,71 @@ function ensureJsPDFPC() {
   s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
   document.head.appendChild(s);
   return false;
+}
+
+// ============================================================
+// ENVÍO DE MAIL DE REMITO — abre mailto: con resumen prellenado
+// ============================================================
+function enviarMailRemito(remitoId) {
+  const r = (DATA.remitos || []).find(x => x.id === remitoId);
+  if (!r) { alert('Remito no encontrado'); return; }
+
+  const bobinas = (DATA.producciones || []).filter(b => (r.bobinaIds || []).includes(b.id));
+
+  // Agrupar para el cuerpo del mail
+  const grupos = {};
+  bobinas.forEach(b => {
+    const ped = DATA.pedidos.find(x => x.id === b.pedidoId);
+    if (!ped) return;
+    const k = `${ped.cliente}__${b.ancho||ped.ancho}x${b.espesor||ped.espesor}`;
+    if (!grupos[k]) {
+      grupos[k] = { cliente: ped.cliente, medida: `${b.ancho||ped.ancho}x${b.espesor||ped.espesor}`, color: ped.color, kg: 0, bobs: 0, pallets: new Set() };
+    }
+    grupos[k].kg += (+b.kg || 0);
+    grupos[k].bobs++;
+    if (b.nroPallet) grupos[k].pallets.add(b.nroPallet);
+  });
+
+  const destinatarios = [
+    'mirta.cucinotta@winflex.com.ar',
+    'jonathan.stancato@winflex.com.ar',
+    'matias.persico@winflex.com.ar'
+  ].join(',');
+
+  const nroFormat = (r.puntoVenta || '0001') + '-' + (r.nroRemito || '').toString().padStart(8, '0');
+  const subject = `Remito ${nroFormat} - Despacho ${fmtFecha(r.fecha)} - ${r.destinatario?.nombre || ''}`;
+
+  let body = `Hola,\n\n`;
+  body += `Adjunto remito y detalle de envío del despacho de hoy.\n\n`;
+  body += `══ DATOS DEL REMITO ══\n`;
+  body += `N° Remito: ${nroFormat}\n`;
+  body += `Fecha: ${fmtFecha(r.fecha)}\n`;
+  body += `Destinatario: ${r.destinatario?.nombre || ''} - ${r.destinatario?.domicilio || ''}\n`;
+  body += `Transportista: ${r.transportista?.nombre || ''}\n`;
+  body += `Patente: ${r.patente || '—'}\n`;
+  if (r.observaciones) body += `Observaciones: ${r.observaciones}\n`;
+  body += `\n══ CONTENIDO ══\n`;
+  Object.values(grupos).forEach(g => {
+    body += `• ${g.cliente} - rPET ${g.medida} ${g.color || 'Cristal'} → ${Math.round(g.kg)} kg / ${g.pallets.size} pallets (${g.bobs} bobinas)\n`;
+  });
+  body += `\n══ TOTAL ══\n`;
+  body += `${Math.round(r.totalKg || 0)} kg · ${r.totalPallets || 0} pallets · ${(r.bobinaIds||[]).length} bobinas\n\n`;
+  body += `IMPORTANTE: adjuntar al mail los 2 PDFs descargados:\n`;
+  body += `  • Remito_${nroFormat}_${(r.destinatario?.nombre||'').replace(/[^a-zA-Z0-9]/g,'_').substring(0,15)}.pdf\n`;
+  body += `  • Detalle_envio_${(r.puntoVenta||'0001')}-${(r.nroRemito||'').toString().padStart(4,'0')}_${fmtFecha(r.fecha).replace(/\//g,'-')}.pdf\n\n`;
+  body += `Saludos,\n${r.emisor || 'Agustín'}\nWinflex S.A. - Planta Chivilcoy`;
+
+  const url = `mailto:${destinatarios}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  // Algunos clientes de mail tienen límite en el tamaño del mailto. Si es muy largo, advertir.
+  if (url.length > 2000) {
+    console.warn('mailto URL muy larga:', url.length, 'chars');
+  }
+
+  // Abrir el cliente de mail
+  window.location.href = url;
+
+  toast('Abriendo cliente de mail. Acordate de adjuntar los 2 PDFs', 'success');
 }
 
 </script>
