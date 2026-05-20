@@ -203,6 +203,16 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
     <input type="password" id="pinInput" class="pin-input" maxlength="6" placeholder="PIN" autofocus>
     <button class="btn-primary" onclick="doLogin()">Ingresar</button>
     <div id="loginErr" class="login-err"></div>
+    <p style="margin-top:18px;font-size:11px;color:#9ca3af;text-align:center">
+      <a href="#" onclick="event.preventDefault(); document.getElementById('loginHelp').style.display='block'; return false;" style="color:#6b7280;text-decoration:underline">¿Problemas para entrar?</a>
+    </p>
+    <div id="loginHelp" style="display:none;margin-top:12px;padding:12px;background:#fef3c7;border-radius:6px;font-size:12px;color:#92400e;line-height:1.5">
+      <b>Si te sale "PIN incorrecto" siempre:</b><br>
+      1. Verificá que las <b>credenciales JSONBin</b> sean las mismas que las de Matías. Si nunca te las cargaron, pedíselas.<br>
+      2. Si seguís sin poder entrar y querés forzar el reset, abrí la consola del navegador (F12 → pestaña Console) y pegá:<br>
+      <code style="display:block;background:white;padding:6px 8px;margin-top:4px;border-radius:3px;color:#1f2937;font-family:monospace">localStorage.removeItem('winflex_jsonbin_credentials'); location.reload();</code>
+      Te va a volver a pedir las credenciales.
+    </div>
   </div>
 </div>
 
@@ -434,12 +444,22 @@ let isDirty = false;
 function doLogin() {
   const pin = document.getElementById('pinInput').value;
   if (!DATA) { loadData().then(() => doLogin()); return; }
+  // Failsafe: si por algún motivo DATA.config.pinAdmin quedó vacío/undefined (bin viejo,
+  // borrado accidental, primera carga), inicializarlo en 3080 antes de comparar.
+  if (!DATA.config) DATA.config = {};
+  if (!DATA.config.pinAdmin) DATA.config.pinAdmin = '3080';
   if (pin === DATA.config.pinAdmin) {
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     initApp();
   } else {
-    document.getElementById('loginErr').textContent = 'PIN incorrecto';
+    const err = document.getElementById('loginErr');
+    err.textContent = 'PIN incorrecto';
+    // Si el usuario probó 5 PINs distintos y siempre falló, mostrar pista útil
+    window._pinAttempts = (window._pinAttempts || 0) + 1;
+    if (window._pinAttempts >= 3) {
+      err.innerHTML = 'PIN incorrecto. Si nunca pudiste entrar, verificá que las credenciales JSONBin sean las mismas que las de Matías (Configuración → Credenciales). El PIN por defecto es 3080.';
+    }
   }
 }
 document.getElementById('pinInput').addEventListener('keypress', (e) => {
@@ -614,6 +634,7 @@ function migrateLegacyData(d) {
   if (!d.config.densidadPET) d.config.densidadPET = 1330;
   if (!d.config.diametroTubo) d.config.diametroTubo = 152;
   if (!d.config.logoBase64) d.config.logoBase64 = '';
+  if (!d.config.pinAdmin)   d.config.pinAdmin   = '3080'; // PIN para entrar a la PC
   if (!d.config.pinFabrica) d.config.pinFabrica = '1234'; // PIN general para abrir la tablet
   // Horario de turnos (auto-detección en tablet)
   if (!d.config.horarioTurnoDia) d.config.horarioTurnoDia = { inicio: 6, fin: 18 };  // 6am a 6pm = día
