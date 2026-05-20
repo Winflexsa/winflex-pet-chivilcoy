@@ -458,11 +458,21 @@ function logout() {
 function migrateLegacyData(d) {
   if (!d || !d.pedidos) return d;
   let migrated = 0;
-  // Mapeo de estados v3.1 -> v3.2
+  // Mapeo de estados v3.1 -> v3.2 y variantes legacy (capitalizadas/sin tilde/género)
   const estadoMap = {
     'Borrador': 'OC',
     'Confirmada': 'OP',
-    'Facturada': 'Finalizada'
+    'Facturada': 'Finalizada',
+    'Finalizado': 'Finalizada',  // legacy: masculino
+    'finalizada': 'Finalizada',  // legacy: lowercase
+    'finalizado': 'Finalizada',
+    'FINALIZADA': 'Finalizada',
+    'FINALIZADO': 'Finalizada',
+    'Despachado': 'Despachada',  // por simetría con Finalizado
+    'Cancelado': 'Cancelada',
+    'En produccion': 'En producción', // legacy sin tilde
+    'En Producción': 'En producción',
+    'EN PRODUCCION': 'En producción'
   };
   d.pedidos.forEach(p => {
     if (p.medida && (!p.ancho || !p.espesor)) {
@@ -557,6 +567,32 @@ function migrateLegacyData(d) {
     };
   }
   if (!d.catalogos.tolvas) d.catalogos.tolvas = ['B1','B2','B3','B4','B5'];
+  // Catálogo de laminados (Producto Final → PET Chivilcoy + PE Lanús).
+  // Base inicial cargada desde la Ficha de Fabricación 23/10/2025 (rev. 30/04/2026, Horacio Diez).
+  // Esta base la usa la OC con destino=Laminado para autocompletar medidas/kg.
+  if (!d.catalogos.laminados || d.catalogos.laminados.length === 0) {
+    d.catalogos.laminados = [
+      { cliente: 'Pespasa',          producto:{ancho:300,espesor:93,peso:0},  pet:{ancho:330,espesor:13, peso:0,    metros:0},    pe:{ancho:350,espesor:80,peso:0,    metros:0},    cilindro:320 },
+      { cliente: 'Huertas del Pilar',producto:{ancho:200,espesor:450,peso:25},pet:{ancho:430,espesor:400,peso:100,  metros:430},  pe:{ancho:450,espesor:50,peso:38.09,metros:1800}, cilindro:420 },
+      { cliente: 'Dantelli (357-C)', producto:{ancho:357,espesor:350,peso:30},pet:{ancho:380,espesor:300,peso:92,   metros:597},  pe:{ancho:400,espesor:50,peso:33.72,metros:1800}, cilindro:370 },
+      { cliente: 'Dantelli (357-N)', producto:{ancho:357,espesor:350,peso:30},pet:{ancho:380,espesor:300,peso:92,   metros:597},  pe:{ancho:400,espesor:50,peso:33.72,metros:1800}, cilindro:370 },
+      { cliente: 'Dantelli (323)',   producto:{ancho:323,espesor:350,peso:30},pet:{ancho:350,espesor:300,peso:92,   metros:649},  pe:{ancho:370,espesor:50,peso:34.64,metros:2000}, cilindro:340 },
+      { cliente: "Villa D'Agri (423)",producto:{ancho:423,espesor:280,peso:83},pet:{ancho:450,espesor:230,peso:83,  metros:594},  pe:{ancho:470,espesor:50,peso:39.10,metros:1800}, cilindro:440 },
+      { cliente: "Villa D'Agri (323)",producto:{ancho:323,espesor:280,peso:35},pet:{ancho:350,espesor:280,peso:70,  metros:644},  pe:{ancho:370,espesor:50,peso:34.50,metros:2000}, cilindro:340 },
+      { cliente: 'Molinos (421-500)',producto:{ancho:421,espesor:500,peso:25},pet:{ancho:450,espesor:450,peso:102,  metros:373},  pe:{ancho:470,espesor:50,peso:35.26,metros:1600}, cilindro:440 },
+      { cliente: 'Molinos (472)',    producto:{ancho:472,espesor:235,peso:40},pet:{ancho:500,espesor:200,peso:80,   metros:592},  pe:{ancho:530,espesor:35,peso:32,   metros:1900}, cilindro:490 },
+      { cliente: 'Molinos (421-300)',producto:{ancho:421,espesor:300,peso:35},pet:{ancho:450,espesor:250,peso:0,    metros:0},    pe:{ancho:470,espesor:50,peso:0,    metros:0},    cilindro:440, nota:'PE es 250 (rev.)' },
+      { cliente: 'Molinos (421-400)',producto:{ancho:421,espesor:400,peso:30},pet:{ancho:450,espesor:350,peso:0,    metros:0},    pe:{ancho:470,espesor:50,peso:0,    metros:0},    cilindro:440 },
+      { cliente: 'Mendia (312)',     producto:{ancho:312,espesor:300,peso:31},pet:{ancho:350,espesor:250,peso:92,   metros:728},  pe:{ancho:370,espesor:50,peso:27.73,metros:1600}, cilindro:340 },
+      { cliente: 'La Italiana (350)',producto:{ancho:421,espesor:350,peso:80},pet:{ancho:450,espesor:300,peso:80,   metros:439},  pe:{ancho:470,espesor:50,peso:30,   metros:1380}, cilindro:440 },
+      { cliente: 'La Italiana (500)',producto:{ancho:421,espesor:500,peso:80},pet:{ancho:450,espesor:450,peso:80,   metros:292},  pe:{ancho:470,espesor:50,peso:26.4, metros:1228}, cilindro:440 },
+      { cliente: 'Don Yeyo (300)',   producto:{ancho:321,espesor:300,peso:35},pet:{ancho:350,espesor:250,peso:92,   metros:762},  pe:{ancho:370,espesor:50,peso:26.00,metros:1550}, cilindro:340 },
+      { cliente: 'El Artesano (300)',producto:{ancho:422,espesor:300,peso:25},pet:{ancho:450,espesor:250,peso:77,   metros:507},  pe:{ancho:470,espesor:50,peso:33.00,metros:1530}, cilindro:440 },
+      { cliente: 'BarielPack (400)', producto:{ancho:520,espesor:400,peso:31},pet:{ancho:550,espesor:350,peso:92,   metros:354},  pe:{ancho:570,espesor:50,peso:35.92,metros:1500}, cilindro:540 },
+      { cliente: 'BarielPack (600)', producto:{ancho:520,espesor:600,peso:45},pet:{ancho:550,espesor:550,peso:92,   metros:226},  pe:{ancho:570,espesor:50,peso:24.6, metros:946},  cilindro:540 },
+      { cliente: 'BarielPack (350)', producto:{ancho:520,espesor:350,peso:31},pet:{ancho:550,espesor:300,peso:92,   metros:413},  pe:{ancho:570,espesor:50,peso:37.92,metros:1700}, cilindro:540 }
+    ];
+  }
   // Forzar destinos al nuevo formato T/L/V
   d.catalogos.destinos = [
     {codigo:'T', nombre:'Termoformado (interno)'},
@@ -629,8 +665,16 @@ async function loadData() {
     return DATA;
   }
 
-  // Sin credenciales y sin cache: bootstrap con SEED
-  DATA = migrateLegacyData(SEED);
+  // Sin credenciales y sin cache: bootstrap con SEED (si ya está inicializado)
+  // Si SEED todavía no fue declarado (TDZ porque está más abajo en el script),
+  // creamos un DATA mínimo y dejamos que el siguiente loadData() lo complete.
+  let seedData;
+  try { seedData = SEED; } catch (e) { seedData = null; }
+  if (seedData) {
+    DATA = migrateLegacyData(seedData);
+  } else {
+    DATA = migrateLegacyData({ pedidos: [], catalogos: {}, config: {}, costosMensuales: {}, remitos: [], producciones: [], registrosProduccion: [] });
+  }
   localStorage.setItem(LS_KEY, JSON.stringify(DATA));
   setSyncStatus(creds ? 'Datos locales' : 'Sin credenciales JSONBin', 'syncing');
   return DATA;
@@ -1347,8 +1391,8 @@ function openPedidoModal(id) {
     };
   }
 
-  const clientes = DATA.catalogos.clientes;
-  const colores = DATA.catalogos.colores;
+  const clientes = DATA.catalogos.clientes || [];
+  const colores = DATA.catalogos.colores || ['Cristal'];
 
   document.getElementById('modalContainer').innerHTML = `
     <div class="modal-bg" >
@@ -1369,6 +1413,48 @@ function openPedidoModal(id) {
               <datalist id="dl_clientes">${clientes.map(c => `<option value="${c}">`).join('')}</datalist>
             </div>
             <div class="field"><label>OC cliente *</label><input type="text" id="m_oc" value="${p.oc||''}" placeholder="OC 2211"></div>
+            <div class="field full"><label>🎯 Destino del pedido *</label>
+              <select id="m_destino" onchange="toggleDestinoFields()">
+                <option value="T" ${(p.destinoCodigo||'T')==='T'?'selected':''}>🏭 Termoformado interno (Chivilcoy)</option>
+                <option value="L" ${p.destinoCodigo==='L'?'selected':''}>🔗 Laminado con PE (Lanús + Chivilcoy)</option>
+                <option value="V" ${p.destinoCodigo==='V'?'selected':''}>📦 Venta a cliente (rPET directo)</option>
+              </select>
+              <div class="hint">Si es Laminado, se completan medidas de PET (Chivilcoy) y PE (Lanús) según la base de laminados.</div>
+            </div>
+          </div>
+
+          <!-- === BLOQUE LAMINADO (solo si destino=L) === -->
+          <div id="bloque_laminado" style="${p.destinoCodigo==='L'?'':'display:none'};background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;margin:14px 0">
+            <h4 style="margin:0 0 10px 0;font-size:13px;color:#92400e">🔗 Pedido de Laminado — autocompletar desde la base</h4>
+            <div class="form-grid" style="grid-template-columns:2fr 1fr">
+              <div class="field"><label>Buscar en base de laminados</label>
+                <select id="m_lamSelect" onchange="aplicarLaminadoSeleccionado()">
+                  <option value="">— Elegí un laminado de la base —</option>
+                  ${(DATA.catalogos.laminados||[]).map((l,i) => `<option value="${i}" ${p.laminadoIdx===i?'selected':''}>${l.cliente} · Producto ${l.producto?.ancho||'-'}×${l.producto?.espesor||'-'}</option>`).join('')}
+                </select>
+                <div class="hint">Al elegir, se llenan las medidas PET (abajo) y se guarda la info PE para la OP de Jonathan.</div>
+              </div>
+              <div class="field"><label>Cilindro laminador</label><input type="number" id="m_lamCilindro" value="${p.lamCilindro||0}" placeholder="auto"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px">
+              <div style="background:#fef3c7;border-radius:6px;padding:10px">
+                <div style="font-weight:600;font-size:12px;color:#92400e;margin-bottom:6px">🟡 PET — Chivilcoy (Agustín)</div>
+                <div style="font-size:11px;color:#6b7280;margin-bottom:4px">Se cargan en los campos generales abajo (ancho, espesor, kg pedidos).</div>
+                <div id="m_lamPetPreview" style="font-size:11px;color:#374151">—</div>
+              </div>
+              <div style="background:#dbeafe;border-radius:6px;padding:10px">
+                <div style="font-weight:600;font-size:12px;color:#1e40af;margin-bottom:6px">🔵 PE — Lanús (Jonathan)</div>
+                <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:6px">
+                  <div class="field" style="margin:0"><label style="font-size:10px">Ancho mm</label><input type="number" id="m_lamPeAncho" value="${p.lamPe?.ancho||0}" style="padding:4px 6px;font-size:12px"></div>
+                  <div class="field" style="margin:0"><label style="font-size:10px">Espesor μm</label><input type="number" id="m_lamPeEspesor" value="${p.lamPe?.espesor||0}" style="padding:4px 6px;font-size:12px"></div>
+                  <div class="field" style="margin:0"><label style="font-size:10px">Kg / bobina</label><input type="number" step="0.01" id="m_lamPePeso" value="${p.lamPe?.peso||0}" style="padding:4px 6px;font-size:12px"></div>
+                  <div class="field" style="margin:0"><label style="font-size:10px">Mts / bobina</label><input type="number" step="0.01" id="m_lamPeMts" value="${p.lamPe?.metros||0}" style="padding:4px 6px;font-size:12px"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-grid">
             <div class="field"><label>Ancho (mm) *</label><input type="number" id="m_ancho" value="${p.ancho||''}" placeholder="500"></div>
             <div class="field"><label>Espesor (mic) *</label><input type="number" id="m_espesor" value="${p.espesor||''}" placeholder="200"></div>
             <div class="field"><label>Color</label>
@@ -1414,6 +1500,52 @@ function openPedidoModal(id) {
         </div>
       </div>
     </div>`;
+
+  // Llenar el preview del PET si ya hay un laminado seleccionado al abrir
+  if (p.destinoCodigo === 'L' && p.laminadoIdx !== undefined) {
+    actualizarPreviewLaminado(p.laminadoIdx);
+  }
+}
+
+// Mostrar/ocultar el bloque de laminado según el destino elegido
+function toggleDestinoFields() {
+  const dest = document.getElementById('m_destino').value;
+  const bloque = document.getElementById('bloque_laminado');
+  if (bloque) bloque.style.display = (dest === 'L') ? '' : 'none';
+}
+
+// Al elegir un laminado en el desplegable, autocompletar PET (campos generales) + PE (campos del bloque)
+function aplicarLaminadoSeleccionado() {
+  const sel = document.getElementById('m_lamSelect');
+  const idx = sel.value;
+  if (idx === '') { actualizarPreviewLaminado(null); return; }
+  const l = DATA.catalogos.laminados[+idx];
+  if (!l) return;
+  // PET → campos generales del pedido (lo que tiene que producir Agustín en Chivilcoy)
+  if (l.pet) {
+    document.getElementById('m_ancho').value = l.pet.ancho || 0;
+    document.getElementById('m_espesor').value = l.pet.espesor || 0;
+    if (l.pet.peso) document.getElementById('m_kgPorBobina6').value = l.pet.peso;
+  }
+  // PE → campos del bloque laminado (lo que tiene que producir/usar Jonathan en Lanús)
+  if (l.pe) {
+    document.getElementById('m_lamPeAncho').value = l.pe.ancho || 0;
+    document.getElementById('m_lamPeEspesor').value = l.pe.espesor || 0;
+    document.getElementById('m_lamPePeso').value = l.pe.peso || 0;
+    document.getElementById('m_lamPeMts').value = l.pe.metros || 0;
+  }
+  if (l.cilindro) document.getElementById('m_lamCilindro').value = l.cilindro;
+  actualizarPreviewLaminado(+idx);
+  toast(`Laminado "${l.cliente}" cargado`, 'success');
+}
+
+function actualizarPreviewLaminado(idx) {
+  const prev = document.getElementById('m_lamPetPreview');
+  if (!prev) return;
+  if (idx === null || idx === undefined) { prev.textContent = '—'; return; }
+  const l = DATA.catalogos.laminados[+idx];
+  if (!l || !l.pet) { prev.textContent = '—'; return; }
+  prev.innerHTML = `<b>${l.pet.ancho||'-'}×${l.pet.espesor||'-'} μm</b> · ${l.pet.peso||'-'} kg/bob · ${l.pet.metros||'-'} mts/bob${l.nota?'<br><span style="color:#dc2626">⚠ '+l.nota+'</span>':''}`;
 }
 function updateSumaFormula() {
   const s = ['m_fPreforma','m_fScrap','m_fVirgen','m_fMaster'].reduce((a,id) => a + (+document.getElementById(id).value || 0), 0);
@@ -1445,8 +1577,21 @@ async function savePedido(id) {
     kgFinalCono3: +document.getElementById('m_kgFinalCono3').value || 0,
     estadoWorkflow: document.getElementById('m_estado').value,
     observaciones: document.getElementById('m_obs').value,
+    destinoCodigo: document.getElementById('m_destino') ? document.getElementById('m_destino').value : (existing?.destinoCodigo || 'T'),
     codigoProducto: ''
   };
+  // Si el destino es Laminado (L), capturar también los datos de PE para Jonathan (Lanús)
+  if (data.destinoCodigo === 'L') {
+    const lamSel = document.getElementById('m_lamSelect');
+    data.laminadoIdx = (lamSel && lamSel.value !== '') ? +lamSel.value : (existing?.laminadoIdx);
+    data.lamCilindro = +(document.getElementById('m_lamCilindro')?.value || 0);
+    data.lamPe = {
+      ancho:   +(document.getElementById('m_lamPeAncho')?.value   || 0),
+      espesor: +(document.getElementById('m_lamPeEspesor')?.value || 0),
+      peso:    +(document.getElementById('m_lamPePeso')?.value    || 0),
+      metros:  +(document.getElementById('m_lamPeMts')?.value     || 0)
+    };
+  }
   data.codigoProducto = (data.ancho && data.espesor) ? `${data.ancho}${data.espesor}` : '';
   // Silicona g/m² (legacy)
   data.siliconaGramosM2 = data.silicona === 'SIN' ? 0 : (data.silicona === 'CON' ? (data.siliconaPct/100*0.5).toFixed(3) : 0);
@@ -1458,8 +1603,9 @@ async function savePedido(id) {
   if (!data.cliente || !data.kgPedidos) { alert('Cliente y kg pedidos son obligatorios'); return; }
 
   if (existing) {
-    // Preservar campos técnicos (OP) si ya existen
-    const techFields = ['nroOP','nroSolicitud','producto','kgPorHora','horasPorDia','scrapTeorico','recetaCodigo','kgReales','kgPorBobina','metrosBobina','diametroBobina','mezclaTeoricaTexto','fechaInicioProd','fechaFinProd','destinoCodigo','confeccion','formula','op','partida'];
+    // Preservar campos técnicos (OP) si ya existen.
+    // NOTA: destinoCodigo se saca de techFields porque ahora se edita desde la OC misma.
+    const techFields = ['nroOP','nroSolicitud','producto','kgPorHora','horasPorDia','scrapTeorico','recetaCodigo','kgReales','kgPorBobina','metrosBobina','diametroBobina','mezclaTeoricaTexto','fechaInicioProd','fechaFinProd','confeccion','formula','op','partida'];
     techFields.forEach(f => { if (existing[f] !== undefined) data[f] = existing[f]; });
     const idx = DATA.pedidos.findIndex(p => p.id === id);
     DATA.pedidos[idx] = data;
@@ -1844,7 +1990,8 @@ function renderCatalogos() {
     { id: 'tolvas',         label: 'Tolvas',         count: (c.tolvas||[]).length },
     { id: 'destinos',       label: 'Destinos',       count: (c.destinos||[]).length },
     { id: 'mezclas',        label: 'Mezclas',        count: (c.mezclasTeoricas||[]).length },
-    { id: 'transportistas', label: 'Transportistas', count: (c.transportistas||[]).length }
+    { id: 'transportistas', label: 'Transportistas', count: (c.transportistas||[]).length },
+    { id: 'laminados',      label: 'Laminados',      count: (c.laminados||[]).length }
   ];
   let html = `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:18px;border-bottom:1px solid #e5e7eb;padding-bottom:6px">`;
   tabs.forEach(t => {
@@ -1870,6 +2017,7 @@ function renderCatalogTab() {
   else if (t === 'operarios')      el.innerHTML = renderOperariosTable(c.operarios || []);
   else if (t === 'recetas')        el.innerHTML = renderRecetasTable(c.recetas || []);
   else if (t === 'transportistas') el.innerHTML = renderObjectList('transportistas', c.transportistas || [], ['nombre','cuit','domicilio'], ['Nombre','CUIT','Domicilio']);
+  else if (t === 'laminados')      el.innerHTML = renderLaminadosTable(c.laminados || []);
   else if (t === 'emailsCliente')  el.innerHTML = renderEmailsCliente(c.emailsCliente || {}, c.clientes || []);
 }
 
@@ -2281,6 +2429,150 @@ async function removeReceta(idx) {
 }
 
 // ============================================================
+// LAMINADOS — base de datos Producto Final → Lámina PET (Chivilcoy) + Lámina PE (Lanús)
+// Esta base la usa el modal de pedido cuando destino=Laminado para autocompletar medidas/kg
+// ============================================================
+function renderLaminadosTable(arr) {
+  return `
+    <p class="muted" style="margin-bottom:12px;font-size:13px">📋 Receta de laminado: Producto Final que pide el cliente → medidas y kg de Lámina PET (Chivilcoy/Agustín) + Lámina PE (Lanús/Jonathan). Se usa para autocompletar cuando se carga una OC con destino "Laminado con PE".</p>
+    <button class="btn btn-pri" style="margin-bottom:12px" onclick="openLaminadoModal()">+ Nuevo laminado</button>
+    <div style="overflow-x:auto">
+    <table style="width:100%;font-size:12px">
+      <thead>
+        <tr>
+          <th rowspan="2" style="vertical-align:bottom">Cliente</th>
+          <th colspan="3" style="background:#f3f4f6;text-align:center">Producto final</th>
+          <th colspan="4" style="background:#fef3c7;text-align:center">Lámina PET (Chivilcoy)</th>
+          <th colspan="4" style="background:#dbeafe;text-align:center">Lámina PE (Lanús)</th>
+          <th rowspan="2" class="num" style="vertical-align:bottom">Cilindro</th>
+          <th rowspan="2" style="vertical-align:bottom;width:120px;text-align:right">Acciones</th>
+        </tr>
+        <tr>
+          <th class="num" style="background:#f3f4f6">Ancho</th><th class="num" style="background:#f3f4f6">Esp.</th><th class="num" style="background:#f3f4f6">Peso</th>
+          <th class="num" style="background:#fef3c7">Ancho</th><th class="num" style="background:#fef3c7">Esp.</th><th class="num" style="background:#fef3c7">Peso</th><th class="num" style="background:#fef3c7">Mts</th>
+          <th class="num" style="background:#dbeafe">Ancho</th><th class="num" style="background:#dbeafe">Esp.</th><th class="num" style="background:#dbeafe">Peso</th><th class="num" style="background:#dbeafe">Mts</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${arr.map((l, i) => `<tr>
+          <td><b>${l.cliente||''}</b>${l.nota?'<br><span class="muted" style="font-size:10px">⚠ '+l.nota+'</span>':''}</td>
+          <td class="num">${l.producto?.ancho||'-'}</td>
+          <td class="num">${l.producto?.espesor||'-'}</td>
+          <td class="num">${l.producto?.peso||'-'}</td>
+          <td class="num">${l.pet?.ancho||'-'}</td>
+          <td class="num">${l.pet?.espesor||'-'}</td>
+          <td class="num">${l.pet?.peso||'-'}</td>
+          <td class="num">${l.pet?.metros||'-'}</td>
+          <td class="num">${l.pe?.ancho||'-'}</td>
+          <td class="num">${l.pe?.espesor||'-'}</td>
+          <td class="num">${l.pe?.peso||'-'}</td>
+          <td class="num">${l.pe?.metros||'-'}</td>
+          <td class="num">${l.cilindro||'-'}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <button class="btn-ghost" onclick="openLaminadoModal(${i})" title="Editar">✏️</button>
+            <button class="btn-ghost" style="color:#dc2626" onclick="removeLaminado(${i})" title="Eliminar">🗑️</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>
+    ${arr.length === 0 ? '<p class="muted" style="padding:20px;text-align:center">Sin laminados cargados.</p>' : ''}
+  `;
+}
+
+function openLaminadoModal(idx) {
+  const l = idx !== undefined ? DATA.catalogos.laminados[idx] : {
+    cliente: '', nota: '',
+    producto: { ancho: 0, espesor: 0, peso: 0 },
+    pet: { ancho: 0, espesor: 0, peso: 0, metros: 0 },
+    pe:  { ancho: 0, espesor: 0, peso: 0, metros: 0 },
+    cilindro: 0
+  };
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg">
+      <div class="modal detail-modal">
+        <div class="modal-h"><h3>${idx!==undefined?'Editar':'Nuevo'} laminado</h3><button class="btn-ghost" onclick="closeModal()">✕</button></div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="field full"><label>Cliente / Descripción *</label><input type="text" id="lam_cliente" value="${(l.cliente||'').replace(/"/g,'&quot;')}" placeholder="Ej: Dantelli (357-C)"></div>
+          </div>
+          <h3 style="margin-top:16px;font-size:14px;color:#374151;border-bottom:2px solid #e5e7eb;padding-bottom:4px">Producto final (lo que pide el cliente)</h3>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr">
+            <div class="field"><label>Ancho (mm)</label><input type="number" id="lam_prod_ancho" value="${l.producto?.ancho||0}"></div>
+            <div class="field"><label>Espesor (μm)</label><input type="number" id="lam_prod_esp" value="${l.producto?.espesor||0}"></div>
+            <div class="field"><label>Peso bobina (kg)</label><input type="number" step="0.01" id="lam_prod_peso" value="${l.producto?.peso||0}"></div>
+          </div>
+          <h3 style="margin-top:16px;font-size:14px;color:#92400e;border-bottom:2px solid #fef3c7;padding-bottom:4px">🟡 Lámina PET (Chivilcoy - Agustín)</h3>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
+            <div class="field"><label>Ancho (mm)</label><input type="number" id="lam_pet_ancho" value="${l.pet?.ancho||0}"></div>
+            <div class="field"><label>Espesor (μm)</label><input type="number" id="lam_pet_esp" value="${l.pet?.espesor||0}"></div>
+            <div class="field"><label>Peso bobina (kg)</label><input type="number" step="0.01" id="lam_pet_peso" value="${l.pet?.peso||0}"></div>
+            <div class="field"><label>Mts bobina</label><input type="number" step="0.01" id="lam_pet_mts" value="${l.pet?.metros||0}"></div>
+          </div>
+          <h3 style="margin-top:16px;font-size:14px;color:#1e40af;border-bottom:2px solid #dbeafe;padding-bottom:4px">🔵 Lámina PE (Lanús - Jonathan)</h3>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
+            <div class="field"><label>Ancho (mm)</label><input type="number" id="lam_pe_ancho" value="${l.pe?.ancho||0}"></div>
+            <div class="field"><label>Espesor (μm)</label><input type="number" id="lam_pe_esp" value="${l.pe?.espesor||0}"></div>
+            <div class="field"><label>Peso bobina (kg)</label><input type="number" step="0.01" id="lam_pe_peso" value="${l.pe?.peso||0}"></div>
+            <div class="field"><label>Mts bobina</label><input type="number" step="0.01" id="lam_pe_mts" value="${l.pe?.metros||0}"></div>
+          </div>
+          <h3 style="margin-top:16px;font-size:14px;color:#374151;border-bottom:2px solid #e5e7eb;padding-bottom:4px">Equipo</h3>
+          <div class="form-grid" style="grid-template-columns:1fr 2fr">
+            <div class="field"><label>Cilindro laminador</label><input type="number" id="lam_cilindro" value="${l.cilindro||0}"></div>
+            <div class="field"><label>Nota / Aclaración (opcional)</label><input type="text" id="lam_nota" value="${(l.nota||'').replace(/"/g,'&quot;')}" placeholder="Ej: PE es 250"></div>
+          </div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="saveLaminado(${idx===undefined?'null':idx})">Guardar</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function saveLaminado(idx) {
+  const data = {
+    cliente: document.getElementById('lam_cliente').value.trim(),
+    producto: {
+      ancho:   +document.getElementById('lam_prod_ancho').value || 0,
+      espesor: +document.getElementById('lam_prod_esp').value   || 0,
+      peso:    +document.getElementById('lam_prod_peso').value  || 0
+    },
+    pet: {
+      ancho:   +document.getElementById('lam_pet_ancho').value || 0,
+      espesor: +document.getElementById('lam_pet_esp').value   || 0,
+      peso:    +document.getElementById('lam_pet_peso').value  || 0,
+      metros:  +document.getElementById('lam_pet_mts').value   || 0
+    },
+    pe: {
+      ancho:   +document.getElementById('lam_pe_ancho').value || 0,
+      espesor: +document.getElementById('lam_pe_esp').value   || 0,
+      peso:    +document.getElementById('lam_pe_peso').value  || 0,
+      metros:  +document.getElementById('lam_pe_mts').value   || 0
+    },
+    cilindro: +document.getElementById('lam_cilindro').value || 0,
+    nota: document.getElementById('lam_nota').value.trim()
+  };
+  if (!data.cliente) { alert('El campo "Cliente / Descripción" es obligatorio'); return; }
+  if (!DATA.catalogos.laminados) DATA.catalogos.laminados = [];
+  if (idx === null) DATA.catalogos.laminados.push(data);
+  else DATA.catalogos.laminados[idx] = data;
+  closeModal();
+  await saveData();
+  renderCatalogos();
+  toast('Laminado guardado', 'success');
+}
+
+async function removeLaminado(idx) {
+  const l = DATA.catalogos.laminados[idx];
+  if (!confirm(`¿Eliminar laminado "${l.cliente}"?`)) return;
+  DATA.catalogos.laminados.splice(idx, 1);
+  await saveData();
+  renderCatalogos();
+  toast('Eliminado', 'success');
+}
+
+// ============================================================
 // VISTA DETALLE DE PEDIDO (con tabs y acciones OC/OP)
 // ============================================================
 let currentDetailPedidoId = null;
@@ -2380,6 +2672,38 @@ function renderDetailBody(p, bobinas) {
           <div class="detail-field"><span class="lbl">Silicona</span><span class="val">${p.silicona||'-'} ${p.siliconaGramosM2 ? `(${p.siliconaGramosM2} g/m²)` : ''}</span></div>
         </div>
       </div>
+      ${p.destinoCodigo === 'L' ? `
+      <div class="detail-section" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px">
+        <h3 style="color:#92400e">🔗 Laminado — desglose por planta</h3>
+        ${(() => {
+          const lam = (p.laminadoIdx !== undefined) ? DATA.catalogos.laminados?.[p.laminadoIdx] : null;
+          return `
+            ${lam ? `<p style="margin:0 0 10px 0;font-size:12px;color:#6b7280">Base de laminado: <b>${lam.cliente}</b>${lam.nota?' · ⚠ '+lam.nota:''}</p>` : ''}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+              <div style="background:#fef3c7;border-radius:6px;padding:12px">
+                <div style="font-weight:600;font-size:13px;color:#92400e;margin-bottom:8px">🟡 Lámina PET — Chivilcoy (Agustín)</div>
+                <div class="detail-grid" style="grid-template-columns:1fr 1fr">
+                  <div class="detail-field"><span class="lbl">Ancho</span><span class="val">${p.ancho||0} mm</span></div>
+                  <div class="detail-field"><span class="lbl">Espesor</span><span class="val">${p.espesor||0} μm</span></div>
+                  <div class="detail-field"><span class="lbl">Kg / bobina</span><span class="val">${p.kgPorBobina||0}</span></div>
+                  <div class="detail-field"><span class="lbl">Kg pedidos</span><span class="val"><b>${fmtNum(p.kgPedidos)}</b></span></div>
+                </div>
+              </div>
+              <div style="background:#dbeafe;border-radius:6px;padding:12px">
+                <div style="font-weight:600;font-size:13px;color:#1e40af;margin-bottom:8px">🔵 Lámina PE — Lanús (Jonathan)</div>
+                <div class="detail-grid" style="grid-template-columns:1fr 1fr">
+                  <div class="detail-field"><span class="lbl">Ancho</span><span class="val">${p.lamPe?.ancho||0} mm</span></div>
+                  <div class="detail-field"><span class="lbl">Espesor</span><span class="val">${p.lamPe?.espesor||0} μm</span></div>
+                  <div class="detail-field"><span class="lbl">Kg / bobina</span><span class="val">${p.lamPe?.peso||0}</span></div>
+                  <div class="detail-field"><span class="lbl">Mts / bobina</span><span class="val">${p.lamPe?.metros||0}</span></div>
+                </div>
+              </div>
+            </div>
+            ${p.lamCilindro ? `<p style="margin:10px 0 0 0;font-size:12px;color:#374151"><b>Cilindro laminador:</b> ${p.lamCilindro}</p>` : ''}
+          `;
+        })()}
+      </div>
+      ` : ''}
       <div class="detail-section">
         <h3>Cantidades</h3>
         <div class="detail-grid">
