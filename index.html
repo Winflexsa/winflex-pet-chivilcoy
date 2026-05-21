@@ -246,6 +246,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
     <div id="tab-dashboard" class="tab-content">
       <div id="dashYearSelector"></div>
       <div class="kpi-grid" id="kpiGrid"></div>
+      <div id="dashBreakdown"></div>
       <div class="panel">
         <div class="panel-h"><h2>Resumen por mes</h2></div>
         <table class="month-table" id="monthTable"></table>
@@ -987,7 +988,15 @@ function toast(msg, type) {
 // ============================================================
 // DERIVED CALCS
 // ============================================================
+// calcEstado: devuelve uno de CANCELADO / FINALIZADO / PARCIAL / PENDIENTE.
+// Respeta estadoWorkflow:
+//   - "Cancelada" → CANCELADO (independientemente de kg)
+//   - "Finalizada" / "Despachada" → FINALIZADO aunque kgReales < kgPedidos (merma natural)
+//   - resto → se calcula por kg
 function calcEstado(p) {
+  const wf = p.estadoWorkflow || '';
+  if (wf === 'Cancelada') return 'CANCELADO';
+  if (wf === 'Finalizada' || wf === 'Despachada') return 'FINALIZADO';
   const kgPed = +p.kgPedidos || 0;
   const kgReal = +p.kgReales || 0;
   if (kgPed === 0) return 'PENDIENTE';
@@ -996,6 +1005,8 @@ function calcEstado(p) {
   return 'PENDIENTE';
 }
 function calcPendiente(p) {
+  // Cancelados no tienen kg pendientes (ya no se van a producir)
+  if ((p.estadoWorkflow || '') === 'Cancelada') return 0;
   return Math.max(0, (+p.kgPedidos || 0) - (+p.kgReales || 0));
 }
 function calcBobinas(p) {
@@ -1006,18 +1017,49 @@ function calcBobinas(p) {
 function isVencido(p) {
   const fecha = p.fechaEntrega || p.fechaDespacho;
   if (!fecha) return false;
-  const d = new Date(fecha);
-  return d < new Date() && calcEstado(p) !== 'FINALIZADO';
+  // Cancelados nunca están vencidos
+  if ((p.estadoWorkflow || '') === 'Cancelada') return false;
+  // Si el estado workflow ya cerró la OP, no está vencida (puede haber kg menor por merma)
+  const wf = p.estadoWorkflow || '';
+  if (wf === 'Finalizada' || wf === 'Despachada') return false;
+  const d = parseFechaLocal(fecha);
+  if (!d) return false;
+  // Comparación contra "hoy a medianoche" en hora local
+  const hoy = new Date();
+  hoy.setHours(0,0,0,0);
+  return d < hoy;
+}
+// Parsea fechas YYYY-MM-DD como hora LOCAL (no UTC) para evitar bugs de timezone.
+// "2026-01-01" en Argentina (UTC-3) con new Date() daba "2025-12-31 21:00" → año 2025.
+function parseFechaLocal(s) {
+  if (!s) return null;
+  // Si ya es Date, devolverlo
+  if (s instanceof Date) return s;
+  const str = String(s).trim();
+  // Formato YYYY-MM-DD o YYYY-MM-DDTHH:MM:SS
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    return isNaN(d) ? null : d;
+  }
+  const d = new Date(str);
+  return isNaN(d) ? null : d;
+}
+function anioDeFecha(s) {
+  const d = parseFechaLocal(s);
+  return d ? d.getFullYear() : null;
+}
+function mesNumDeFecha(s) {
+  const d = parseFechaLocal(s);
+  return d ? d.getMonth() : null;
 }
 function mesDe(fecha) {
-  if (!fecha) return null;
-  const d = new Date(fecha);
-  return MESES[d.getMonth()];
+  const d = parseFechaLocal(fecha);
+  return d ? MESES[d.getMonth()] : null;
 }
 function mesKey(fecha) {
-  if (!fecha) return null;
-  const d = new Date(fecha);
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const d = parseFechaLocal(fecha);
+  return d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` : null;
 }
 function fmtNum(n) {
   if (n === null || n === undefined || n === '' || isNaN(n)) return '';
@@ -1068,73 +1110,143 @@ function render() {
 let dashYear = new Date().getFullYear(); // año actualmente seleccionado en dashboard
 
 function renderDashboard() {
-  const peds = DATA.pedidos;
-  // Filtrar pedidos del año actual del dashboard
+  const peds = DATA.pedidos || [];
+  // Año de cada pedido (usando parseFechaLocal para evitar bug timezone).
+  // Si no hay fecha de ingreso, agrupar en una categoría especial "Sin fecha".
   const pedsAnio = peds.filter(p => {
-    if (!p.fechaIngreso) return false;
-    const d = new Date(p.fechaIngreso);
-    return d.getFullYear() === dashYear;
+    const a = anioDeFecha(p.fechaIngreso);
+    if (a === null) return dashYear === 0; // dashYear=0 → mostrar "Sin fecha"
+    return a === dashYear;
   });
 
   const totalPed = pedsAnio.length;
-  const totalKgPed = pedsAnio.reduce((s,p) => s + (+p.kgPedidos || 0), 0);
-  const totalKgReal = pedsAnio.reduce((s,p) => s + (+p.kgReales || 0), 0);
-  // Sumamos pendientes pedido por pedido para no compensar sobreproducciones con faltantes
-  const totalPend = pedsAnio.reduce((s,p) => s + calcPendiente(p), 0);
-  const finalizados = pedsAnio.filter(p => calcEstado(p) === 'FINALIZADO').length;
-  const pendientes = pedsAnio.filter(p => ['PENDIENTE','PARCIAL'].includes(calcEstado(p))).length;
-  const vencidos = pedsAnio.filter(p => isVencido(p)).length;
-  const kgVencidos = pedsAnio.filter(p => isVencido(p)).reduce((s,p) => s + calcPendiente(p), 0);
+  // Excluir cancelados de los kg pedidos y producidos del año
+  // (siguen contándose en su propio KPI aparte)
+  const pedsActivos = pedsAnio.filter(p => (p.estadoWorkflow || '') !== 'Cancelada');
+  const cancelados  = pedsAnio.filter(p => (p.estadoWorkflow || '') === 'Cancelada');
+  const totalKgPed  = pedsActivos.reduce((s,p) => s + (+p.kgPedidos || 0), 0);
+  const totalKgReal = pedsActivos.reduce((s,p) => s + (+p.kgReales || 0), 0);
+  const totalPend   = pedsActivos.reduce((s,p) => s + calcPendiente(p), 0);
 
-  // Selector de año (en su propio contenedor)
-  const aniosDisponibles = [...new Set(peds.map(p => {
-    if (!p.fechaIngreso) return null;
-    return new Date(p.fechaIngreso).getFullYear();
-  }).filter(Boolean))].sort((a,b) => b - a);
+  const finalizados = pedsAnio.filter(p => calcEstado(p) === 'FINALIZADO').length;
+  const parciales   = pedsAnio.filter(p => calcEstado(p) === 'PARCIAL').length;
+  const pendientes  = pedsAnio.filter(p => calcEstado(p) === 'PENDIENTE').length;
+  const vencidos    = pedsAnio.filter(p => isVencido(p));
+  const kgVencidos  = vencidos.reduce((s,p) => s + calcPendiente(p), 0);
+
+  // Aviso si hay pedidos sin fecha en el sistema
+  const sinFecha = peds.filter(p => anioDeFecha(p.fechaIngreso) === null).length;
+
+  // Años disponibles + opción "Sin fecha" si corresponde
+  const aniosSet = new Set();
+  peds.forEach(p => { const a = anioDeFecha(p.fechaIngreso); if (a !== null) aniosSet.add(a); });
+  const aniosDisponibles = [...aniosSet].sort((a,b) => b - a);
+
   document.getElementById('dashYearSelector').innerHTML = `
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:10px 14px;background:white;border-radius:10px;border:1px solid #e5e7eb">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:10px 14px;background:white;border-radius:10px;border:1px solid #e5e7eb;flex-wrap:wrap">
       <label style="font-size:13px;color:#6b7280;font-weight:600">Año:</label>
       <select onchange="dashYear = +this.value; renderDashboard()" style="padding:6px 12px;border:1px solid #16a34a;border-radius:6px;font-size:14px;font-weight:600;color:#16a34a;background:#f0fdf4">
         ${aniosDisponibles.map(y => `<option value="${y}" ${y===dashYear?'selected':''}>${y}</option>`).join('')}
+        ${sinFecha > 0 ? `<option value="0" ${dashYear===0?'selected':''}>Sin fecha (${sinFecha})</option>` : ''}
       </select>
-      <span style="font-size:13px;color:#9ca3af">${totalPed} pedidos · ${fmtNum(totalKgPed)} kg pedidos · ${fmtNum(totalKgReal)} kg producidos</span>
+      <span style="font-size:13px;color:#9ca3af">${totalPed} pedidos · ${fmtNum(totalKgPed)} kg pedidos · ${fmtNum(totalKgReal)} kg producidos${cancelados.length?' · '+cancelados.length+' cancelados':''}</span>
+      ${sinFecha > 0 && dashYear !== 0 ? `<span style="font-size:11px;color:#dc2626;background:#fee2e2;padding:2px 8px;border-radius:10px">⚠ ${sinFecha} pedido${sinFecha>1?'s':''} sin fecha de ingreso</span>` : ''}
     </div>
   `;
 
+  // KPIs principales — ahora incluye Cancelados y Parciales
+  const avancePct = totalKgPed > 0 ? Math.round(totalKgReal / totalKgPed * 100) : 0;
   document.getElementById('kpiGrid').innerHTML = `
-    <div class="kpi"><div class="label">Pedidos totales</div><div class="val">${totalPed}</div></div>
+    <div class="kpi"><div class="label">Pedidos totales</div><div class="val">${totalPed}</div>${cancelados.length?`<div class="sub">${cancelados.length} cancelados</div>`:''}</div>
     <div class="kpi ok"><div class="label">Finalizados</div><div class="val">${finalizados}</div></div>
-    <div class="kpi warn"><div class="label">Pendientes</div><div class="val">${pendientes}</div></div>
-    <div class="kpi alert"><div class="label">Vencidos</div><div class="val">${vencidos}</div><div class="sub">${fmtNum(kgVencidos)} kg</div></div>
-    <div class="kpi"><div class="label">Kg pedidos</div><div class="val">${fmtNum(totalKgPed)}</div></div>
-    <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(totalKgReal)}</div></div>
+    <div class="kpi warn"><div class="label">Parciales</div><div class="val">${parciales}</div></div>
+    <div class="kpi"><div class="label">Pendientes</div><div class="val">${pendientes}</div></div>
+    <div class="kpi alert"><div class="label">Vencidos</div><div class="val">${vencidos.length}</div><div class="sub">${fmtNum(kgVencidos)} kg</div></div>
+    <div class="kpi"><div class="label">Kg pedidos</div><div class="val">${fmtNum(totalKgPed)}</div><div class="sub">sin cancelados</div></div>
+    <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(totalKgReal)}</div><div class="sub">${avancePct}% del pedido</div></div>
     <div class="kpi ${totalPend > 0 ? 'warn' : 'ok'}"><div class="label">Kg pendientes</div><div class="val">${fmtNum(totalPend)}</div></div>
   `;
 
-  // Tabla por mes (solo del año seleccionado)
+  // === Desglose por producto y por destino (solo pedidos activos) ===
+  const porProducto = { 'rPET': { ped:0, real:0, cnt:0 }, 'vPET': { ped:0, real:0, cnt:0 }, 'PET L': { ped:0, real:0, cnt:0 }, 'Otro': { ped:0, real:0, cnt:0 } };
+  const porDestino  = { 'T': { ped:0, real:0, cnt:0, label:'🏭 Termoformado' }, 'L': { ped:0, real:0, cnt:0, label:'🔗 Laminado' }, 'V': { ped:0, real:0, cnt:0, label:'📦 Venta' }, 'Otro': { ped:0, real:0, cnt:0, label:'❓ Sin destino' } };
+  pedsActivos.forEach(p => {
+    const prod = (p.productoTipo && porProducto[p.productoTipo]) ? p.productoTipo : 'Otro';
+    porProducto[prod].ped  += +p.kgPedidos || 0;
+    porProducto[prod].real += +p.kgReales || 0;
+    porProducto[prod].cnt  += 1;
+    const dest = (p.destinoCodigo && porDestino[p.destinoCodigo]) ? p.destinoCodigo : 'Otro';
+    porDestino[dest].ped  += +p.kgPedidos || 0;
+    porDestino[dest].real += +p.kgReales || 0;
+    porDestino[dest].cnt  += 1;
+  });
+  const productoColors = { 'rPET': '#16a34a', 'vPET': '#0891b2', 'PET L': '#d97706', 'Otro': '#6b7280' };
+  const productoLabels = { 'rPET': 'rPET (reciclado)', 'vPET': 'vPET (virgen)', 'PET L': 'PET L (laminar)', 'Otro': 'Sin tipo' };
+  const renderBox = (titulo, data, getColor, getLabel) => {
+    const totalP = Object.values(data).reduce((s, v) => s + v.ped, 0);
+    const items = Object.entries(data)
+      .filter(([k, v]) => v.cnt > 0)
+      .map(([k, v]) => {
+        const color = getColor(k);
+        const label = getLabel(k);
+        const pct = totalP > 0 ? (v.ped / totalP * 100).toFixed(0) : 0;
+        const av = v.ped > 0 ? Math.round(v.real / v.ped * 100) : 0;
+        return `
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+              <span style="font-size:13px;color:#1f2937"><b style="color:${color}">●</b> ${label} <span class="muted" style="font-size:11px">(${v.cnt} ped.)</span></span>
+              <span style="font-size:12px;color:#6b7280">${fmtNum(v.real)} / ${fmtNum(v.ped)} kg · <b>${av}%</b></span>
+            </div>
+            <div style="height:6px;background:#f3f4f6;border-radius:3px;overflow:hidden">
+              <div style="height:100%;background:${color};width:${pct}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    return `
+      <div style="background:white;border-radius:10px;border:1px solid #e5e7eb;padding:16px">
+        <h3 style="margin:0 0 12px 0;font-size:14px;color:#374151">${titulo}</h3>
+        ${items || '<p class="muted" style="text-align:center;padding:20px 0">Sin datos</p>'}
+      </div>
+    `;
+  };
+  document.getElementById('dashBreakdown').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+      ${renderBox('Mix por producto', porProducto, k => productoColors[k], k => productoLabels[k])}
+      ${renderBox('Mix por destino',  porDestino,  k => k==='T'?'#16a34a':k==='L'?'#d97706':k==='V'?'#0891b2':'#6b7280', k => porDestino[k].label)}
+    </div>
+  `;
+
+  // === Tabla mensual: SIEMPRE muestra los 12 meses del año seleccionado ===
+  // (para "Sin fecha" no aplica)
   const mesesData = {};
-  pedsAnio.forEach(p => {
-    if (!p.fechaIngreso) return;
-    const d = new Date(p.fechaIngreso);
-    const m = d.getMonth(); // 0-11
+  pedsActivos.forEach(p => {
+    const m = mesNumDeFecha(p.fechaIngreso);
+    if (m === null) return;
     if (!mesesData[m]) mesesData[m] = { kgPedidos: 0, kgReales: 0, cantidad: 0 };
     mesesData[m].kgPedidos += +p.kgPedidos || 0;
-    mesesData[m].kgReales += +p.kgReales || 0;
-    mesesData[m].cantidad += 1;
+    mesesData[m].kgReales  += +p.kgReales  || 0;
+    mesesData[m].cantidad  += 1;
   });
 
-  let html = `<thead><tr><th>Mes ${dashYear}</th><th class="num">Pedidos</th><th class="num">Kg pedidos</th><th class="num">Kg producidos</th><th class="num">Avance</th></tr></thead><tbody>`;
-  MESES.forEach((m, idx) => {
-    const md = mesesData[idx];
-    if (md && (md.kgPedidos > 0 || md.kgReales > 0)) {
-      const avance = md.kgPedidos > 0 ? Math.round(md.kgReales/md.kgPedidos*100) : 0;
-      html += `<tr><td><b>${m}</b></td><td class="num">${md.cantidad}</td><td class="num">${fmtNum(md.kgPedidos)}</td><td class="num">${fmtNum(md.kgReales)}</td><td class="num">${avance}%</td></tr>`;
-    }
-  });
-  if (Object.keys(mesesData).length === 0) {
-    html += `<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:20px">No hay pedidos en ${dashYear}</td></tr>`;
+  let html;
+  if (dashYear === 0) {
+    html = `<thead><tr><th>—</th><th class="num">Pedidos</th><th class="num">Kg pedidos</th><th class="num">Kg producidos</th><th class="num">Avance</th></tr></thead><tbody>`;
+    html += `<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:20px">Vista "Sin fecha" — pedidos pendientes de completar la fecha de ingreso</td></tr></tbody>`;
+  } else {
+    html = `<thead><tr><th>Mes ${dashYear}</th><th class="num">Pedidos</th><th class="num">Kg pedidos</th><th class="num">Kg producidos</th><th class="num">Avance</th></tr></thead><tbody>`;
+    let totRow = { cnt: 0, ped: 0, real: 0 };
+    MESES.forEach((m, idx) => {
+      const md = mesesData[idx] || { kgPedidos: 0, kgReales: 0, cantidad: 0 };
+      const avance = md.kgPedidos > 0 ? Math.round(md.kgReales / md.kgPedidos * 100) : 0;
+      const vacio = md.cantidad === 0;
+      html += `<tr style="${vacio?'color:#9ca3af':''}"><td><b>${m}</b></td><td class="num">${md.cantidad || '-'}</td><td class="num">${md.kgPedidos ? fmtNum(md.kgPedidos) : '-'}</td><td class="num">${md.kgReales ? fmtNum(md.kgReales) : '-'}</td><td class="num">${md.kgPedidos ? avance + '%' : '-'}</td></tr>`;
+      totRow.cnt += md.cantidad; totRow.ped += md.kgPedidos; totRow.real += md.kgReales;
+    });
+    const totAv = totRow.ped > 0 ? Math.round(totRow.real / totRow.ped * 100) : 0;
+    html += `<tr style="background:#f0fdf4;font-weight:700;border-top:2px solid #16a34a"><td>Total ${dashYear}</td><td class="num">${totRow.cnt}</td><td class="num">${fmtNum(totRow.ped)}</td><td class="num">${fmtNum(totRow.real)}</td><td class="num">${totAv}%</td></tr>`;
+    html += '</tbody>';
   }
-  html += '</tbody>';
   document.getElementById('monthTable').innerHTML = html;
 }
 
