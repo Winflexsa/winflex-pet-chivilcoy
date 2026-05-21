@@ -1438,15 +1438,35 @@ function openPedidoModal(id) {
               <select id="m_destino" onchange="toggleDestinoFields()">
                 <option value="T" ${(p.destinoCodigo||'T')==='T'?'selected':''}>🏭 Termoformado interno (Chivilcoy)</option>
                 <option value="L" ${p.destinoCodigo==='L'?'selected':''}>🔗 Laminado con PE (Lanús + Chivilcoy)</option>
-                <option value="V" ${p.destinoCodigo==='V'?'selected':''}>📦 Venta a cliente (rPET directo)</option>
+                <option value="V" ${p.destinoCodigo==='V'?'selected':''}>📦 Venta a cliente</option>
               </select>
               <div class="hint">Si es Laminado, se completan medidas de PET (Chivilcoy) y PE (Lanús) según la base de laminados.</div>
             </div>
+            <div class="field full"><label>🧪 Producto a fabricar *</label>
+              <select id="m_productoTipo" onchange="toggleProductoFields()">
+                <option value="rPET" ${(p.productoTipo||'rPET')==='rPET'?'selected':''}>rPET — Lámina PET reciclado</option>
+                <option value="vPET" ${p.productoTipo==='vPET'?'selected':''}>vPET — Lámina PET virgen</option>
+                <option value="PET L" ${p.productoTipo==='PET L'?'selected':''}>PET L — Lámina PET para laminar con PE</option>
+              </select>
+              <div class="hint">Para producto <b>PET L</b> el sistema fuerza Silicona = SIN y activa la lógica de laminado.</div>
+            </div>
+            <div class="field full"><label>📎 OC del cliente (PDF o imagen, opcional)</label>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <input type="file" id="m_ocFile" accept="application/pdf,image/*" style="font-size:12px;flex:1;min-width:200px" onchange="previewOCFile(this)">
+                ${p.ocAdjunto ? `
+                  <span style="font-size:12px;color:#16a34a">✓ ${p.ocAdjunto.nombre||'archivo cargado'} (${p.ocAdjunto.size?Math.round(p.ocAdjunto.size/1024)+' KB':''})</span>
+                  <button type="button" class="btn-ghost" onclick="verOCAdjunto('${p.id}')" style="font-size:12px">👁️ Ver</button>
+                  <button type="button" class="btn-ghost" style="font-size:12px;color:#dc2626" onclick="quitarOCAdjunto()">🗑️ Quitar</button>
+                ` : '<span style="font-size:11px;color:#6b7280">Sin adjunto</span>'}
+              </div>
+              <div class="hint">Adjuntá la OC firmada del cliente. Queda guardada y se puede consultar después desde el detalle del pedido.</div>
+              <div id="m_ocFilePreview" style="font-size:11px;color:#6b7280;margin-top:4px"></div>
+            </div>
           </div>
 
-          <!-- === BLOQUE LAMINADO (solo si destino=L) === -->
-          <div id="bloque_laminado" style="${p.destinoCodigo==='L'?'':'display:none'};background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;margin:14px 0">
-            <h4 style="margin:0 0 10px 0;font-size:13px;color:#92400e">🔗 Pedido de Laminado — autocompletar desde la base</h4>
+          <!-- === BLOQUE LAMINADO (solo si productoTipo=PET L) === -->
+          <div id="bloque_laminado" style="${p.productoTipo==='PET L'?'':'display:none'};background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;margin:14px 0">
+            <h4 style="margin:0 0 10px 0;font-size:13px;color:#92400e">🔗 PET L — autocompletar desde la base de laminados</h4>
             <div class="form-grid" style="grid-template-columns:2fr 1fr">
               <div class="field"><label>Buscar en base de laminados</label>
                 <select id="m_lamSelect" onchange="aplicarLaminadoSeleccionado()">
@@ -1523,16 +1543,93 @@ function openPedidoModal(id) {
     </div>`;
 
   // Llenar el preview del PET si ya hay un laminado seleccionado al abrir
-  if (p.destinoCodigo === 'L' && p.laminadoIdx !== undefined) {
+  if (p.productoTipo === 'PET L' && p.laminadoIdx !== undefined) {
     actualizarPreviewLaminado(p.laminadoIdx);
+  }
+  // Aplicar reglas de producto (forzar SIN silicona si es PET L, etc.)
+  if (typeof toggleProductoFields === 'function') {
+    setTimeout(toggleProductoFields, 0);
+  }
+  // Estado inicial del adjunto en memoria del modal
+  window._currentOCAdjunto = p.ocAdjunto || null;
+}
+
+// El bloque de laminado depende ahora del PRODUCTO (PET L), no del destino.
+// El destino solo cambia el mail/flujo, pero el bloque PET/PE es del producto.
+function toggleDestinoFields() {
+  // Mantenido por compatibilidad — pero el bloque ya no se controla por destino.
+  // Si más adelante hubiera campos específicos por destino, irían acá.
+}
+
+function toggleProductoFields() {
+  const prod = document.getElementById('m_productoTipo').value;
+  const bloque = document.getElementById('bloque_laminado');
+  if (bloque) bloque.style.display = (prod === 'PET L') ? '' : 'none';
+  // Si es PET L, forzar Silicona = SIN
+  if (prod === 'PET L') {
+    const sil = document.getElementById('m_silicona');
+    if (sil) {
+      sil.value = 'SIN';
+      sil.disabled = true;
+      sil.title = 'PET L siempre va SIN silicona';
+    }
+    if (typeof toggleSiliconaFields === 'function') toggleSiliconaFields();
+  } else {
+    const sil = document.getElementById('m_silicona');
+    if (sil) { sil.disabled = false; sil.title = ''; }
   }
 }
 
-// Mostrar/ocultar el bloque de laminado según el destino elegido
-function toggleDestinoFields() {
-  const dest = document.getElementById('m_destino').value;
-  const bloque = document.getElementById('bloque_laminado');
-  if (bloque) bloque.style.display = (dest === 'L') ? '' : 'none';
+// Preview de archivo adjunto (lectura local, se guarda en savePedido)
+function previewOCFile(input) {
+  const prev = document.getElementById('m_ocFilePreview');
+  const f = input.files && input.files[0];
+  if (!f) { prev.textContent = ''; window._currentOCAdjunto = null; return; }
+  // Límite razonable para JSONBin (que también guarda la BD principal): 4 MB
+  if (f.size > 4 * 1024 * 1024) {
+    prev.innerHTML = '<span style="color:#dc2626">⚠ Archivo muy grande (>4 MB). Reducilo o pasalo a otro formato.</span>';
+    input.value = '';
+    window._currentOCAdjunto = null;
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    window._currentOCAdjunto = {
+      nombre: f.name,
+      tipo: f.type,
+      size: f.size,
+      dataUrl: e.target.result // base64 data URL para guardar en JSON
+    };
+    prev.innerHTML = `<span style="color:#16a34a">✓ ${f.name} (${Math.round(f.size/1024)} KB) listo para guardar</span>`;
+  };
+  reader.onerror = () => {
+    prev.innerHTML = '<span style="color:#dc2626">⚠ Error al leer el archivo</span>';
+  };
+  reader.readAsDataURL(f);
+}
+
+function quitarOCAdjunto() {
+  if (!confirm('¿Quitar el adjunto? Se borra al guardar el pedido.')) return;
+  window._currentOCAdjunto = null;
+  const prev = document.getElementById('m_ocFilePreview');
+  if (prev) prev.innerHTML = '<span style="color:#dc2626">Adjunto quitado. Guardá el pedido para confirmar.</span>';
+}
+
+function verOCAdjunto(pedidoId) {
+  const p = DATA.pedidos.find(x => x.id === pedidoId);
+  if (!p || !p.ocAdjunto || !p.ocAdjunto.dataUrl) {
+    alert('No hay adjunto cargado para este pedido.');
+    return;
+  }
+  // Abrir en nueva pestaña
+  const w = window.open();
+  if (!w) { alert('Tu navegador bloqueó la ventana. Permití popups para este sitio.'); return; }
+  const isPdf = p.ocAdjunto.tipo === 'application/pdf';
+  if (isPdf) {
+    w.document.write(`<title>${p.ocAdjunto.nombre}</title><iframe src="${p.ocAdjunto.dataUrl}" style="border:none;width:100%;height:100vh"></iframe>`);
+  } else {
+    w.document.write(`<title>${p.ocAdjunto.nombre}</title><body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center"><img src="${p.ocAdjunto.dataUrl}" style="max-width:100%;max-height:100vh"></body>`);
+  }
 }
 
 // Al elegir un laminado en el desplegable, autocompletar PET (campos generales) + PE (campos del bloque)
@@ -1576,6 +1673,8 @@ function updateSumaFormula() {
 }
 function closeModal() {
   document.getElementById('modalContainer').innerHTML = '';
+  // Limpiar estado temporal del modal (adjunto OC en memoria)
+  window._currentOCAdjunto = undefined;
 }
 async function savePedido(id) {
   const existing = id ? DATA.pedidos.find(p => p.id === id) : null;
@@ -1599,10 +1698,20 @@ async function savePedido(id) {
     estadoWorkflow: document.getElementById('m_estado').value,
     observaciones: document.getElementById('m_obs').value,
     destinoCodigo: document.getElementById('m_destino') ? document.getElementById('m_destino').value : (existing?.destinoCodigo || 'T'),
+    productoTipo: document.getElementById('m_productoTipo') ? document.getElementById('m_productoTipo').value : (existing?.productoTipo || 'rPET'),
     codigoProducto: ''
   };
-  // Si el destino es Laminado (L), capturar también los datos de PE para Jonathan (Lanús)
-  if (data.destinoCodigo === 'L') {
+  // OC adjunto (PDF/imagen) — viene del input file, se guardó en window._currentOCAdjunto
+  // Si no se tocó el input, conservamos el adjunto previo del pedido.
+  if (window._currentOCAdjunto !== undefined) {
+    data.ocAdjunto = window._currentOCAdjunto; // puede ser null (quitado) o objeto
+  } else if (existing && existing.ocAdjunto) {
+    data.ocAdjunto = existing.ocAdjunto;
+  }
+  // Si el producto es PET L → activar lógica laminado (independientemente del destino)
+  // Esto cubre el caso "cliente pide PET L pero el destino es Venta directa", aunque lo habitual sea destino=L
+  const esPETL = data.productoTipo === 'PET L';
+  if (esPETL) {
     const lamSel = document.getElementById('m_lamSelect');
     data.laminadoIdx = (lamSel && lamSel.value !== '') ? +lamSel.value : (existing?.laminadoIdx);
     data.lamCilindro = +(document.getElementById('m_lamCilindro')?.value || 0);
@@ -1612,6 +1721,10 @@ async function savePedido(id) {
       peso:    +(document.getElementById('m_lamPePeso')?.value    || 0),
       metros:  +(document.getElementById('m_lamPeMts')?.value     || 0)
     };
+    // PET L siempre SIN silicona (regla del producto)
+    data.silicona = 'SIN';
+    data.siliconaPct = 0;
+    data.siliconaCaras = 0;
   }
   data.codigoProducto = (data.ancho && data.espesor) ? `${data.ancho}${data.espesor}` : '';
   // Silicona g/m² (legacy)
@@ -2678,8 +2791,10 @@ function renderDetailBody(p, bobinas) {
           <div class="detail-field"><span class="lbl">N° Solicitud</span><span class="val">${p.nroSolicitud||'-'}</span></div>
           <div class="detail-field"><span class="lbl">OP (código partida)</span><span class="val"><code>${p.op||p.partida||'-'}</code></span></div>
           <div class="detail-field"><span class="lbl">Destino</span><span class="val">${destino ? destino.codigo + ' — ' + destino.nombre : (p.destinoCodigo||'-')}</span></div>
+          <div class="detail-field"><span class="lbl">Producto</span><span class="val"><b>${p.productoTipo || '-'}</b></span></div>
           <div class="detail-field"><span class="lbl">Fecha ingreso</span><span class="val">${fmtFecha(p.fechaIngreso)||'-'}</span></div>
           <div class="detail-field"><span class="lbl">Fecha entrega</span><span class="val">${fmtFecha(p.fechaEntrega || p.fechaDespacho)||'-'}</span></div>
+          ${p.ocAdjunto ? `<div class="detail-field"><span class="lbl">OC adjunta</span><span class="val"><a href="#" onclick="event.preventDefault();verOCAdjunto('${p.id}')" style="color:#16a34a;text-decoration:underline">📎 ${p.ocAdjunto.nombre||'archivo'}</a> <span class="muted" style="font-size:11px">(${p.ocAdjunto.size?Math.round(p.ocAdjunto.size/1024)+' KB':''})</span></span></div>` : ''}
         </div>
       </div>
       <div class="detail-section">
@@ -2693,9 +2808,9 @@ function renderDetailBody(p, bobinas) {
           <div class="detail-field"><span class="lbl">Silicona</span><span class="val">${p.silicona||'-'} ${p.siliconaGramosM2 ? `(${p.siliconaGramosM2} g/m²)` : ''}</span></div>
         </div>
       </div>
-      ${p.destinoCodigo === 'L' ? `
+      ${(p.productoTipo === 'PET L' || p.destinoCodigo === 'L') ? `
       <div class="detail-section" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px">
-        <h3 style="color:#92400e">🔗 Laminado — desglose por planta</h3>
+        <h3 style="color:#92400e">🔗 PET L — desglose por planta</h3>
         ${(() => {
           const lam = (p.laminadoIdx !== undefined) ? DATA.catalogos.laminados?.[p.laminadoIdx] : null;
           return `
@@ -2772,17 +2887,17 @@ function renderDetailBody(p, bobinas) {
     // SECCIÓN 1: Enviar OC a Agustín (visible en estados OC, OP)
     if (estado === 'OC' || estado === 'OP') {
       const emailJonathan = DATA.config.emailJonathan || '';
-      const esLaminado = p.destinoCodigo === 'L';
-      const ccJonathan = (p.conoTipo === '3' && emailJonathan) || (esLaminado && emailJonathan);
-      const motivoCC = esLaminado
-        ? 'Como es <b>Laminado</b>, también se manda en copia a Jonathan con el detalle del PE que necesita.'
+      const esPETL = p.productoTipo === 'PET L' || p.destinoCodigo === 'L';
+      const ccJonathan = (p.conoTipo === '3' && emailJonathan) || (esPETL && emailJonathan);
+      const motivoCC = esPETL
+        ? 'Como es <b>PET L (para laminar)</b>, también se manda en copia a Jonathan con el detalle del PE que necesita aportar.'
         : 'Como es <b>cono 3</b>, también se manda en copia a Jonathan.';
       html += `
         <div class="detail-section">
           <h3>📧 Notificar a planta por la OC</h3>
           <p style="font-size:13px;color:#6b7280;margin-bottom:12px">Envía un mail a Agustín avisándole que entró este pedido para que revise y emita la OP.${ccJonathan ? ' ' + motivoCC : ''}</p>
           <div class="detail-field" style="margin-bottom:6px"><span class="lbl">Para</span><span class="val" style="font-size:13px">${emailAgustin || '<span class="muted">Sin configurar (cargar en Configuración → email Agustín)</span>'}</span></div>
-          ${ccJonathan ? `<div class="detail-field" style="margin-bottom:12px"><span class="lbl">CC ${esLaminado?'(laminado)':'(cono 3)'}</span><span class="val" style="font-size:13px">${emailJonathan}</span></div>` : ''}
+          ${ccJonathan ? `<div class="detail-field" style="margin-bottom:12px"><span class="lbl">CC ${esPETL?'(PET L)':'(cono 3)'}</span><span class="val" style="font-size:13px">${emailJonathan}</span></div>` : ''}
           <div class="actions-row">
             <button class="btn-action ${estado === 'OC' ? 'primary' : ''}" onclick="enviarOCmail('${p.id}')" ${!emailAgustin ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>📧 Enviar OC a Agustín${ccJonathan ? ' + CC Jonathan' : ''}</button>
             <button class="btn-action" onclick="copiarTextoOC('${p.id}')">📋 Copiar texto</button>
@@ -3274,54 +3389,75 @@ function calcDiametroBobina(kgBobina, anchoMm) {
 // MAIL OC a Agustín (interno, le avisa que entró un pedido)
 // ============================================================
 function buildOCBody(p) {
-  // ====== CASO LAMINADO ======
-  // Mail va a Agustín (PET-Chivilcoy) y Jonathan (PE-Lanús) con desglose completo.
-  // IMPORTANTE: usamos solo ASCII para que el URL mailto no supere los ~2000 chars de Outlook/Mail clásico.
-  // Si usáramos emojis o líneas con ═══, el URL se inflaba a 5500+ chars y muchos clientes lo cortaban.
-  if (p.destinoCodigo === 'L') {
+  // ====== CASO PET L (producto Lámina PET para laminar con PE) ======
+  // El mail va a Agustín (PET-Chivilcoy) y Jonathan (PE-Lanús) con desglose:
+  //   1) Producto final (lo que pide el cliente, según base de laminados)
+  //   2) PET necesario (para Agustín)
+  //   3) PE necesario (para Jonathan, estimado a partir de la proporción de la base)
+  // IMPORTANTE: solo ASCII para que el URL mailto no supere los ~2000 chars de Outlook clásico.
+  const esPETL = p.productoTipo === 'PET L' || p.destinoCodigo === 'L';
+  if (esPETL) {
     const lam = (p.laminadoIdx !== undefined) ? (DATA.catalogos.laminados || [])[p.laminadoIdx] : null;
-    const pf = lam?.producto || {};
-    const pet = { ancho: p.ancho||0, espesor: p.espesor||0, peso: p.kgPorBobina6||p.kgPorBobina||0, metros: (lam?.pet?.metros||0) };
-    const pe = p.lamPe || lam?.pe || { ancho:0, espesor:0, peso:0, metros:0 };
-    // Estimar kg de PE necesarios usando la relación de pesos PET:PE de la base
+    const pf  = lam?.producto || {};
+    // PET: lo que produce Agustín. Tomamos del pedido (campos editables) y completamos desde la base.
+    const pet = {
+      ancho:   p.ancho   || lam?.pet?.ancho   || 0,
+      espesor: p.espesor || lam?.pet?.espesor || 0,
+      peso:    p.kgPorBobina6 || p.kgPorBobina || lam?.pet?.peso || 0,
+      metros:  lam?.pet?.metros || 0
+    };
+    // PE: lo que necesita Jonathan. Tomamos del pedido (lamPe) y completamos desde la base.
+    const pe = {
+      ancho:   p.lamPe?.ancho   || lam?.pe?.ancho   || 0,
+      espesor: p.lamPe?.espesor || lam?.pe?.espesor || 0,
+      peso:    p.lamPe?.peso    || lam?.pe?.peso    || 0,
+      metros:  p.lamPe?.metros  || lam?.pe?.metros  || 0
+    };
+    // Kg de PE necesarios = kg PET pedidos × (peso_PE_por_bobina / peso_PET_por_bobina).
+    // Esa relación sale de la base de laminados y representa cuántos kg de PE consume cada kg de PET.
     let kgPENecesarios = 0;
+    let proporcion = 0;
     if (pet.peso > 0 && pe.peso > 0) {
-      kgPENecesarios = Math.round((+p.kgPedidos || 0) * (pe.peso / pet.peso));
+      proporcion = pe.peso / pet.peso;
+      kgPENecesarios = Math.round((+p.kgPedidos || 0) * proporcion);
     }
-    const sil = p.silicona === 'CON'
-      ? `CON ${p.siliconaPct||0}%${p.siliconaCaras?' · '+p.siliconaCaras+(p.siliconaCaras==2?' caras':' cara'):''}`
-      : (p.silicona||'-');
+    // Kg estimados de PRODUCTO FINAL (info contextual), usando peso del producto final si está
+    let kgProductoFinal = 0;
+    if (pet.peso > 0 && pf.peso > 0) {
+      kgProductoFinal = Math.round((+p.kgPedidos || 0) * (pf.peso / pet.peso));
+    }
     return `Hola Agustín y Jonathan,
 
-Entró un pedido de LAMINADO. Abajo el detalle de cada planta.
+Entró un pedido de PET L (PET para laminar con PE). Abajo el detalle.
 
 --- PEDIDO ---
 Cliente:         ${p.cliente}
 OC cliente:      ${p.oc || '-'}
-Cantidad total:  ${fmtNum(p.kgPedidos)} kg (PET a producir)
 Fecha entrega:   ${fmtFecha(p.fechaEntrega) || 'a confirmar'}
 ${lam ? 'Base laminado:   ' + lam.cliente + (lam.nota ? '  (' + lam.nota + ')' : '') : ''}
+${p.ocAdjunto ? 'Adjunto OC:      si (ver detalle del pedido en sistema)' : ''}
 
---- PRODUCTO FINAL (lo que pide el cliente) ---
+--- 1) PRODUCTO FINAL (lo que pide el cliente) ---
 Ancho:           ${pf.ancho || '-'} mm
 Espesor:         ${pf.espesor || '-'} um
 Peso por bobina: ${pf.peso || '-'} kg
+${kgProductoFinal > 0 ? 'Kg estimados:    ' + fmtNum(kgProductoFinal) + ' kg' : ''}
 
---- PARA AGUSTIN: Lamina PET (Chivilcoy) ---
+--- 2) PET NECESARIO (para Agustin - Chivilcoy) ---
 Ancho:           ${pet.ancho || '-'} mm
 Espesor:         ${pet.espesor || '-'} um
 Color:           ${p.color || '-'}
-Silicona:        ${sil}
+Silicona:        SIN  (PET L siempre va sin silicona)
 Kg por bobina:   ${pet.peso || '-'} kg
 Mts por bobina:  ${pet.metros || '-'} mts
-Kg a producir:   ${fmtNum(p.kgPedidos)} kg
+KG A PRODUCIR:   ${fmtNum(p.kgPedidos)} kg
 
---- PARA JONATHAN: Lamina PE (Lanus) ---
+--- 3) PE NECESARIO (para Jonathan - Lanus) ---
 Ancho:           ${pe.ancho || '-'} mm
 Espesor:         ${pe.espesor || '-'} um
 Kg por bobina:   ${pe.peso || '-'} kg
 Mts por bobina:  ${pe.metros || '-'} mts
-${kgPENecesarios > 0 ? 'Kg estimados:    ' + fmtNum(kgPENecesarios) + ' kg (proporcion ' + (pe.peso/pet.peso).toFixed(2) + ')' : 'Kg estimados:    a calcular segun consumo'}
+${kgPENecesarios > 0 ? 'KG A APORTAR:    ' + fmtNum(kgPENecesarios) + ' kg  (relacion PE/PET = ' + proporcion.toFixed(2) + ')' : 'KG A APORTAR:    a calcular segun consumo'}
 
 --- EQUIPO ---
 Cilindro laminador: ${p.lamCilindro || lam?.cilindro || '-'}
@@ -3332,7 +3468,7 @@ Saludos,
 Matias`;
   }
 
-  // ====== CASO TERMOFORMADO / VENTA (sin cambios) ======
+  // ====== CASO TERMOFORMADO / VENTA (rPET o vPET) ======
   // Silicona pretty
   let silTxt = p.silicona || '-';
   if (p.silicona === 'CON') silTxt = `CON ${p.siliconaPct||0}%${p.siliconaCaras?' · '+p.siliconaCaras+(p.siliconaCaras==2?' caras':' cara'):''}`;
@@ -3340,13 +3476,14 @@ Matias`;
   let conoTxt = (p.conoTipo||'6')==='3' ? 'Cono 3" (REBOBINAR en Lanús)' : 'Cono 6"';
   let kgBobTxt = `${p.kgPorBobina6||p.kgPorBobina||0} kg`;
   if (p.conoTipo === '3') kgBobTxt += ` (final cono 3: ${p.kgFinalCono3||0} kg)`;
+  const prodTxt = p.productoTipo ? `Lámina ${p.productoTipo}` : 'Lámina PET';
   return `Hola Agustín,
 
 Entró el siguiente pedido:
 
 • Cliente:         ${p.cliente}
 • OC cliente:      ${p.oc || '-'}
-• Producto:        Lámina PET ${p.color || ''}
+• Producto:        ${prodTxt} ${p.color || ''}
 • Ancho:           ${p.ancho || 0} mm
 • Espesor:         ${p.espesor || 0} mic
 • Silicona:        ${silTxt}
@@ -3371,14 +3508,14 @@ function enviarOCmail(id) {
     switchTab('config');
     return;
   }
-  // Subject y CC dependen del destino
+  // Subject y CC dependen del producto y destino.
+  // PET L o destino Laminado → CC a Jonathan automáticamente (necesita el detalle del PE).
   let subject, ccList = [];
-  const esLaminado = p.destinoCodigo === 'L';
-  if (esLaminado) {
-    // Laminado: incluir Jonathan como CC (no destinatario principal porque la coordinación principal es Agustín)
+  const esPETL = p.productoTipo === 'PET L' || p.destinoCodigo === 'L';
+  if (esPETL) {
     const lam = (p.laminadoIdx !== undefined) ? (DATA.catalogos.laminados || [])[p.laminadoIdx] : null;
     const refLam = lam?.cliente ? ` [${lam.cliente}]` : '';
-    subject = `Nuevo pedido LAMINADO ${p.cliente}${p.oc?' · '+p.oc:''}${refLam} — ${fmtNum(p.kgPedidos)} kg`;
+    subject = `Nuevo pedido PET L ${p.cliente}${p.oc?' · '+p.oc:''}${refLam} — ${fmtNum(p.kgPedidos)} kg PET`;
     if (DATA.config.emailJonathan) ccList.push(DATA.config.emailJonathan.trim());
   } else {
     subject = `Nuevo pedido ${p.cliente}${p.oc?' · '+p.oc:''} — ${p.ancho||'-'}×${p.espesor||'-'} · ${fmtNum(p.kgPedidos)} kg${p.conoTipo==='3'?' · CONO 3':''}`;
