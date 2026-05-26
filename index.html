@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v3.17-CLEAN</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v3.18-AUTOCLEAN</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -722,28 +722,7 @@ async function loadData() {
       if (r.ok) {
         const j = await r.json();
         DATA = migrateLegacyData(j.record);
-
-        // ============================================================
-        // AUTO-LIMPIEZA: sacar adjuntos pesados del bin (one-shot)
-        // Si detecto ocAdjunto.dataUrl en algún pedido o config.logoBase64,
-        // los borro y marco como dirty para subir al próximo save.
-        // ============================================================
-        let limpieza = { adjuntos: 0, logo: 0 };
-        (DATA.pedidos || []).forEach(p => {
-          if (p.ocAdjunto) {
-            if (p.ocAdjunto.dataUrl) limpieza.adjuntos++;
-            delete p.ocAdjunto;
-          }
-        });
-        if (DATA.config && DATA.config.logoBase64) {
-          limpieza.logo = DATA.config.logoBase64.length;
-          DATA.config.logoBase64 = '';
-        }
-        if (limpieza.adjuntos > 0 || limpieza.logo > 0) {
-          console.log('[loadData] Auto-limpieza: ' + limpieza.adjuntos + ' adjuntos + ' + Math.round(limpieza.logo/1024) + ' KB logo. Subiendo al bin...');
-          // Marcar para subir al próximo save (que va a ser auto)
-          window._needsAutoCleanup = true;
-        }
+        autoLimpiarAdjuntos(DATA); // Auto-limpieza después de cargar del remoto
         // Set de pedidos que tienen bobinas en el remoto → solo esos se recalculan.
         // Los que no tienen bobinas mantienen su kgReales histórico (cargado manualmente desde Excel).
         const pedConBobinas = new Set((DATA.producciones || []).map(b => b.pedidoId).filter(Boolean));
@@ -776,6 +755,7 @@ async function loadData() {
   if (cached) {
     try {
       DATA = migrateLegacyData(JSON.parse(cached));
+      autoLimpiarAdjuntos(DATA); // Auto-limpieza después de cargar del cache
       setSyncStatus(creds ? 'Offline (cache)' : 'Sin credenciales — Configuración', creds ? 'error' : 'syncing');
       console.log('[loadData] Usando cache local con', (DATA.pedidos||[]).length, 'pedidos');
       return DATA;
@@ -824,6 +804,33 @@ function compactDeep(obj) {
     return out;
   }
   return obj;
+}
+
+// ============================================================
+// AUTO-LIMPIEZA: borra todos los adjuntos pesados (OC en base64 + logo)
+// Se llama después de cargar DATA (sea desde remoto o cache local).
+// Si detecta algo para limpiar, setea window._needsAutoCleanup = true
+// para que initApp() haga el PUT al bin con la versión limpia.
+// ============================================================
+function autoLimpiarAdjuntos(data) {
+  if (!data) return;
+  let limpieza = { adjuntos: 0, logo: 0 };
+  (data.pedidos || []).forEach(p => {
+    if (p.ocAdjunto) {
+      if (p.ocAdjunto.dataUrl) limpieza.adjuntos++;
+      delete p.ocAdjunto;
+    }
+  });
+  if (data.config && data.config.logoBase64) {
+    limpieza.logo = data.config.logoBase64.length;
+    data.config.logoBase64 = '';
+  }
+  if (limpieza.adjuntos > 0 || limpieza.logo > 0) {
+    console.log('[autoLimpiarAdjuntos] Limpieza: ' + limpieza.adjuntos + ' adjuntos + ' + Math.round(limpieza.logo/1024) + ' KB logo');
+    window._needsAutoCleanup = true;
+    window._cleanupInfo = limpieza;
+  }
+  return limpieza;
 }
 
 function mergeArrayPorId(remoteArr, localArr) {
@@ -1537,15 +1544,17 @@ function initApp() {
   // Auto-limpieza: si en loadData detectamos adjuntos/logo, subir el bin limpio ahora
   if (window._needsAutoCleanup) {
     window._needsAutoCleanup = false;
+    const info = window._cleanupInfo || {};
     setTimeout(async () => {
-      toast('Limpiando bin de adjuntos pesados...', 'success');
+      toast(`Limpiando bin: ${info.adjuntos||0} adjuntos + ${Math.round((info.logo||0)/1024)} KB logo...`, 'success');
       try {
         await saveDataConPurga();
-        toast('Bin limpio. Sync funcionando.', 'success');
+        toast('✓ Bin limpio. Sync funcionando.', 'success');
       } catch (e) {
         console.error('Auto-limpieza falló:', e);
+        toast('Error limpiando bin: ' + e.message, 'error');
       }
-    }, 800);
+    }, 1200);
   }
 }
 function switchTab(name) {
