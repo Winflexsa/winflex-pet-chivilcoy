@@ -464,6 +464,154 @@ async function crearGistInicial(token, data) {
   return { gistId: j.id, url: j.html_url, sizeKB };
 }
 
+// Renderizar la sección Gist en Configuración, según si está conectado o no
+function renderGistSection() {
+  const status = document.getElementById('gistStatusBox');
+  const setup = document.getElementById('gistSetupBox');
+  if (!status || !setup) return;
+
+  const gistCreds = getGistCredentials();
+  if (gistCreds) {
+    // CONECTADO — mostrar estado + opciones
+    const tokenPreview = gistCreds.token.substring(0, 8) + '...' + gistCreds.token.substring(gistCreds.token.length - 4);
+    status.innerHTML = `
+      <div style="background:white;padding:14px;border-radius:8px;border:2px solid #16a34a;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="font-size:24px">✓</div>
+          <div style="font-weight:700;color:#15803d;font-size:15px">Conectado a GitHub Gist</div>
+        </div>
+        <div style="font-size:13px;line-height:1.7;color:#374151">
+          <b>Gist ID:</b><br>
+          <div style="display:flex;gap:6px;align-items:center;margin:4px 0 10px">
+            <code id="gistIdDisplay" style="background:#f3f4f6;padding:6px 10px;border-radius:4px;font-size:12px;flex:1;word-break:break-all">${gistCreds.gistId}</code>
+            <button class="btn-ghost" onclick="copiarAlPortapapeles('${gistCreds.gistId}', this)" style="font-size:11px;padding:6px 10px">📋 Copiar</button>
+          </div>
+          <b>Token:</b> <code style="background:#f3f4f6;padding:2px 6px;border-radius:3px;font-size:11px">${tokenPreview}</code><br>
+          <b>Ver el Gist en GitHub:</b> <a href="https://gist.github.com/${gistCreds.gistId}" target="_blank" style="color:#0891b2">abrir →</a>
+        </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">
+          <button class="btn-ghost" onclick="copiarCredsCompletas()" style="font-size:12px;background:#dbeafe;color:#1e40af;font-weight:600">📋 Copiar credenciales completas (para mandar al equipo)</button>
+          <button class="btn-ghost" onclick="desconectarGist()" style="font-size:12px;color:#dc2626;margin-left:8px">🔌 Desconectar</button>
+        </div>
+      </div>
+    `;
+    setup.innerHTML = '';
+  } else {
+    // NO CONECTADO — mostrar dos opciones (crear nuevo o conectarse a uno existente)
+    status.innerHTML = `
+      <p style="font-size:13px;color:#374151;margin-bottom:10px"><b>Solución sin límite de tamaño</b> (recomendado vs JSONBin que tiene 100 KB).<br>
+      ✅ Free e ilimitado  ·  ✅ Privado  ·  ✅ Versionado automático  ·  ✅ Estable</p>
+    `;
+    setup.innerHTML = `
+      <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid #d1fae5">
+        <button onclick="gistSetupTab='nuevo';renderGistSection()" style="padding:8px 16px;border:none;background:${(window.gistSetupTab||'nuevo')==='nuevo'?'#16a34a':'#f0fdf4'};color:${(window.gistSetupTab||'nuevo')==='nuevo'?'white':'#15803d'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">🆕 Crear Gist nuevo</button>
+        <button onclick="gistSetupTab='existente';renderGistSection()" style="padding:8px 16px;border:none;background:${window.gistSetupTab==='existente'?'#16a34a':'#f0fdf4'};color:${window.gistSetupTab==='existente'?'white':'#15803d'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">🔗 Conectarme a un Gist existente</button>
+      </div>
+      ${(window.gistSetupTab||'nuevo')==='nuevo' ? renderGistNuevoUI() : renderGistExistenteUI()}
+    `;
+  }
+}
+
+function renderGistNuevoUI() {
+  return `
+    <div style="background:white;padding:14px;border-radius:8px;border:1px solid #d1fae5">
+      <p style="font-size:13px;font-weight:700;color:#15803d;margin-bottom:6px">Para vos (admin / primera vez)</p>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:10px">Esto crea un Gist PRIVADO nuevo en tu cuenta de GitHub con tus datos actuales.</p>
+
+      <p style="font-size:13px;color:#374151;margin-bottom:6px"><b>Paso 1:</b> Generá un Personal Access Token en GitHub:</p>
+      <a href="https://github.com/settings/tokens/new?scopes=gist&description=Winflex+PET+Chivilcoy" target="_blank" style="display:inline-block;color:#0891b2;font-weight:600;text-decoration:underline;font-size:13px;margin-bottom:8px">👉 Generar token en GitHub</a>
+      <p style="font-size:11px;color:#6b7280;margin-bottom:14px">Loguéate, ya viene marcada la casilla "gist". Apretá "Generate token" y copiá el token (empieza con ghp_).</p>
+
+      <p style="font-size:13px;color:#374151;margin-bottom:6px"><b>Paso 2:</b> Pegá el token y migrá:</p>
+      <input type="password" id="gistTokenInput" placeholder="ghp_... o github_pat_..." style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-family:monospace;font-size:13px;margin-bottom:10px">
+      <button class="btn btn-pri" style="background:#16a34a;font-size:14px;padding:10px 20px" onclick="ejecutarMigracionGist()">🚀 Crear Gist y migrar datos</button>
+      <div id="migrarGistStatus" style="margin-top:14px;font-size:13px"></div>
+    </div>
+  `;
+}
+
+function renderGistExistenteUI() {
+  return `
+    <div style="background:white;padding:14px;border-radius:8px;border:1px solid #d1fae5">
+      <p style="font-size:13px;font-weight:700;color:#15803d;margin-bottom:6px">Para Mirta / Jonathan / Agustín (conectarse al Gist que creó el admin)</p>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:14px">Pedile al admin (Matías) el Gist ID y el token. Después pegalos acá y conectate.</p>
+
+      <p style="font-size:13px;color:#374151;margin-bottom:6px"><b>Gist ID</b> (el admin te lo pasa):</p>
+      <input type="text" id="gistIdConectar" placeholder="07265bb8a6c36ddcfffa6a7441095eb4" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-family:monospace;font-size:13px;margin-bottom:10px">
+
+      <p style="font-size:13px;color:#374151;margin-bottom:6px"><b>Token</b> (el admin te lo pasa):</p>
+      <input type="password" id="gistTokenConectar" placeholder="ghp_..." style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-family:monospace;font-size:13px;margin-bottom:10px">
+
+      <button class="btn btn-pri" style="background:#16a34a;font-size:14px;padding:10px 20px" onclick="conectarGistExistente()">🔗 Conectarme al Gist</button>
+      <div id="conectarGistStatus" style="margin-top:14px;font-size:13px"></div>
+    </div>
+  `;
+}
+
+async function conectarGistExistente() {
+  const gistId = document.getElementById('gistIdConectar').value.trim();
+  const token = document.getElementById('gistTokenConectar').value.trim();
+  const st = document.getElementById('conectarGistStatus');
+  if (!gistId) { st.innerHTML = '<span style="color:#dc2626">Pegá el Gist ID</span>'; return; }
+  if (!token) { st.innerHTML = '<span style="color:#dc2626">Pegá el Token</span>'; return; }
+
+  st.innerHTML = '<span style="color:#0891b2">Probando conexión...</span>';
+  try {
+    const r = await fetch('https://api.github.com/gists/' + gistId, {
+      headers: {
+        'Authorization': 'token ' + token,
+        'Accept': 'application/vnd.github+json'
+      }
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      st.innerHTML = `<span style="color:#dc2626"><b>Error HTTP ${r.status}</b>: ${txt.substring(0,200)}<br>Verificá que el Gist ID y el Token sean correctos.</span>`;
+      return;
+    }
+    const j = await r.json();
+    const f = j.files && j.files['winflex.json'];
+    if (!f) {
+      st.innerHTML = '<span style="color:#dc2626">El Gist existe pero no tiene un archivo "winflex.json". Verificá que sea el Gist correcto.</span>';
+      return;
+    }
+    setGistCredentials(gistId, token);
+    st.innerHTML = `<div style="background:#dcfce7;border:2px solid #16a34a;padding:14px;border-radius:8px;color:#15803d">
+      <div style="font-weight:700;font-size:16px;margin-bottom:10px">✓ Conexión exitosa</div>
+      Conectado al Gist con ${Math.round(f.content.length/1024)} KB de datos.<br>
+      Recargando en 3 segundos...
+    </div>`;
+    setTimeout(() => location.reload(), 3000);
+  } catch (e) {
+    st.innerHTML = '<span style="color:#dc2626">Error de red: ' + e.message + '</span>';
+  }
+}
+
+function copiarAlPortapapeles(texto, btn) {
+  navigator.clipboard.writeText(texto).then(() => {
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copiado';
+      btn.style.background = '#dcfce7';
+      setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 1500);
+    }
+  });
+}
+
+function copiarCredsCompletas() {
+  const c = getGistCredentials();
+  if (!c) return;
+  const text = `Para conectarte al Gist de Winflex PET:\n\nGist ID: ${c.gistId}\nToken: ${c.token}\n\nEn la app andá a Configuración → Sincronización GitHub Gist → "🔗 Conectarme a un Gist existente"`;
+  navigator.clipboard.writeText(text).then(() => {
+    alert('Credenciales copiadas al portapapeles.\n\nPodés pegárselas a Mirta/Jonathan/Agustín por WhatsApp/mail.');
+  });
+}
+
+function desconectarGist() {
+  if (!confirm('¿Desconectar de GitHub Gist?\n\nLa app va a volver a usar JSONBin (si tenés credenciales configuradas) o a quedarse offline.\n\n¿Continuar?')) return;
+  localStorage.removeItem('winflex_gist_credentials');
+  location.reload();
+}
+
 async function ejecutarMigracionGist() {
   const tokenInput = document.getElementById('gistTokenInput');
   const st = document.getElementById('migrarGistStatus');
@@ -5970,37 +6118,9 @@ function renderConfig() {
     </div>
 
     <div class="detail-section" style="border:3px solid #16a34a;background:#f0fdf4">
-      <h3>🚀 Migrar a GitHub Gist (RECOMENDADO — sin límite de tamaño)</h3>
-      <p style="font-size:13px;color:#15803d;margin-bottom:10px"><b>Solución definitiva</b> al problema de JSONBin. Pasamos a usar GitHub Gist que es:<br>
-      ✅ Sin límite de 100 KB (acepta hasta varios MB)<br>
-      ✅ Free e ilimitado<br>
-      ✅ Versionado automático (cada save crea un commit)<br>
-      ✅ Privado (Gist secreto, solo vos lo ves)<br>
-      ✅ Estable (GitHub no se cae como Cloudflare/JSONBin)</p>
-
-      <div style="background:white;padding:14px;border-radius:8px;border:1px solid #d1fae5;margin-bottom:10px">
-        <p style="font-size:13px;font-weight:700;color:#15803d;margin-bottom:6px">Paso 1: Generar Personal Access Token en GitHub</p>
-        <p style="font-size:13px;color:#374151;margin-bottom:8px">
-          Apretá este link (te abre GitHub en otra pestaña, ya viene preconfigurado):<br>
-          <a href="https://github.com/settings/tokens/new?scopes=gist&description=Winflex+PET+Chivilcoy" target="_blank" style="color:#0891b2;font-weight:600;text-decoration:underline;font-size:14px">👉 Generar token en GitHub</a>
-        </p>
-        <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
-          Tenés que:<br>
-          1. Loguearte en GitHub (con la misma cuenta de winflexsa)<br>
-          2. Ya viene marcada la casilla <b>"gist"</b> — no cambies nada<br>
-          3. Opcional: cambiá "Expiration" a "No expiration" si querés que no expire<br>
-          4. Apretá <b>"Generate token"</b> abajo<br>
-          5. Copiá el token (empieza con <code>ghp_...</code> o <code>github_pat_...</code>)
-        </p>
-      </div>
-
-      <div style="background:white;padding:14px;border-radius:8px;border:1px solid #d1fae5;margin-bottom:10px">
-        <p style="font-size:13px;font-weight:700;color:#15803d;margin-bottom:6px">Paso 2: Pegá el token acá</p>
-        <input type="password" id="gistTokenInput" placeholder="ghp_... o github_pat_..." style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-family:monospace;font-size:13px">
-      </div>
-
-      <button class="btn btn-pri" style="background:#16a34a;font-size:14px;padding:10px 20px" onclick="ejecutarMigracionGist()">🚀 Migrar a GitHub Gist</button>
-      <div id="migrarGistStatus" style="margin-top:14px;font-size:13px"></div>
+      <h3>🚀 Sincronización GitHub Gist</h3>
+      <div id="gistStatusBox"></div>
+      <div id="gistSetupBox"></div>
     </div>
 
     <div class="detail-section" style="border:2px solid #dc2626;background:#fef2f2">
@@ -6104,7 +6224,7 @@ function renderConfig() {
     </div>
   `;
   // Render transportistas list (separated for dynamism)
-  setTimeout(() => renderTransportistasList(), 50);
+  setTimeout(() => { renderTransportistasList(); renderGistSection(); }, 50);
 }
 
 async function saveEmailAgustin() {
