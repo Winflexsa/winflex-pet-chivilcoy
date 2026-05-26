@@ -2177,11 +2177,17 @@ function limpiarDeletedAntiguos() {
 
 // Modal de credenciales para la tablet (Gist por defecto, JSONBin como avanzado)
 function openCredentialsTablet(isFirstRun) {
+  // Detectar si tenía JSONBin viejo (caso típico: la tablet venía sincronizando con JSONBin)
+  const teniaJSONBin = !!getCredentials();
+  const msgIntro = teniaJSONBin
+    ? `<p style="font-size:13px;color:#92400e;background:#fffbeb;padding:10px;border-radius:6px;margin-bottom:14px"><b>Nueva sincronización</b>. Esta tablet venía usando JSONBin pero ahora migramos a <b>GitHub Gist</b> (es más estable y no tiene límite de tamaño).<br><br>Pedile al admin (Matías) el <b>Gist ID</b> y el <b>Token</b> y pegalos abajo.</p>`
+    : `<p style="font-size:13px;color:#92400e;background:#fffbeb;padding:10px;border-radius:6px;margin-bottom:14px">Primera vez en esta tablet. Pedile al admin (Matías) el <b>Gist ID</b> y el <b>Token</b>, y pegalos abajo.</p>`;
+
   document.getElementById('modalContainer').innerHTML = `
     <div class="modal-bg">
       <div class="modal" style="max-width:520px">
-        <h3>🚀 Conectar la tablet</h3>
-        ${isFirstRun ? `<p style="font-size:13px;color:#92400e;background:#fffbeb;padding:10px;border-radius:6px;margin-bottom:14px">Primera vez en esta tablet. Pedile al admin (Matías) el <b>Gist ID</b> y el <b>Token</b>, y pegalos abajo.</p>` : ''}
+        <h3>🚀 Conectar la tablet a GitHub Gist</h3>
+        ${isFirstRun ? msgIntro : ''}
 
         <div class="field">
           <label>Gist ID</label>
@@ -2227,6 +2233,8 @@ async function saveGistCredsTablet() {
       return;
     }
     setGistCredentials(gistId, token);
+    // Limpiar credenciales JSONBin viejas si las había
+    localStorage.removeItem(CRED_KEY);
     st.innerHTML = '<span style="color:#16a34a">✓ Conectado. Cargando datos...</span>';
     closeModal();
     toast('Tablet conectada al Gist', 'success');
@@ -2372,9 +2380,10 @@ function fmt(n) {
 }
 
 // ============================================================
-// INIT
+// INIT — siempre forzar Gist si no está configurado
+// (las credenciales JSONBin viejas ya no sirven, hay que migrar)
 // ============================================================
-if (!getGistCredentials() && !getCredentials()) {
+if (!getGistCredentials()) {
   openCredentialsTablet(true);
 } else {
   loadData();
