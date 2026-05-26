@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#7c3aed;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v3.19-MIGRATE</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#0891b2;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v3.20-BACKUP</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -809,38 +809,35 @@ async function migrarABinNuevo() {
   if (sizeKB > 100) {
     if (!confirm(`⚠️ El payload pesa ${sizeKB} KB (> 100 KB).\n\nEl bin nuevo se va a crear, pero JSONBin Free puede no aceptarlo si pasa los 100 KB.\n\nRecomendado: primero apretá "Purgar histórico" abajo para reducir el tamaño, y después migrá.\n\n¿Intentar igualmente?`)) return;
   } else {
-    if (!confirm(`Crear bin NUEVO con tus datos limpios (${sizeKB} KB)?\n\nVoy a:\n1) Crear un bin nuevo en JSONBin con tu master key actual\n2) Subir todos tus datos (pedidos, producciones, registros, remitos, catálogos, config)\n3) Cambiar las credenciales de la app para usar el bin nuevo\n4) Recargar la página\n\nEl bin viejo queda sin usar (podés borrarlo después).\n\n¿Continuar?`)) return;
+    if (!confirm(`Crear bin NUEVO con tus datos limpios (${sizeKB} KB)?\n\n¿Continuar?`)) return;
   }
 
-  st.innerHTML = '<span style="color:#0891b2">Creando bin nuevo...</span>';
+  st.innerHTML = '<span style="color:#0891b2">Creando bin nuevo... (esto puede tardar 5-10 segundos)</span>';
+  console.log('[migrarABinNuevo] POST a /v3/b con ' + sizeKB + ' KB');
 
   try {
     // POST a /v3/b para crear bin nuevo
+    // NOTA: removí X-Bin-Name y X-Bin-Private para minimizar headers en preflight CORS
     const r = await fetch('https://api.jsonbin.io/v3/b', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Master-Key': creds.masterKey,
-        'X-Bin-Name': 'Winflex PET Chivilcoy (' + new Date().toISOString().slice(0,10) + ')',
-        'X-Bin-Private': 'true'
+        'X-Master-Key': creds.masterKey
       },
       body: bodyStr
     });
 
+    console.log('[migrarABinNuevo] Respuesta:', r.status, r.statusText);
+
     if (r.ok) {
       const j = await r.json();
-      // JSONBin devuelve: { record: {...}, metadata: { id, createdAt, ... } }
       const newBinId = (j.metadata && j.metadata.id) || (j.record && j.record._id);
       if (!newBinId) {
         st.innerHTML = '<span style="color:#dc2626">Respuesta de JSONBin sin bin ID: ' + JSON.stringify(j).substring(0, 200) + '</span>';
         return;
       }
 
-      // Guardar credenciales nuevas en localStorage
-      const newCreds = {
-        binId: newBinId,
-        masterKey: creds.masterKey
-      };
+      const newCreds = { binId: newBinId, masterKey: creds.masterKey };
       localStorage.setItem('winflex_jsonbin_credentials', JSON.stringify(newCreds));
 
       st.innerHTML = `<div style="background:#dcfce7;border:1px solid #16a34a;padding:14px;border-radius:8px;color:#15803d">
@@ -855,17 +852,58 @@ async function migrarABinNuevo() {
       </div>`;
 
       console.log('[migrarABinNuevo] Éxito. Nuevo bin:', newBinId, 'Bin viejo:', creds.binId);
-      // Esperar para que el usuario lea el mensaje
       setTimeout(() => location.reload(), 5000);
     } else {
       let txt = '';
       try { txt = await r.text(); } catch(e){}
-      st.innerHTML = `<span style="color:#dc2626"><b>Error HTTP ${r.status}</b>: ${txt}</span>`;
+      st.innerHTML = `<div style="background:#fee2e2;padding:14px;border-radius:8px;color:#991b1b">
+        <b>Error HTTP ${r.status}</b>: ${txt || r.statusText}<br><br>
+        ${r.status === 401 ? 'El master key no es válido. Verificá en "Cambiar credenciales".' : ''}
+        ${r.status === 403 ? 'Acceso prohibido. Tu cuenta JSONBin puede estar suspendida o sin cuota.' : ''}
+        ${r.status === 413 ? 'Payload demasiado grande. Reducí el tamaño y reintentá.' : ''}
+        <br>Probá el botón "Descargar JSON" abajo para tener un backup.
+      </div>`;
       console.error('[migrarABinNuevo] HTTP error:', r.status, txt);
     }
   } catch (e) {
-    console.error('[migrarABinNuevo] Error:', e);
-    st.innerHTML = `<span style="color:#dc2626"><b>Error de red</b>: ${e.message || e}<br>Verificá tu conexión a internet.</span>`;
+    console.error('[migrarABinNuevo] Error de red/CORS:', e);
+    st.innerHTML = `<div style="background:#fee2e2;padding:14px;border-radius:8px;color:#991b1b">
+      <b>Error de red</b>: ${e.message || e}<br><br>
+      Causas posibles:<br>
+      • Tu red bloquea <b>jsonbin.io</b> (firewall, antivirus, proxy corporativo)<br>
+      • JSONBin tiene problemas temporales<br>
+      • Tu cuenta JSONBin tiene cuota mensual excedida<br><br>
+      <b>Hacé este test:</b> abrí una pestaña nueva y entrá a <a href="https://jsonbin.io" target="_blank" style="color:#0891b2;text-decoration:underline">https://jsonbin.io</a>. Si no carga, el problema es de red en tu PC.<br><br>
+      <b>Plan alternativo</b>: apretá "📥 Descargar JSON" abajo para guardar todos tus datos en un archivo. Después te ayudo a migrar a otro servicio.
+    </div>`;
+  }
+}
+
+// ============================================================
+// EXPORTAR DATA A JSON (backup local)
+// ============================================================
+function exportarDataJSON() {
+  if (!DATA) { alert('No hay datos para exportar'); return; }
+  const cleanedPayload = compactDeep(DATA);
+  const bodyStr = JSON.stringify(cleanedPayload, null, 2);
+  const sizeKB = Math.round(bodyStr.length / 1024 * 10) / 10;
+
+  // Crear blob y descargar
+  const blob = new Blob([bodyStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const fechaStr = new Date().toISOString().slice(0,10);
+  a.download = `winflex_pet_backup_${fechaStr}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  const st = document.getElementById('migrarBinStatus');
+  if (st) {
+    st.innerHTML = `<div style="background:#dcfce7;padding:10px;border-radius:6px;color:#15803d">
+      ✓ Backup descargado: <code>winflex_pet_backup_${fechaStr}.json</code> (${sizeKB} KB)<br>
+      Tiene todos tus pedidos, producciones, registros, remitos, catálogos y config.
+    </div>`;
   }
 }
 
@@ -5596,7 +5634,10 @@ function renderConfig() {
       ✅ La app cambia automáticamente a usar el nuevo bin<br>
       ⚠️ El bin viejo queda sin usar (podés borrarlo manualmente desde la web de JSONBin después)<br>
       ⚠️ <b>Importante</b>: cuando Mirta/Jonathan/Agustín entren a la app, vas a tener que pasarles las credenciales del bin nuevo</p>
-      <button class="btn btn-pri" style="background:#7c3aed" onclick="migrarABinNuevo()">🆕 Crear bin nuevo y migrar datos</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-pri" style="background:#7c3aed" onclick="migrarABinNuevo()">🆕 Crear bin nuevo y migrar datos</button>
+        <button class="btn btn-pri" style="background:#0891b2" onclick="exportarDataJSON()">📥 Descargar JSON (backup)</button>
+      </div>
       <div id="migrarBinStatus" style="margin-top:14px;font-size:13px"></div>
     </div>
 
