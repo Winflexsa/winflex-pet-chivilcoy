@@ -246,7 +246,7 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
 <div id="screenLogin" class="screen">
   <div class="login-box">
     <h1>🏭 Winflex PET</h1>
-    <p class="sub">Tablet de operarios · Chivilcoy</p>
+    <p class="sub">Tablet de operarios · Chivilcoy <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.1-LIMPIO</span></p>
     <p class="sub" style="font-size:13px;color:#9ca3af">Ingresá tu PIN personal</p>
     <div class="pin-display" id="pinDisplay"></div>
     <div class="keypad">
@@ -364,6 +364,133 @@ function getCredentials() {
 
 function saveCredentialsLS(binId, masterKey) {
   localStorage.setItem(CRED_KEY, JSON.stringify({ binId: binId.trim(), masterKey: masterKey.trim() }));
+}
+
+// ============================================================
+// GITHUB GIST — backend principal (sin límite de tamaño)
+// Si hay creds Gist, se usa Gist en vez de JSONBin
+// ============================================================
+function getGistCredentials() {
+  try {
+    const raw = localStorage.getItem('winflex_gist_credentials');
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+function setGistCredentials(gistId, token) {
+  localStorage.setItem('winflex_gist_credentials', JSON.stringify({ gistId, token }));
+}
+
+// ============================================================
+// COMPRESIÓN DE PEDIDOS — usa los mismos nombres cortos que la PC
+// para entender los datos del bin remoto
+// ============================================================
+const PEDIDO_FIELD_MAP = {
+  'fechaIngreso': 'fi', 'fechaDespacho': 'fd', 'fechaEntrega': 'fe',
+  'cliente': 'cl', 'medida': 'med', 'color': 'col',
+  'partida': 'pt', 'kgPedidos': 'kp', 'kgReales': 'kr',
+  'kgPorBobina': 'kpb', 'formula': 'fm',
+  'ancho': 'a', 'espesor': 'e', 'estadoWorkflow': 'ew',
+  'mezclaTeoricaTexto': 'mtt', 'producto': 'prd',
+  'codigoProducto': 'cp', 'kgPorHora': 'kph',
+  'horasPorDia': 'hpd', 'scrapTeorico': 'st',
+  'metrosBobina': 'mb', 'diametroBobina': 'db',
+  'siliconaGramosM2': 'sgm', 'destinoCodigo': 'dc',
+  'conoTipo': 'ct', 'kgPorBobina6': 'kpb6', 'kgFinalCono3': 'kfc3',
+  'siliconaPct': 'sp', 'siliconaCaras': 'scs',
+  'nroOP': 'no', 'nroSolicitud': 'ns',
+  'recetaCodigo': 'rc', 'productoTipo': 'pdt',
+  'silicona': 'si', 'observaciones': 'obs'
+};
+const FORMULA_FIELD_MAP = {
+  'preforma': 'pf', 'scrap': 'sr', 'virgen': 'v', 'master': 'm'
+};
+const PEDIDO_REVERSE_MAP = Object.entries(PEDIDO_FIELD_MAP).reduce((a, [l, s]) => { a[s] = l; return a; }, {});
+const FORMULA_REVERSE_MAP = Object.entries(FORMULA_FIELD_MAP).reduce((a, [l, s]) => { a[s] = l; return a; }, {});
+
+function compressPedido(p) {
+  if (!p || typeof p !== 'object') return p;
+  const out = {};
+  for (const k in p) {
+    const sk = PEDIDO_FIELD_MAP[k] || k;
+    const v = p[k];
+    if (k === 'formula' && v && typeof v === 'object' && !Array.isArray(v)) {
+      const fOut = {};
+      for (const fk in v) fOut[FORMULA_FIELD_MAP[fk] || fk] = v[fk];
+      out[sk] = fOut;
+    } else {
+      out[sk] = v;
+    }
+  }
+  return out;
+}
+
+function decompressPedido(p) {
+  if (!p || typeof p !== 'object') return p;
+  if ('cliente' in p || 'fechaIngreso' in p || 'kgPedidos' in p) return p;
+  const out = {};
+  for (const k in p) {
+    const lk = PEDIDO_REVERSE_MAP[k] || k;
+    const v = p[k];
+    if (lk === 'formula' && v && typeof v === 'object' && !Array.isArray(v)) {
+      const fOut = {};
+      for (const fk in v) fOut[FORMULA_REVERSE_MAP[fk] || fk] = v[fk];
+      out[lk] = fOut;
+    } else {
+      out[lk] = v;
+    }
+  }
+  return out;
+}
+
+function compressDataForBin(data) {
+  const out = JSON.parse(JSON.stringify(data));
+  if (Array.isArray(out.pedidos)) out.pedidos = out.pedidos.map(compressPedido);
+  return out;
+}
+function decompressDataFromBin(data) {
+  if (Array.isArray(data.pedidos)) data.pedidos = data.pedidos.map(decompressPedido);
+  return data;
+}
+
+function compactDeep(obj) {
+  if (obj === null || obj === undefined) return undefined;
+  if (Array.isArray(obj)) {
+    const arr = obj.map(compactDeep).filter(v => v !== undefined);
+    return arr;
+  }
+  if (typeof obj === 'object') {
+    const out = {};
+    for (const k in obj) {
+      const v = compactDeep(obj[k]);
+      if (v === undefined) continue;
+      if (typeof v === 'string' && v === '') continue;
+      if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) continue;
+      if (Array.isArray(v) && v.length === 0) continue;
+      out[k] = v;
+    }
+    return out;
+  }
+  return obj;
+}
+
+// Migración idempotente — corre cada loadData. Asegura PINs actualizados en cache local.
+function applyTabletMigrations(d) {
+  if (!d || !d.catalogos || !Array.isArray(d.catalogos.operarios)) return d;
+  const ops = d.catalogos.operarios;
+  // Agustín 9999 → 0035
+  const agustin = ops.find(o => o && (o.legajo === 'AG' || (o.nombre||'').toLowerCase().includes('agustín ruiz')));
+  if (agustin && (agustin.pin === '9999' || agustin.pin === 9999)) {
+    agustin.pin = '0035';
+    console.log('[migration] Agustín PIN actualizado a 0035 (local)');
+  }
+  // Sacar Jonathan si quedó en el catálogo (no usa la tablet)
+  const jonathanIdx = ops.findIndex(o => o && (o.legajo === 'JS' || (o.nombre||'').toLowerCase().includes('jonathan stancato')));
+  if (jonathanIdx >= 0) {
+    ops.splice(jonathanIdx, 1);
+    console.log('[migration] Jonathan removido del catálogo (no usa la tablet)');
+  }
+  return d;
 }
 
 const LS_KEY = 'winflex_pet_tablet_v1';
@@ -1570,10 +1697,83 @@ async function deleteRegistro(id) {
 // ============================================================
 async function loadData() {
   setSync('Cargando...', 'warn');
-  const creds = getCredentials();
   // 1. Leer local primero (puede tener items pendientes de sincronizar)
   const cached = localStorage.getItem(LS_KEY);
   const localData = cached ? JSON.parse(cached) : null;
+
+  // PRIORIDAD 1: GitHub Gist
+  const gistCreds = getGistCredentials();
+  if (gistCreds) {
+    try {
+      const r = await fetch('https://api.github.com/gists/' + gistCreds.gistId, {
+        headers: {
+          'Authorization': 'token ' + gistCreds.token,
+          'Accept': 'application/vnd.github+json'
+        }
+      });
+      if (r.ok) {
+        const j = await r.json();
+        const f = j.files && j.files['winflex.json'];
+        if (f && f.content) {
+          const remote = decompressDataFromBin(JSON.parse(f.content));
+          // Merge inteligente: combinar remote + local
+          if (localData && (localData.producciones || localData.registrosProduccion)) {
+            console.log('[loadData Gist] Mergeando. Local prod:', (localData.producciones||[]).length, 'reg:', (localData.registrosProduccion||[]).length);
+            DATA = JSON.parse(JSON.stringify(remote));
+            DATA.producciones = mergeArrayPorId(remote.producciones || [], localData.producciones || [], DELETED.bobinas);
+            DATA.registrosProduccion = mergeArrayPorId(remote.registrosProduccion || [], localData.registrosProduccion || [], DELETED.registros);
+          } else {
+            DATA = remote;
+          }
+          window._remoteIds = new Set([
+            ...(remote.producciones || []).map(b => b.id),
+            ...(remote.registrosProduccion || []).map(r => r.id)
+          ]);
+          // Recalcular kgReales
+          const pedidosConBobinasAntes = new Set([
+            ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
+            ...((localData && localData.producciones) || []).map(b => b.pedidoId).filter(Boolean),
+            ...(DELETED.pedidosAfectados || [])
+          ]);
+          const idsConBobinasAhora = new Set([
+            ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
+            ...((localData && localData.producciones) || []).map(b => b.pedidoId).filter(Boolean)
+          ]);
+          (DATA.pedidos || []).forEach(p => {
+            if (p && p.id && (+p.kgReales || 0) > 0 && !idsConBobinasAhora.has(p.id)) {
+              const wf = p.estadoWorkflow || '';
+              if (['En producción', 'Parcial', 'OP'].includes(wf)) {
+                pedidosConBobinasAntes.add(p.id);
+              }
+            }
+          });
+          recalcularTodosKgReales(DATA, pedidosConBobinasAntes);
+          applyTabletMigrations(DATA);
+          localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+          setSync('Sincronizado (Gist)', 'ok');
+          console.log('[loadData Gist] OK, pedidos:', (DATA.pedidos||[]).length);
+          return DATA;
+        }
+      } else if (r.status === 401 || r.status === 404) {
+        alert('Credenciales Gist inválidas o gist no encontrado. Configurá de nuevo.');
+        openCredentialsTablet(true);
+        return;
+      }
+    } catch (e) { console.warn('Gist offline:', e); }
+    // Si Gist falla, usar cache local (no caer en JSONBin)
+    if (localData) {
+      DATA = localData;
+      applyTabletMigrations(DATA);
+      localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+      setSync('Offline (cache)', 'err');
+      return DATA;
+    }
+    setSync('Sin datos', 'err');
+    return;
+  }
+
+  // FALLBACK: JSONBin (compatibilidad con instalaciones viejas)
+  const creds = getCredentials();
 
   if (creds) {
     try {
@@ -1582,7 +1782,7 @@ async function loadData() {
       });
       if (r.ok) {
         const j = await r.json();
-        const remote = j.record;
+        const remote = decompressDataFromBin(j.record);
         // 2. Merge inteligente: combinar remote + local (preserva items locales que aún no subieron)
         if (localData && (localData.producciones || localData.registrosProduccion)) {
           console.log('[loadData] Mergeando remoto con local. Local prod:', (localData.producciones||[]).length, 'reg:', (localData.registrosProduccion||[]).length);
@@ -1646,6 +1846,7 @@ async function loadData() {
           }
         });
         recalcularTodosKgReales(DATA, pedidosConBobinasAntes);
+        applyTabletMigrations(DATA);
         localStorage.setItem(LS_KEY, JSON.stringify(DATA));
         setSync('Sincronizado', 'ok');
         return DATA;
@@ -1659,6 +1860,8 @@ async function loadData() {
   // 3. Sin conexión, usar local
   if (localData) {
     DATA = localData;
+    applyTabletMigrations(DATA);
+    localStorage.setItem(LS_KEY, JSON.stringify(DATA));
     setSync('Offline (cache)', 'err');
     return DATA;
   }
@@ -1726,12 +1929,124 @@ async function saveData() {
   DATA.lastUpdate = new Date().toISOString();
   localStorage.setItem(LS_KEY, JSON.stringify(DATA));
   setSync('Guardando...', 'warn');
-  const creds = getCredentials();
-  if (!creds) { setSync('Sin credenciales', 'err'); return; }
 
   const localProdCount = (DATA.producciones || []).length;
   const localRegCount = (DATA.registrosProduccion || []).length;
   console.log('[saveData] iniciado. Local prod:', localProdCount, 'reg:', localRegCount);
+
+  // PRIORIDAD 1: GitHub Gist
+  const gistCreds = getGistCredentials();
+  if (gistCreds) {
+    try {
+      // 1) GET fresco del Gist
+      const freshR = await fetch('https://api.github.com/gists/' + gistCreds.gistId, {
+        headers: {
+          'Authorization': 'token ' + gistCreds.token,
+          'Accept': 'application/vnd.github+json'
+        }
+      });
+      if (!freshR.ok) {
+        console.error('[saveData Gist] GET falló:', freshR.status);
+        setSync('Error fetch Gist (HTTP ' + freshR.status + ')', 'err');
+        return;
+      }
+      const fj = await freshR.json();
+      const ff = fj.files && fj.files['winflex.json'];
+      if (!ff) {
+        setSync('Error: gist sin winflex.json', 'err');
+        return;
+      }
+      const remote = decompressDataFromBin(JSON.parse(ff.content));
+      console.log('[saveData Gist] GET ok. Remote prod:', (remote.producciones||[]).length, 'reg:', (remote.registrosProduccion||[]).length);
+
+      // 2) MERGE INTELIGENTE
+      const merged = JSON.parse(JSON.stringify(remote));
+      merged.producciones = mergeArrayPorId(remote.producciones || [], DATA.producciones || [], DELETED.bobinas);
+      merged.registrosProduccion = mergeArrayPorId(remote.registrosProduccion || [], DATA.registrosProduccion || [], DELETED.registros);
+
+      // Validación: el merged DEBE tener al menos lo que tenía mi local
+      const expectedProdMin = (DATA.producciones || []).filter(b => !DELETED.bobinas.has(b.id)).length;
+      if (merged.producciones.length < expectedProdMin) {
+        console.error('[saveData Gist] INCONSISTENCIA: merged tiene', merged.producciones.length, 'bobinas pero local sin borradas tenía', expectedProdMin);
+        setSync('Error: inconsistencia (revisar consola)', 'err');
+        return;
+      }
+      const expectedRegMin = (DATA.registrosProduccion || []).filter(r => !DELETED.registros.has(r.id)).length;
+      if (merged.registrosProduccion.length < expectedRegMin) {
+        console.error('[saveData Gist] INCONSISTENCIA: merged tiene', merged.registrosProduccion.length, 'registros pero local sin borrados tenía', expectedRegMin);
+        setSync('Error: inconsistencia (revisar consola)', 'err');
+        return;
+      }
+
+      // Recalcular kgReales
+      const pedidosAfectados = new Set([
+        ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
+        ...(DATA.producciones || []).map(b => b.pedidoId).filter(Boolean),
+        ...(DELETED.pedidosAfectados || [])
+      ]);
+      const idsConBobinasAhoraSv = new Set([
+        ...(remote.producciones || []).map(b => b.pedidoId).filter(Boolean),
+        ...(DATA.producciones || []).map(b => b.pedidoId).filter(Boolean)
+      ]);
+      (merged.pedidos || []).forEach(p => {
+        if (p && p.id && (+p.kgReales || 0) > 0 && !idsConBobinasAhoraSv.has(p.id)) {
+          const wf = p.estadoWorkflow || '';
+          if (['En producción', 'Parcial', 'OP'].includes(wf)) {
+            pedidosAfectados.add(p.id);
+          }
+        }
+      });
+      recalcularTodosKgReales(merged, pedidosAfectados);
+      // Si mi local marcó "En producción" pero el remoto está en OP, propagar
+      pedidosAfectados.forEach(pid => {
+        const p = (merged.pedidos || []).find(x => x.id === pid);
+        if (!p) return;
+        const localP = (DATA.pedidos || []).find(x => x.id === pid);
+        if (localP && localP.estadoWorkflow === 'En producción' &&
+            (p.estadoWorkflow === 'OP' || p.estadoWorkflow === 'Confirmada')) {
+          p.estadoWorkflow = 'En producción';
+        }
+      });
+      merged.lastUpdate = new Date().toISOString();
+
+      // 3) PATCH al Gist
+      const compressed = compactDeep(compressDataForBin(merged));
+      const content = JSON.stringify(compressed);
+      const sizeKB = Math.round(content.length / 1024 * 10) / 10;
+      const r = await fetch('https://api.github.com/gists/' + gistCreds.gistId, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': 'token ' + gistCreds.token,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ files: { 'winflex.json': { content } } })
+      });
+      if (!r.ok) {
+        console.error('[saveData Gist] PATCH falló:', r.status);
+        setSync('Error PUT Gist (HTTP ' + r.status + ')', 'err');
+        return;
+      }
+      console.log('[saveData Gist] OK,', sizeKB, 'KB. Bobinas:', merged.producciones.length, 'reg:', merged.registrosProduccion.length);
+
+      // 4) Actualizar local con el merged
+      DATA = merged;
+      localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+      window._remoteIds = new Set([
+        ...(merged.producciones || []).map(b => b.id),
+        ...(merged.registrosProduccion || []).map(r => r.id)
+      ]);
+      setSync('Sincronizado · ' + sizeKB + ' KB', 'ok');
+    } catch (e) {
+      console.error('[saveData Gist] EXCEPCIÓN:', e);
+      setSync('Sin conexión (datos guardados en local)', 'err');
+    }
+    return;
+  }
+
+  // FALLBACK: JSONBin
+  const creds = getCredentials();
+  if (!creds) { setSync('Sin credenciales', 'err'); return; }
 
   try {
     // 1) GET fresco del bin remoto
@@ -1744,7 +2059,7 @@ async function saveData() {
       return;
     }
     const j = await fresh.json();
-    const remote = j.record;
+    const remote = decompressDataFromBin(j.record);
     console.log('[saveData] GET ok. Remote prod:', (remote.producciones||[]).length, 'reg:', (remote.registrosProduccion||[]).length);
 
     // 2) MERGE INTELIGENTE
@@ -1816,7 +2131,7 @@ async function saveData() {
     const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}`, {
       method: 'PUT',
       headers: { 'Content-Type':'application/json', 'X-Master-Key': creds.masterKey },
-      body: JSON.stringify(merged)
+      body: JSON.stringify(compactDeep(compressDataForBin(merged)))
     });
     if (!r.ok) {
       console.error('[saveData] PUT falló:', r.status, r.statusText);
@@ -1860,32 +2175,71 @@ function limpiarDeletedAntiguos() {
   if (changed) saveDeletedIds(DELETED);
 }
 
-// Modal de credenciales para la tablet
+// Modal de credenciales para la tablet (Gist por defecto, JSONBin como avanzado)
 function openCredentialsTablet(isFirstRun) {
-  const current = getCredentials() || { binId: '', masterKey: '' };
   document.getElementById('modalContainer').innerHTML = `
     <div class="modal-bg">
-      <div class="modal">
-        <h3>🔑 ${isFirstRun ? 'Configurar credenciales' : 'Credenciales JSONBin'}</h3>
-        ${isFirstRun ? `<p style="font-size:13px;color:#92400e;background:#fffbeb;padding:10px;border-radius:6px;margin-bottom:14px">Primera vez en esta tablet. Pegá las credenciales JSONBin (las mismas de la app PC). Quedan guardadas en este dispositivo.</p>` : ''}
+      <div class="modal" style="max-width:520px">
+        <h3>🚀 Conectar la tablet</h3>
+        ${isFirstRun ? `<p style="font-size:13px;color:#92400e;background:#fffbeb;padding:10px;border-radius:6px;margin-bottom:14px">Primera vez en esta tablet. Pedile al admin (Matías) el <b>Gist ID</b> y el <b>Token</b>, y pegalos abajo.</p>` : ''}
+
         <div class="field">
-          <label>Bin ID</label>
-          <input type="text" id="cred_binId" value="${current.binId}" placeholder="6831abc123..." autocomplete="off">
+          <label>Gist ID</label>
+          <input type="text" id="cred_gistId" placeholder="07265bb8a6c36ddcfffa6a7441095eb4" autocomplete="off" style="font-family:monospace;font-size:13px">
         </div>
         <div class="field">
-          <label>X-Master-Key</label>
-          <input type="text" id="cred_masterKey" value="${current.masterKey}" placeholder="$2a$10$..." autocomplete="off">
+          <label>Token (empieza con ghp_)</label>
+          <input type="text" id="cred_gistToken" placeholder="ghp_..." autocomplete="off" style="font-family:monospace;font-size:13px">
         </div>
+
         <div style="display:grid;grid-template-columns:${isFirstRun?'1fr':'1fr 1fr'};gap:10px;margin-top:14px">
           ${isFirstRun ? '' : '<button class="btn-big btn-sec" onclick="closeModal()">Cancelar</button>'}
-          <button class="btn-big btn-success" onclick="saveCredsTablet()">Guardar</button>
+          <button class="btn-big btn-success" onclick="saveGistCredsTablet()">🔗 Conectarme</button>
         </div>
+
+        <div id="credStatus" style="margin-top:12px;font-size:13px"></div>
       </div>
     </div>`;
 }
+
+async function saveGistCredsTablet() {
+  const gistId = document.getElementById('cred_gistId').value.trim();
+  const token = document.getElementById('cred_gistToken').value.trim();
+  const st = document.getElementById('credStatus');
+  if (!gistId || !token) { st.innerHTML = '<span style="color:#dc2626">Gist ID y Token son obligatorios</span>'; return; }
+  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
+    st.innerHTML = '<span style="color:#dc2626">El token debe empezar con ghp_ o github_pat_</span>'; return;
+  }
+  st.innerHTML = '<span style="color:#0891b2">Probando conexión...</span>';
+  try {
+    const r = await fetch('https://api.github.com/gists/' + gistId, {
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json' }
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      st.innerHTML = `<span style="color:#dc2626">Error HTTP ${r.status}. Verificá Gist ID y Token.</span>`;
+      return;
+    }
+    const j = await r.json();
+    const f = j.files && j.files['winflex.json'];
+    if (!f) {
+      st.innerHTML = '<span style="color:#dc2626">El Gist no tiene archivo winflex.json. ¿Es el Gist correcto?</span>';
+      return;
+    }
+    setGistCredentials(gistId, token);
+    st.innerHTML = '<span style="color:#16a34a">✓ Conectado. Cargando datos...</span>';
+    closeModal();
+    toast('Tablet conectada al Gist', 'success');
+    await loadData();
+  } catch (e) {
+    st.innerHTML = '<span style="color:#dc2626">Error de red: ' + (e.message||e) + '</span>';
+  }
+}
+
+// Compatibilidad: si llaman a saveCredsTablet (de JSONBin), redirigir
 async function saveCredsTablet() {
-  const binId = document.getElementById('cred_binId').value.trim();
-  const masterKey = document.getElementById('cred_masterKey').value.trim();
+  const binId = document.getElementById('cred_binId') ? document.getElementById('cred_binId').value.trim() : '';
+  const masterKey = document.getElementById('cred_masterKey') ? document.getElementById('cred_masterKey').value.trim() : '';
   if (!binId || !masterKey) { alert('Bin ID y Master Key son obligatorios'); return; }
   saveCredentialsLS(binId, masterKey);
   closeModal();
@@ -1910,14 +2264,33 @@ async function silentReload() {
   // No refrescar si hay un modal abierto (no interrumpir al usuario)
   if (document.getElementById('modalContainer').innerHTML.trim() !== '') return;
   try {
-    const creds = getCredentials();
-    if (!creds) return;
-    const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, {
-      headers: { 'X-Master-Key': creds.masterKey }
-    });
-    if (!r.ok) return;
-    const j = await r.json();
-    const remote = j.record;
+    let remote = null;
+
+    // PRIORIDAD 1: Gist
+    const gistCreds = getGistCredentials();
+    if (gistCreds) {
+      const r = await fetch('https://api.github.com/gists/' + gistCreds.gistId, {
+        headers: {
+          'Authorization': 'token ' + gistCreds.token,
+          'Accept': 'application/vnd.github+json'
+        }
+      });
+      if (!r.ok) return;
+      const j = await r.json();
+      const f = j.files && j.files['winflex.json'];
+      if (!f || !f.content) return;
+      remote = decompressDataFromBin(JSON.parse(f.content));
+    } else {
+      // Fallback: JSONBin
+      const creds = getCredentials();
+      if (!creds) return;
+      const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, {
+        headers: { 'X-Master-Key': creds.masterKey }
+      });
+      if (!r.ok) return;
+      const j = await r.json();
+      remote = decompressDataFromBin(j.record);
+    }
     const merged = JSON.parse(JSON.stringify(remote));
     merged.producciones = mergeArrayPorId(
       remote.producciones || [], DATA.producciones || [], DELETED.bobinas
@@ -2001,7 +2374,7 @@ function fmt(n) {
 // ============================================================
 // INIT
 // ============================================================
-if (!getCredentials()) {
+if (!getGistCredentials() && !getCredentials()) {
   openCredentialsTablet(true);
 } else {
   loadData();
