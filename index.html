@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.0-GIST</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.1-LIMPIO</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -744,7 +744,7 @@ async function doLogin() {
     return;
   }
   if (!DATA.config) DATA.config = {};
-  if (!DATA.config.pinAdmin) DATA.config.pinAdmin = '3080';
+  if (!DATA.config.pinAdmin) DATA.config.pinAdmin = '1205';
   console.log('[doLogin] Validando PIN. Esperado:', DATA.config.pinAdmin, 'Ingresado:', pin);
   if (pin === DATA.config.pinAdmin) {
     document.getElementById('login').classList.add('hidden');
@@ -859,10 +859,20 @@ function migrateLegacyData(d) {
   if (!tieneAgustin) {
     d.catalogos.operarios.push({
       nombre: 'Agustín Ruiz Guiñazú',
-      legajo: '0',
+      legajo: 'AG',
       ingreso: '',
-      pin: '9999',
-      rol: 'supervisor'
+      pin: '0035',
+      rol: 'ingeniero'
+    });
+  }
+  const tieneJonathan = d.catalogos.operarios.some(o => o.nombre && o.nombre.toLowerCase().includes('jonathan'));
+  if (!tieneJonathan) {
+    d.catalogos.operarios.push({
+      nombre: 'Jonathan Stancato',
+      legajo: 'JS',
+      ingreso: '',
+      pin: '3080',
+      rol: 'ingeniero'
     });
   }
   // Remitos: catálogo de transportistas y storage
@@ -932,12 +942,41 @@ function migrateLegacyData(d) {
   if (!d.config.densidadPET) d.config.densidadPET = 1330;
   if (!d.config.diametroTubo) d.config.diametroTubo = 152;
   if (!d.config.logoBase64) d.config.logoBase64 = '';
-  if (!d.config.pinAdmin)   d.config.pinAdmin   = '3080'; // PIN para entrar a la PC
+  if (!d.config.pinAdmin)   d.config.pinAdmin   = '1205'; // PIN para entrar a la PC
   if (!d.config.pinFabrica) d.config.pinFabrica = '1234'; // PIN general para abrir la tablet
   // Horario de turnos (auto-detección en tablet)
   if (!d.config.horarioTurnoDia) d.config.horarioTurnoDia = { inicio: 6, fin: 18 };  // 6am a 6pm = día
   // Registros de producción (parámetros horarios - planilla WEC001)
   if (!d.registrosProduccion) d.registrosProduccion = [];
+
+  // ─── Migración v4.0: PINs nuevos + agregar Jonathan al catálogo operarios ───
+  // Esta migración se aplica una sola vez por dispositivo. Marca con un flag para no repetir.
+  if (!d.config._pinMigrationV4) {
+    if (!d.catalogos) d.catalogos = {};
+    if (!d.catalogos.operarios) d.catalogos.operarios = [];
+    const ops = d.catalogos.operarios;
+    // Cambiar Agustín de PIN 9999 → 0035
+    const agustin = ops.find(o => o && (o.legajo === 'AG' || (o.nombre||'').toLowerCase().includes('agustín ruiz')));
+    if (agustin) {
+      if (agustin.pin === '9999' || agustin.pin === 9999) {
+        agustin.pin = '0035';
+        console.log('[migration v4.0] Agustín PIN actualizado a 0035');
+      }
+    }
+    // Agregar Jonathan Stancato si no está
+    const jonathan = ops.find(o => o && (o.legajo === 'JS' || (o.nombre||'').toLowerCase().includes('jonathan stancato')));
+    if (!jonathan) {
+      ops.push({ legajo: 'JS', nombre: 'Jonathan Stancato', pin: '3080', rol: 'ingeniero' });
+      console.log('[migration v4.0] Jonathan Stancato agregado con PIN 3080');
+    }
+    // PIN admin a 1205 (si todavía es '3080')
+    if (d.config.pinAdmin === '3080') {
+      d.config.pinAdmin = '1205';
+      console.log('[migration v4.0] PIN admin actualizado a 1205');
+    }
+    d.config._pinMigrationV4 = true;
+  }
+
   if (migrated > 0) console.log(`Migrated ${migrated} legacy fields`);
   return d;
 }
@@ -963,7 +1002,7 @@ async function loadData() {
         const f = j.files && j.files['winflex.json'];
         if (f && f.content) {
           DATA = migrateLegacyData(decompressDataFromBin(JSON.parse(f.content)));
-          autoLimpiarAdjuntos(DATA);
+          // autoLimpiarAdjuntos eliminada — con Gist ya no hay limite de tamaño
           const pedConBobinas = new Set((DATA.producciones || []).map(b => b.pedidoId).filter(Boolean));
           (DATA.pedidos || []).forEach(p => {
             if (p && p.id && (+p.kgReales || 0) > 0 && !pedConBobinas.has(p.id)) {
@@ -988,7 +1027,7 @@ async function loadData() {
     if (cached) {
       try {
         DATA = migrateLegacyData(JSON.parse(cached));
-        autoLimpiarAdjuntos(DATA);
+        // autoLimpiarAdjuntos eliminada — con Gist ya no hay limite de tamaño
         setSyncStatus('Offline (cache)', 'error');
         return DATA;
       } catch (e) { localStorage.removeItem(LS_KEY); }
@@ -1011,7 +1050,7 @@ async function loadData() {
       if (r.ok) {
         const j = await r.json();
         DATA = migrateLegacyData(decompressDataFromBin(j.record));
-        autoLimpiarAdjuntos(DATA); // Auto-limpieza después de cargar del remoto
+        // autoLimpiarAdjuntos eliminada — con Gist ya no hay limite de tamaño
         // Set de pedidos que tienen bobinas en el remoto → solo esos se recalculan.
         // Los que no tienen bobinas mantienen su kgReales histórico (cargado manualmente desde Excel).
         const pedConBobinas = new Set((DATA.producciones || []).map(b => b.pedidoId).filter(Boolean));
@@ -1044,7 +1083,7 @@ async function loadData() {
   if (cached) {
     try {
       DATA = migrateLegacyData(JSON.parse(cached));
-      autoLimpiarAdjuntos(DATA); // Auto-limpieza después de cargar del cache
+      // autoLimpiarAdjuntos eliminada — con Gist ya no hay limite de tamaño
       setSyncStatus(creds ? 'Offline (cache)' : 'Sin credenciales — Configuración', creds ? 'error' : 'syncing');
       console.log('[loadData] Usando cache local con', (DATA.pedidos||[]).length, 'pedidos');
       return DATA;
@@ -1301,25 +1340,11 @@ function compactDeep(obj) {
 // Si detecta algo para limpiar, setea window._needsAutoCleanup = true
 // para que initApp() haga el PUT al bin con la versión limpia.
 // ============================================================
+// autoLimpiarAdjuntos ELIMINADA — con Gist ya no hay límite de tamaño,
+// los adjuntos OC y logo se pueden guardar tranquilos en el bin remoto.
 function autoLimpiarAdjuntos(data) {
-  if (!data) return;
-  let limpieza = { adjuntos: 0, logo: 0 };
-  (data.pedidos || []).forEach(p => {
-    if (p.ocAdjunto) {
-      if (p.ocAdjunto.dataUrl) limpieza.adjuntos++;
-      delete p.ocAdjunto;
-    }
-  });
-  if (data.config && data.config.logoBase64) {
-    limpieza.logo = data.config.logoBase64.length;
-    data.config.logoBase64 = '';
-  }
-  if (limpieza.adjuntos > 0 || limpieza.logo > 0) {
-    console.log('[autoLimpiarAdjuntos] Limpieza: ' + limpieza.adjuntos + ' adjuntos + ' + Math.round(limpieza.logo/1024) + ' KB logo');
-    window._needsAutoCleanup = true;
-    window._cleanupInfo = limpieza;
-  }
-  return limpieza;
+  // noop, kept for backwards compat
+  return { adjuntos: 0, logo: 0 };
 }
 
 function mergeArrayPorId(remoteArr, localArr) {
@@ -2647,6 +2672,18 @@ function openPedidoModal(id) {
               </select>
               <div class="hint">Para producto <b>PET L</b> el sistema fuerza Silicona = SIN y activa la lógica de laminado.</div>
             </div>
+            <div class="field full"><label>📎 OC del cliente (PDF o imagen, opcional)</label>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <input type="file" id="m_ocFile" accept="application/pdf,image/*" style="font-size:12px;flex:1;min-width:200px" onchange="previewOCFile(this)">
+                ${p.ocAdjunto ? `
+                  <span style="font-size:12px;color:#16a34a">✓ ${p.ocAdjunto.nombre||'archivo cargado'} (${p.ocAdjunto.size?Math.round(p.ocAdjunto.size/1024)+' KB':''})</span>
+                  <button type="button" class="btn-ghost" onclick="verOCAdjunto('${p.id}')" style="font-size:12px">👁️ Ver</button>
+                  <button type="button" class="btn-ghost" style="font-size:12px;color:#dc2626" onclick="quitarOCAdjunto()">🗑️ Quitar</button>
+                ` : '<span style="font-size:11px;color:#6b7280">Sin adjunto</span>'}
+              </div>
+              <div class="hint">Adjuntá la OC firmada del cliente. Queda guardada en el Gist y se puede consultar después desde el detalle del pedido.</div>
+              <div id="m_ocFilePreview" style="font-size:11px;color:#6b7280;margin-top:4px"></div>
+            </div>
           </div>
 
           <!-- === BLOQUE LAMINADO (solo si productoTipo=PET L) === -->
@@ -2735,6 +2772,8 @@ function openPedidoModal(id) {
   if (typeof toggleProductoFields === 'function') {
     setTimeout(toggleProductoFields, 0);
   }
+  // Estado inicial del adjunto en memoria del modal
+  window._currentOCAdjunto = p.ocAdjunto || null;
 }
 
 // El bloque de laminado depende ahora del PRODUCTO (PET L), no del destino.
@@ -2884,7 +2923,13 @@ async function savePedido(id) {
     productoTipo: document.getElementById('m_productoTipo') ? document.getElementById('m_productoTipo').value : (existing?.productoTipo || 'rPET'),
     codigoProducto: ''
   };
-  // OC adjunto: removed feature — no se guarda más
+  // OC adjunto (PDF/imagen) — viene del input file, se guardó en window._currentOCAdjunto
+  // Si no se tocó el input, conservamos el adjunto previo del pedido.
+  if (window._currentOCAdjunto !== undefined) {
+    data.ocAdjunto = window._currentOCAdjunto; // puede ser null (quitado) o objeto
+  } else if (existing && existing.ocAdjunto) {
+    data.ocAdjunto = existing.ocAdjunto;
+  }
   // Si el producto es PET L → activar lógica laminado (independientemente del destino)
   // Esto cubre el caso "cliente pide PET L pero el destino es Venta directa", aunque lo habitual sea destino=L
   const esPETL = data.productoTipo === 'PET L';
@@ -3971,6 +4016,7 @@ function renderDetailBody(p, bobinas) {
           <div class="detail-field"><span class="lbl">Producto</span><span class="val"><b>${p.productoTipo || '-'}</b></span></div>
           <div class="detail-field"><span class="lbl">Fecha ingreso</span><span class="val">${fmtFecha(p.fechaIngreso)||'-'}</span></div>
           <div class="detail-field"><span class="lbl">Fecha entrega</span><span class="val">${fmtFecha(p.fechaEntrega || p.fechaDespacho)||'-'}</span></div>
+          ${p.ocAdjunto ? `<div class="detail-field"><span class="lbl">OC adjunta</span><span class="val"><a href="#" onclick="event.preventDefault();verOCAdjunto('${p.id}')" style="color:#16a34a;text-decoration:underline">📎 ${p.ocAdjunto.nombre||'archivo'}</a> <span class="muted" style="font-size:11px">(${p.ocAdjunto.size?Math.round(p.ocAdjunto.size/1024)+' KB':''})</span></span></div>` : ''}
         </div>
       </div>
       <div class="detail-section">
@@ -6027,32 +6073,15 @@ Saludos.`;
 function renderConfig() {
   const c = DATA.config;
   const emailsPlanta = c.emailsPlanta || [];
-  const creds = getCredentials();
 
   document.getElementById('configContent').innerHTML = `
-    <div class="detail-section">
-      <h3>🔑 Credenciales JSONBin (sincronización)</h3>
-      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Estas credenciales están guardadas solo en este navegador. Cada PC / tablet se configura una vez.</p>
-      ${creds ? `
-        <div style="background:#f0fdf4;border:1px solid #86efac;padding:12px 14px;border-radius:6px">
-          <p style="font-size:13px"><b style="color:#065f46">✓ Configuradas</b></p>
-          <p style="font-size:12px;color:#374151;margin-top:6px;font-family:monospace">Bin: ${creds.binId.substring(0,8)}...${creds.binId.substring(creds.binId.length-4)}</p>
-        </div>
-      ` : `
-        <div style="background:#fef2f2;border:1px solid #fca5a5;padding:12px 14px;border-radius:6px">
-          <p style="font-size:13px;color:#991b1b"><b>⚠ Sin credenciales configuradas.</b> La app funciona solo en modo local hasta que las cargues.</p>
-        </div>
-      `}
-      <button class="btn btn-sec" style="margin-top:10px" onclick="openCredentialsModal(false)">${creds ? '✏️ Cambiar credenciales' : '🔑 Configurar credenciales'}</button>
-    </div>
-
     <div class="detail-section">
       <h3>🔐 PINs de acceso</h3>
       <p style="font-size:13px;color:#6b7280;margin-bottom:14px">PIN de admin para la app PC y PIN general para abrir la tablet en planta. El PIN específico de cada operario está en Catálogos → Operarios.</p>
       <div class="detail-grid">
         <div class="detail-field">
           <span class="lbl">PIN admin (app PC)</span>
-          <input type="text" id="cf_pinAdmin_top" value="${c.pinAdmin || '3080'}" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:16px;font-family:monospace;letter-spacing:4px;margin-top:4px">
+          <input type="text" id="cf_pinAdmin_top" value="${c.pinAdmin || '1205'}" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:16px;font-family:monospace;letter-spacing:4px;margin-top:4px">
         </div>
         <div class="detail-field">
           <span class="lbl">🔑 PIN general fábrica (para abrir la tablet)</span>
@@ -6110,58 +6139,10 @@ function renderConfig() {
       <button class="btn btn-pri" style="margin-top:8px" onclick="saveRemitoConfig()">💾 Guardar config remito</button>
     </div>
 
-    <div class="detail-section">
-      <h3>🚚 Transportistas</h3>
-      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Transportistas habituales para elegir al armar el remito.</p>
-      <div id="transportistasList"></div>
-      <button class="btn-ghost" style="margin-top:8px" onclick="addTransportista()">+ Agregar transportista</button>
-    </div>
-
     <div class="detail-section" style="border:3px solid #16a34a;background:#f0fdf4">
       <h3>🚀 Sincronización GitHub Gist</h3>
       <div id="gistStatusBox"></div>
       <div id="gistSetupBox"></div>
-    </div>
-
-    <div class="detail-section" style="border:2px solid #dc2626;background:#fef2f2">
-      <h3>📊 Diagnóstico del bin (tamaño JSONBin)</h3>
-      <p style="font-size:13px;color:#991b1b;margin-bottom:10px">JSONBin Free tiene un límite de <b>100 KB por bin</b>. Si tu bin pasa ese tamaño, la app empieza a fallar (errores CORS, no se sincroniza). Apretá el botón para ver el tamaño actual.</p>
-      <button class="btn btn-pri" style="background:#dc2626" onclick="diagnosticarBin()">📊 Analizar tamaño del bin</button>
-      <div id="diagnBinStatus" style="margin-top:14px;font-size:13px"></div>
-    </div>
-
-    <div class="detail-section" style="border:2px solid #7c3aed;background:#faf5ff">
-      <h3>🆕 Migrar a bin nuevo (solución definitiva si el actual está bloqueado)</h3>
-      <p style="font-size:13px;color:#5b21b6;margin-bottom:10px">Si tu bin actual está dando errores CORS o de tamaño que NO se arreglan ni borrando adjuntos, JSONBin lo dejó "envenenado" y no acepta más cambios. La solución es crear un <b>bin nuevo</b> con tus datos limpios:<br><br>
-      ✅ <b>Conservás todos los pedidos, producciones, registros, remitos y catálogos</b><br>
-      ✅ Se sube al bin nuevo solamente la versión limpia (sin adjuntos pesados)<br>
-      ✅ La app cambia automáticamente a usar el nuevo bin<br>
-      ⚠️ El bin viejo queda sin usar (podés borrarlo manualmente desde la web de JSONBin después)<br>
-      ⚠️ <b>Importante</b>: cuando Mirta/Jonathan/Agustín entren a la app, vas a tener que pasarles las credenciales del bin nuevo</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-pri" style="background:#7c3aed" onclick="migrarABinNuevo()">🆕 Crear bin nuevo y migrar datos</button>
-        <button class="btn btn-pri" style="background:#0891b2" onclick="exportarDataJSON()">📥 Descargar JSON (backup)</button>
-      </div>
-      <div id="migrarBinStatus" style="margin-top:14px;font-size:13px"></div>
-    </div>
-
-    <div class="detail-section" style="border:2px solid #fbbf24;background:#fffbeb">
-      <h3>🗑️ Purgar producciones viejas (libera espacio en bin)</h3>
-      <p style="font-size:13px;color:#92400e;margin-bottom:10px">Si el bin está muy grande, podés borrar las bobinas y registros horarios de hace más de X días. Las que están asociadas a OPs no finalizadas <b>no se tocan</b>. Esta acción NO afecta los pedidos ni los kg producidos históricos.</p>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-        <label style="font-size:13px;color:#92400e">Borrar bobinas/registros más antiguos que:</label>
-        <input type="number" id="purgarDias" value="60" min="30" max="365" style="width:80px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px">
-        <span style="font-size:13px;color:#92400e">días</span>
-      </div>
-      <button class="btn btn-pri" style="background:#d97706" onclick="purgarHistoricoProducciones()">🗑️ Purgar histórico</button>
-      <div id="purgarStatus" style="margin-top:10px;font-size:13px"></div>
-    </div>
-
-    <div class="detail-section" style="border:2px solid #fbbf24;background:#fffbeb">
-      <h3>🛠️ Restaurar kg producidos históricos</h3>
-      <p style="font-size:13px;color:#92400e;margin-bottom:10px">Si los pedidos viejos perdieron sus kg producidos (aparecen en 0), apretá este botón para restaurarlos desde el Excel original. Solo afecta a pedidos SIN bobinas cargadas en la tablet — los que ya tienen producciones cargadas no se tocan.</p>
-      <button class="btn btn-pri" style="background:#d97706" onclick="restaurarKgRealesHistoricos()">🛠️ Restaurar kgReales desde Excel original (109 pedidos)</button>
-      <div id="restaurarStatus" style="margin-top:10px;font-size:13px"></div>
     </div>
 
     <div class="detail-section">
@@ -6179,6 +6160,18 @@ function renderConfig() {
       <div style="display:flex;gap:8px;align-items:center">
         <input type="email" id="cf_emailJonathan" value="${c.emailJonathan || ''}" placeholder="jonathan@winflex.com.ar" style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px">
         <button class="btn btn-pri" onclick="saveEmailJonathan()">💾 Guardar</button>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h3>🖼️ Logo Winflex (para el PDF de OP)</h3>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Subí el logo (PNG o JPG, máx 500 KB). Se va a usar arriba a la izquierda del PDF de OP y remito. Si no cargás logo, aparece "WINFLEX" en texto.</p>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        ${c.logoBase64 ? `<img src="${c.logoBase64}" style="max-width:140px;max-height:80px;border:1px solid #d1d5db;border-radius:6px;padding:4px;background:white">` : '<div style="width:140px;height:80px;border:2px dashed #d1d5db;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px">Sin logo</div>'}
+        <div>
+          <input type="file" id="logoFile" accept="image/png,image/jpeg" style="font-size:13px" onchange="cargarLogo()">
+          ${c.logoBase64 ? `<br><button class="btn-ghost" style="margin-top:6px" onclick="quitarLogo()">🗑️ Quitar logo</button>` : ''}
+        </div>
       </div>
     </div>
 
@@ -6209,7 +6202,7 @@ function renderConfig() {
         </div>
         <div class="detail-field">
           <span class="lbl">PIN admin (app PC)</span>
-          <input type="text" id="cf_pinAdmin" value="${c.pinAdmin || '3080'}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
+          <input type="text" id="cf_pinAdmin" value="${c.pinAdmin || '1205'}" style="padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px;margin-top:4px">
         </div>
         <div class="detail-field">
           <span class="lbl">Próximo N° OP</span>
@@ -6224,7 +6217,7 @@ function renderConfig() {
     </div>
   `;
   // Render transportistas list (separated for dynamism)
-  setTimeout(() => { renderTransportistasList(); renderGistSection(); }, 50);
+  setTimeout(() => { renderGistSection(); }, 50);
 }
 
 async function saveEmailAgustin() {
@@ -6234,7 +6227,7 @@ async function saveEmailAgustin() {
 }
 
 async function savePINs() {
-  DATA.config.pinAdmin = (document.getElementById('cf_pinAdmin_top').value || '3080').trim();
+  DATA.config.pinAdmin = (document.getElementById('cf_pinAdmin_top').value || '1205').trim();
   DATA.config.pinFabrica = (document.getElementById('cf_pinFabrica').value || '1234').trim();
   await saveData();
   toast('PINs guardados', 'success');
@@ -6317,7 +6310,7 @@ async function saveConfigParams() {
   DATA.config.scrapTeoricoDefault = +document.getElementById('cf_scrap').value || 0.20;
   DATA.config.densidadPET = +document.getElementById('cf_densidad').value || 1330;
   DATA.config.diametroTubo = +document.getElementById('cf_tubo').value || 152;
-  DATA.config.pinAdmin = document.getElementById('cf_pinAdmin').value || '3080';
+  DATA.config.pinAdmin = document.getElementById('cf_pinAdmin').value || '1205';
   DATA.config.pinFabrica = document.getElementById('cf_pinFabrica').value || '1234';
   DATA.config.proximoNroOP = +document.getElementById('cf_proxOP').value || 111;
   DATA.config.proximoNroSolicitud = +document.getElementById('cf_proxSol').value || 1;
