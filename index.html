@@ -207,11 +207,15 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
       <a href="#" onclick="event.preventDefault(); document.getElementById('loginHelp').style.display='block'; return false;" style="color:#6b7280;text-decoration:underline">¿Problemas para entrar?</a>
     </p>
     <div id="loginHelp" style="display:none;margin-top:12px;padding:12px;background:#fef3c7;border-radius:6px;font-size:12px;color:#92400e;line-height:1.5">
-      <b>Si te sale "PIN incorrecto" siempre:</b><br>
-      1. Verificá que las <b>credenciales JSONBin</b> sean las mismas que las de Matías. Si nunca te las cargaron, pedíselas.<br>
-      2. Si seguís sin poder entrar y querés forzar el reset, abrí la consola del navegador (F12 → pestaña Console) y pegá:<br>
-      <code style="display:block;background:white;padding:6px 8px;margin-top:4px;border-radius:3px;color:#1f2937;font-family:monospace">localStorage.removeItem('winflex_jsonbin_credentials'); location.reload();</code>
-      Te va a volver a pedir las credenciales.
+      <b>Si no podés entrar:</b><br>
+      1. Verificá tu <b>conexión a internet</b>.<br>
+      2. Verificá que tengas cargadas las <b>credenciales JSONBin</b> correctas. Si nunca te las cargaron, pedíselas a Matías.<br>
+      3. Probá apretar Ingresar de nuevo (la primera carga puede tardar unos segundos).<br>
+      <br>
+      <b>Acciones de emergencia:</b><br>
+      <button onclick="resetCredsLogin()" style="margin-top:6px;margin-right:6px;padding:6px 12px;background:#92400e;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px">🔑 Resetear credenciales</button>
+      <button onclick="diagnosticarLogin()" style="padding:6px 12px;background:#0891b2;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px">🔍 Diagnóstico</button>
+      <button onclick="if(confirm('Esto borra el cache local. Tu pin volverá a ser 3080. ¿Continuar?')){localStorage.removeItem('winflex_pet_pc_v311');localStorage.removeItem('winflex_pet_pc_v37');localStorage.removeItem('winflex_pet_pc_v36');location.reload();}" style="margin-top:6px;padding:6px 12px;background:#dc2626;color:white;border:none;border-radius:4px;cursor:pointer;font-size:11px">🗑️ Limpiar cache</button>
     </div>
   </div>
 </div>
@@ -442,24 +446,79 @@ let isDirty = false;
 // ============================================================
 // AUTH
 // ============================================================
-function doLogin() {
+function resetCredsLogin() {
+  if (!confirm('Esto borra las credenciales JSONBin guardadas en este dispositivo.\n\nVas a tener que pedirle las credenciales a Matías otra vez (Bin ID y Master Key).\n\n¿Continuar?')) return;
+  localStorage.removeItem('winflex_jsonbin_credentials');
+  alert('Credenciales borradas. Recargá la página.');
+  location.reload();
+}
+
+function diagnosticarLogin() {
+  const creds = getCredentials();
+  const cacheKey = LS_KEY;
+  const cached = localStorage.getItem(cacheKey);
+  let info = '=== DIAGNÓSTICO ===\n\n';
+  info += 'URL: ' + location.href + '\n';
+  info += 'Navegador: ' + navigator.userAgent.substring(0, 60) + '...\n\n';
+  info += 'Credenciales JSONBin: ' + (creds ? 'SÍ (Bin: ' + creds.binId.substring(0, 10) + '...)' : 'NO') + '\n';
+  info += 'Cache local (' + cacheKey + '): ' + (cached ? Math.round(cached.length / 1024) + ' KB' : 'vacío') + '\n';
+  info += 'DATA cargado: ' + (typeof DATA !== 'undefined' && DATA ? 'SÍ' : 'NO') + '\n';
+  if (typeof DATA !== 'undefined' && DATA) {
+    info += '  - Pedidos: ' + ((DATA.pedidos || []).length) + '\n';
+    info += '  - PIN admin esperado: ' + (DATA.config?.pinAdmin || '(vacío)') + '\n';
+  }
+  info += 'SEED disponible: ' + (typeof SEED !== 'undefined' ? 'SÍ (' + (SEED.pedidos||[]).length + ' pedidos)' : 'NO') + '\n';
+  info += '\n=== SI EL PROBLEMA PERSISTE ===\n';
+  info += 'Sacá foto de esta pantalla y mandala. También mandá la pestaña Console del navegador (F12).';
+  alert(info);
+}
+
+async function doLogin() {
   const pin = document.getElementById('pinInput').value;
-  if (!DATA) { loadData().then(() => doLogin()); return; }
+  const errEl = document.getElementById('loginErr');
+  if (errEl) { errEl.style.color = ''; errEl.textContent = ''; }
+  if (!pin) { if (errEl) errEl.textContent = 'Ingresá el PIN'; return; }
+
+  // Feedback visual mientras se carga (puede tardar si JSONBin está lento)
+  if (!DATA) {
+    if (errEl) { errEl.style.color = '#0891b2'; errEl.textContent = 'Cargando datos...'; }
+    console.log('[doLogin] DATA no cargado, llamando loadData()');
+    try {
+      // Timeout de 12s para que no se quede colgado
+      const timeoutPromise = new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout cargando datos')), 12000));
+      await Promise.race([loadData(), timeoutPromise]);
+    } catch (e) {
+      console.error('[doLogin] loadData falló:', e);
+      if (errEl) {
+        errEl.style.color = '#dc2626';
+        errEl.innerHTML = 'Error: ' + (e.message || e) + '.<br><br>Intentá:<br>1) Verificá tu conexión a internet<br>2) Apretá Ingresar de nuevo<br>3) Si persiste, F12 → Console y mandanos el error';
+      }
+      return;
+    }
+  }
+
+  if (errEl) { errEl.style.color = ''; errEl.textContent = ''; }
+
   // Failsafe: si por algún motivo DATA.config.pinAdmin quedó vacío/undefined (bin viejo,
   // borrado accidental, primera carga), inicializarlo en 3080 antes de comparar.
+  if (!DATA) {
+    if (errEl) { errEl.style.color = '#dc2626'; errEl.textContent = 'No se pudo cargar datos. Recargá la página (F5).'; }
+    return;
+  }
   if (!DATA.config) DATA.config = {};
   if (!DATA.config.pinAdmin) DATA.config.pinAdmin = '3080';
+  console.log('[doLogin] Validando PIN. Esperado:', DATA.config.pinAdmin, 'Ingresado:', pin);
   if (pin === DATA.config.pinAdmin) {
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     initApp();
   } else {
-    const err = document.getElementById('loginErr');
-    err.textContent = 'PIN incorrecto';
-    // Si el usuario probó 5 PINs distintos y siempre falló, mostrar pista útil
+    if (errEl) { errEl.style.color = '#dc2626'; }
+    if (errEl) errEl.textContent = 'PIN incorrecto';
+    // Si el usuario probó 3+ PINs distintos y siempre falló, mostrar pista útil
     window._pinAttempts = (window._pinAttempts || 0) + 1;
-    if (window._pinAttempts >= 3) {
-      err.innerHTML = 'PIN incorrecto. Si nunca pudiste entrar, verificá que las credenciales JSONBin sean las mismas que las de Matías (Configuración → Credenciales). El PIN por defecto es 3080.';
+    if (window._pinAttempts >= 3 && errEl) {
+      errEl.innerHTML = 'PIN incorrecto (PIN esperado del servidor: <code>' + DATA.config.pinAdmin + '</code>). Si necesitás resetear, mirá "¿Problemas para entrar?" abajo.';
     }
   }
 }
@@ -652,8 +711,14 @@ async function loadData() {
 
   if (creds) {
     try {
+      console.log('[loadData] Fetch a JSONBin...');
       const headers = { 'X-Master-Key': creds.masterKey };
-      const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, { headers });
+      // Timeout de 10s para evitar fetch colgado
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}/latest`, { headers, signal: controller.signal });
+      clearTimeout(timeoutId);
+      console.log('[loadData] Respuesta JSONBin:', r.status);
       if (r.ok) {
         const j = await r.json();
         DATA = migrateLegacyData(j.record);
@@ -678,13 +743,24 @@ async function loadData() {
         setSyncStatus('Credenciales inválidas', 'error');
         alert('Las credenciales JSONBin son inválidas (error '+r.status+'). Por favor verificalas.');
       }
-    } catch (e) { console.warn('JSONBin offline:', e); }
+    } catch (e) {
+      console.warn('[loadData] JSONBin offline o timeout:', e.message || e);
+      if (e.name === 'AbortError') {
+        setSyncStatus('Timeout JSONBin', 'error');
+      }
+    }
   }
 
   if (cached) {
-    DATA = migrateLegacyData(JSON.parse(cached));
-    setSyncStatus(creds ? 'Offline (cache)' : 'Sin credenciales — Configuración', creds ? 'error' : 'syncing');
-    return DATA;
+    try {
+      DATA = migrateLegacyData(JSON.parse(cached));
+      setSyncStatus(creds ? 'Offline (cache)' : 'Sin credenciales — Configuración', creds ? 'error' : 'syncing');
+      console.log('[loadData] Usando cache local con', (DATA.pedidos||[]).length, 'pedidos');
+      return DATA;
+    } catch (e) {
+      console.error('[loadData] Cache corrupto, ignorando:', e);
+      localStorage.removeItem(LS_KEY);
+    }
   }
 
   // Sin credenciales y sin cache: bootstrap con SEED (si ya está inicializado)
@@ -973,6 +1049,7 @@ async function syncNow() {
 
 function setSyncStatus(text, cls) {
   const el = document.getElementById('syncStatus');
+  if (!el) { console.log('[sync]', text); return; }
   el.textContent = text;
   el.className = 'sync-status ' + (cls || '');
 }
