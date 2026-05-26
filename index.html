@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#dc2626;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v3.16-DIAG</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v3.17-CLEAN</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -722,6 +722,28 @@ async function loadData() {
       if (r.ok) {
         const j = await r.json();
         DATA = migrateLegacyData(j.record);
+
+        // ============================================================
+        // AUTO-LIMPIEZA: sacar adjuntos pesados del bin (one-shot)
+        // Si detecto ocAdjunto.dataUrl en algún pedido o config.logoBase64,
+        // los borro y marco como dirty para subir al próximo save.
+        // ============================================================
+        let limpieza = { adjuntos: 0, logo: 0 };
+        (DATA.pedidos || []).forEach(p => {
+          if (p.ocAdjunto) {
+            if (p.ocAdjunto.dataUrl) limpieza.adjuntos++;
+            delete p.ocAdjunto;
+          }
+        });
+        if (DATA.config && DATA.config.logoBase64) {
+          limpieza.logo = DATA.config.logoBase64.length;
+          DATA.config.logoBase64 = '';
+        }
+        if (limpieza.adjuntos > 0 || limpieza.logo > 0) {
+          console.log('[loadData] Auto-limpieza: ' + limpieza.adjuntos + ' adjuntos + ' + Math.round(limpieza.logo/1024) + ' KB logo. Subiendo al bin...');
+          // Marcar para subir al próximo save (que va a ser auto)
+          window._needsAutoCleanup = true;
+        }
         // Set de pedidos que tienen bobinas en el remoto → solo esos se recalculan.
         // Los que no tienen bobinas mantienen su kgReales histórico (cargado manualmente desde Excel).
         const pedConBobinas = new Set((DATA.producciones || []).map(b => b.pedidoId).filter(Boolean));
@@ -922,6 +944,29 @@ function diagnosticarBin() {
     costosMensuales: JSON.stringify(compactDeep(DATA.costosMensuales || {})).length
   };
 
+  // ============================================================
+  // ANÁLISIS DETALLADO DE ADJUNTOS PESADOS
+  // ============================================================
+  let totalAdjuntosBytes = 0;
+  let cantPedConAdjunto = 0;
+  const topPedidosPesados = [];
+  (DATA.pedidos || []).forEach(p => {
+    const totalP = JSON.stringify(compactDeep(p)).length;
+    const adjuntoBytes = p.ocAdjunto && p.ocAdjunto.dataUrl ? p.ocAdjunto.dataUrl.length : 0;
+    if (adjuntoBytes > 0) {
+      totalAdjuntosBytes += adjuntoBytes;
+      cantPedConAdjunto++;
+    }
+    topPedidosPesados.push({
+      id: p.id, cliente: p.cliente, oc: p.oc, op: p.op || p.partida,
+      total: totalP, adjunto: adjuntoBytes, adjuntoNombre: p.ocAdjunto?.nombre || ''
+    });
+  });
+  topPedidosPesados.sort((a, b) => b.total - a.total);
+
+  // Config: logo y otros campos pesados
+  const logoBytes = (DATA.config && DATA.config.logoBase64) ? DATA.config.logoBase64.length : 0;
+
   const status = compactKB <= limite ? 'OK' : 'EXCEDE LÍMITE';
   const color = compactKB <= limite ? '#16a34a' : '#dc2626';
   const bar = Math.min(100, Math.round(compactKB / limite * 100));
@@ -936,9 +981,9 @@ function diagnosticarBin() {
       <div style="height:14px;background:#e5e7eb;border-radius:7px;overflow:hidden;margin-bottom:14px">
         <div style="height:100%;width:${bar}%;background:${barColor};transition:width 0.3s"></div>
       </div>
-      <div style="font-size:12px;color:#6b7280;margin-bottom:10px">Sin compresión: ${fullKB} KB · Con compresión automática: ${compactKB} KB (ahorra ${fullKB - compactKB} KB)</div>
-      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Desglose:</div>
-      <table style="width:100%;font-size:12px">
+      <div style="font-size:12px;color:#6b7280;margin-bottom:10px">Sin compresión: ${fullKB} KB · Con compresión automática: ${compactKB} KB (ahorra ${(fullKB - compactKB).toFixed(1)} KB)</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Desglose por sección:</div>
+      <table style="width:100%;font-size:12px;margin-bottom:14px">
         ${Object.entries(partes).sort((a,b) => b[1]-a[1]).map(([k,v]) => {
           const kb = Math.round(v/1024*10)/10;
           const pct = Math.round(v/compactStr.length*100);
@@ -950,17 +995,141 @@ function diagnosticarBin() {
         }).join('')}
       </table>
   `;
+
+  // Detección específica de archivos pesados
+  if (totalAdjuntosBytes > 50000 || logoBytes > 30000) {
+    html += `<div style="background:#fef3c7;border-left:4px solid #d97706;padding:10px 14px;margin-bottom:14px;border-radius:0 6px 6px 0">
+      <div style="font-weight:700;color:#92400e;margin-bottom:6px">🔎 Archivos adjuntos pesados detectados</div>
+      <div style="font-size:13px;color:#92400e">`;
+    if (totalAdjuntosBytes > 0) {
+      html += `<div>• <b>${cantPedConAdjunto} pedidos tienen OC adjunta</b> (PDF/imagen): ${Math.round(totalAdjuntosBytes/1024)} KB en total</div>`;
+    }
+    if (logoBytes > 0) {
+      html += `<div>• <b>Logo en config</b>: ${Math.round(logoBytes/1024)} KB</div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  // Top 10 pedidos más pesados
+  if (topPedidosPesados.length > 0 && topPedidosPesados[0].total > 5000) {
+    html += `<div style="font-size:13px;font-weight:600;margin-bottom:6px">Top 10 pedidos más pesados:</div>
+      <table style="width:100%;font-size:11px;margin-bottom:14px">
+        <thead><tr style="background:#f3f4f6"><th style="text-align:left;padding:4px 6px">Pedido</th><th style="text-align:right;padding:4px 6px">Total</th><th style="text-align:right;padding:4px 6px">Adjunto</th><th style="text-align:left;padding:4px 6px">Archivo</th></tr></thead>
+        <tbody>`;
+    topPedidosPesados.slice(0, 10).forEach(p => {
+      const tKB = (p.total/1024).toFixed(1);
+      const aKB = p.adjunto > 0 ? (p.adjunto/1024).toFixed(1) + ' KB' : '-';
+      html += `<tr style="border-bottom:1px solid #f3f4f6"><td style="padding:4px 6px">${p.cliente} · ${p.oc||''} · OP ${p.op||'-'}</td><td style="padding:4px 6px;text-align:right"><b>${tKB} KB</b></td><td style="padding:4px 6px;text-align:right">${aKB}</td><td style="padding:4px 6px;font-size:10px;color:#6b7280">${p.adjuntoNombre || '-'}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+
   if (compactKB > limite) {
-    html += `<div style="margin-top:14px;padding:10px;background:#fee2e2;border-radius:6px;color:#991b1b;font-size:13px"><b>⚠️ Tu bin excede 100 KB.</b> JSONBin Free va a rechazar las sincronizaciones.<br>Solución: apretá el botón <b>"Purgar histórico"</b> abajo para borrar bobinas/registros viejos.</div>`;
+    let recomendaciones = '';
+    if (totalAdjuntosBytes > 50000) {
+      recomendaciones += `<li>Quitar las OC adjuntas (sin perder los pedidos) → ahorrarías ${Math.round(totalAdjuntosBytes/1024)} KB</li>`;
+    }
+    if (logoBytes > 30000) {
+      recomendaciones += `<li>Quitar el logo del config (~${Math.round(logoBytes/1024)} KB)</li>`;
+    }
+    if (!recomendaciones) {
+      recomendaciones = '<li>Purgar producciones/registros viejos (botón abajo)</li>';
+    }
+    html += `<div style="margin-top:14px;padding:10px;background:#fee2e2;border-radius:6px;color:#991b1b;font-size:13px"><b>⚠️ Tu bin excede 100 KB.</b><br>Opciones para liberar espacio:<ul style="margin:6px 0 0 20px;padding:0">${recomendaciones}</ul></div>`;
   } else if (compactKB > 90) {
-    html += `<div style="margin-top:14px;padding:10px;background:#fef3c7;border-radius:6px;color:#92400e;font-size:13px"><b>⚠️ Estás cerca del límite.</b> Considerá purgar algunas producciones viejas pronto.</div>`;
+    html += `<div style="margin-top:14px;padding:10px;background:#fef3c7;border-radius:6px;color:#92400e;font-size:13px"><b>⚠️ Estás cerca del límite.</b></div>`;
   }
   html += '</div>';
   st.innerHTML = html;
 }
 
+// ============================================================
+// QUITAR ADJUNTOS DEL BIN — los conserva en localStorage local
+// ============================================================
+async function quitarAdjuntosDelBin() {
+  if (!DATA) return;
+  const st = document.getElementById('adjuntosStatus');
+
+  // Contar y recolectar adjuntos
+  const adjuntosLocales = JSON.parse(localStorage.getItem('winflex_pet_adjuntos') || '{}');
+  let cnt = 0, totalBytes = 0;
+  const detalles = [];
+  (DATA.pedidos || []).forEach(p => {
+    if (p.ocAdjunto && p.ocAdjunto.dataUrl) {
+      cnt++;
+      totalBytes += p.ocAdjunto.dataUrl.length;
+      // Guardar localmente con la clave del pedido
+      adjuntosLocales[p.id] = p.ocAdjunto;
+      detalles.push(`${p.cliente} OP ${p.op||'-'}: ${p.ocAdjunto.nombre||'archivo'}`);
+    }
+  });
+
+  if (cnt === 0) {
+    st.innerHTML = '<span style="color:#6b7280">No hay OC adjuntas en los pedidos.</span>';
+    return;
+  }
+
+  if (!confirm(`¿Quitar las OC adjuntas del bin remoto?\n\n• ${cnt} pedidos con archivo adjunto\n• Total: ${Math.round(totalBytes/1024)} KB\n\nLos archivos quedan guardados en tu PC (localStorage local). Otros usuarios (Mirta, Jonathan) NO podrán ver los adjuntos hasta que vos vuelvas a subirlos uno por uno.\n\n¿Continuar?`)) return;
+
+  // Guardar en localStorage local
+  try {
+    localStorage.setItem('winflex_pet_adjuntos', JSON.stringify(adjuntosLocales));
+  } catch (e) {
+    if (!confirm('No se pudieron guardar todos los adjuntos localmente (probablemente excedió cuota de localStorage). ¿Continuar igual sacándolos del bin? Vas a perder los archivos.')) return;
+  }
+
+  // Quitar dataUrl de los pedidos (mantener metadata para sabes que tenían adjunto)
+  (DATA.pedidos || []).forEach(p => {
+    if (p.ocAdjunto && p.ocAdjunto.dataUrl) {
+      // Conservar solo nombre y tipo (metadata) para que se sepa que hubo un adjunto
+      p.ocAdjunto = {
+        nombre: p.ocAdjunto.nombre || '',
+        tipo: p.ocAdjunto.tipo || '',
+        _enLocal: true // flag para saber que está en localStorage
+      };
+    }
+  });
+
+  st.innerHTML = '<span style="color:#0891b2">Subiendo al bin sin adjuntos...</span>';
+  await saveDataConPurga();
+
+  // Recalcular tamaño
+  const newSize = Math.round(JSON.stringify(compactDeep(DATA)).length / 1024 * 10) / 10;
+  st.innerHTML = `<span style="color:#16a34a;font-weight:600">✓ ${cnt} adjuntos sacados del bin (liberó ${Math.round(totalBytes/1024)} KB).</span><br><span style="color:#6b7280">Tamaño nuevo del bin: ${newSize} KB · Los archivos quedaron en tu PC local.</span>`;
+
+  setTimeout(() => { if (document.getElementById('diagnBinStatus').innerHTML) diagnosticarBin(); }, 500);
+}
+
+async function quitarLogoDelBin() {
+  if (!DATA) return;
+  const st = document.getElementById('adjuntosStatus');
+
+  const logoBytes = (DATA.config && DATA.config.logoBase64) ? DATA.config.logoBase64.length : 0;
+  if (logoBytes === 0) {
+    st.innerHTML = '<span style="color:#6b7280">No hay logo guardado en config.</span>';
+    return;
+  }
+
+  if (!confirm(`¿Quitar el logo del bin? Pesa ${Math.round(logoBytes/1024)} KB.\n\nQueda guardado en tu PC local pero no viajará al bin. Los PDFs generados desde otra PC saldrán sin logo hasta que esa PC tenga su propia copia local.`)) return;
+
+  // Guardar en localStorage local
+  try {
+    localStorage.setItem('winflex_pet_logo', DATA.config.logoBase64);
+  } catch (e) {
+    console.warn('No se pudo guardar logo en localStorage:', e);
+  }
+  DATA.config.logoBase64 = '';
+
+  st.innerHTML = '<span style="color:#0891b2">Subiendo al bin sin logo...</span>';
+  await saveDataConPurga();
+
+  const newSize = Math.round(JSON.stringify(compactDeep(DATA)).length / 1024 * 10) / 10;
+  st.innerHTML = `<span style="color:#16a34a;font-weight:600">✓ Logo sacado del bin (liberó ${Math.round(logoBytes/1024)} KB).</span><br><span style="color:#6b7280">Tamaño nuevo del bin: ${newSize} KB</span>`;
+
+  setTimeout(() => { if (document.getElementById('diagnBinStatus').innerHTML) diagnosticarBin(); }, 500);
+}
+
 async function purgarHistoricoProducciones() {
-  const dias = +document.getElementById('purgarDias').value || 60;
   const st = document.getElementById('purgarStatus');
   if (!DATA) { st.innerHTML = '<span style="color:#dc2626">DATA no cargado</span>'; return; }
 
@@ -1365,6 +1534,19 @@ function initApp() {
   });
   populateFilters();
   render();
+  // Auto-limpieza: si en loadData detectamos adjuntos/logo, subir el bin limpio ahora
+  if (window._needsAutoCleanup) {
+    window._needsAutoCleanup = false;
+    setTimeout(async () => {
+      toast('Limpiando bin de adjuntos pesados...', 'success');
+      try {
+        await saveDataConPurga();
+        toast('Bin limpio. Sync funcionando.', 'success');
+      } catch (e) {
+        console.error('Auto-limpieza falló:', e);
+      }
+    }, 800);
+  }
 }
 function switchTab(name) {
   currentTab = name;
@@ -1839,18 +2021,6 @@ function openPedidoModal(id) {
               </select>
               <div class="hint">Para producto <b>PET L</b> el sistema fuerza Silicona = SIN y activa la lógica de laminado.</div>
             </div>
-            <div class="field full"><label>📎 OC del cliente (PDF o imagen, opcional)</label>
-              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <input type="file" id="m_ocFile" accept="application/pdf,image/*" style="font-size:12px;flex:1;min-width:200px" onchange="previewOCFile(this)">
-                ${p.ocAdjunto ? `
-                  <span style="font-size:12px;color:#16a34a">✓ ${p.ocAdjunto.nombre||'archivo cargado'} (${p.ocAdjunto.size?Math.round(p.ocAdjunto.size/1024)+' KB':''})</span>
-                  <button type="button" class="btn-ghost" onclick="verOCAdjunto('${p.id}')" style="font-size:12px">👁️ Ver</button>
-                  <button type="button" class="btn-ghost" style="font-size:12px;color:#dc2626" onclick="quitarOCAdjunto()">🗑️ Quitar</button>
-                ` : '<span style="font-size:11px;color:#6b7280">Sin adjunto</span>'}
-              </div>
-              <div class="hint">Adjuntá la OC firmada del cliente. Queda guardada y se puede consultar después desde el detalle del pedido.</div>
-              <div id="m_ocFilePreview" style="font-size:11px;color:#6b7280;margin-top:4px"></div>
-            </div>
           </div>
 
           <!-- === BLOQUE LAMINADO (solo si productoTipo=PET L) === -->
@@ -1939,8 +2109,6 @@ function openPedidoModal(id) {
   if (typeof toggleProductoFields === 'function') {
     setTimeout(toggleProductoFields, 0);
   }
-  // Estado inicial del adjunto en memoria del modal
-  window._currentOCAdjunto = p.ocAdjunto || null;
 }
 
 // El bloque de laminado depende ahora del PRODUCTO (PET L), no del destino.
@@ -2090,13 +2258,7 @@ async function savePedido(id) {
     productoTipo: document.getElementById('m_productoTipo') ? document.getElementById('m_productoTipo').value : (existing?.productoTipo || 'rPET'),
     codigoProducto: ''
   };
-  // OC adjunto (PDF/imagen) — viene del input file, se guardó en window._currentOCAdjunto
-  // Si no se tocó el input, conservamos el adjunto previo del pedido.
-  if (window._currentOCAdjunto !== undefined) {
-    data.ocAdjunto = window._currentOCAdjunto; // puede ser null (quitado) o objeto
-  } else if (existing && existing.ocAdjunto) {
-    data.ocAdjunto = existing.ocAdjunto;
-  }
+  // OC adjunto: removed feature — no se guarda más
   // Si el producto es PET L → activar lógica laminado (independientemente del destino)
   // Esto cubre el caso "cliente pide PET L pero el destino es Venta directa", aunque lo habitual sea destino=L
   const esPETL = data.productoTipo === 'PET L';
@@ -3183,7 +3345,6 @@ function renderDetailBody(p, bobinas) {
           <div class="detail-field"><span class="lbl">Producto</span><span class="val"><b>${p.productoTipo || '-'}</b></span></div>
           <div class="detail-field"><span class="lbl">Fecha ingreso</span><span class="val">${fmtFecha(p.fechaIngreso)||'-'}</span></div>
           <div class="detail-field"><span class="lbl">Fecha entrega</span><span class="val">${fmtFecha(p.fechaEntrega || p.fechaDespacho)||'-'}</span></div>
-          ${p.ocAdjunto ? `<div class="detail-field"><span class="lbl">OC adjunta</span><span class="val"><a href="#" onclick="event.preventDefault();verOCAdjunto('${p.id}')" style="color:#16a34a;text-decoration:underline">📎 ${p.ocAdjunto.nombre||'archivo'}</a> <span class="muted" style="font-size:11px">(${p.ocAdjunto.size?Math.round(p.ocAdjunto.size/1024)+' KB':''})</span></span></div>` : ''}
         </div>
       </div>
       <div class="detail-section">
@@ -5371,18 +5532,6 @@ function renderConfig() {
       <div style="display:flex;gap:8px;align-items:center">
         <input type="email" id="cf_emailJonathan" value="${c.emailJonathan || ''}" placeholder="jonathan@winflex.com.ar" style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px">
         <button class="btn btn-pri" onclick="saveEmailJonathan()">💾 Guardar</button>
-      </div>
-    </div>
-
-    <div class="detail-section">
-      <h3>🖼️ Logo Winflex (para el PDF de OP)</h3>
-      <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Subí el logo (PNG o JPG, máx 200 KB). Se va a usar arriba a la izquierda del PDF. Si no cargás logo, aparece "WINFLEX" en texto.</p>
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-        ${c.logoBase64 ? `<img src="${c.logoBase64}" style="max-width:140px;max-height:80px;border:1px solid #d1d5db;border-radius:6px;padding:4px;background:white">` : '<div style="width:140px;height:80px;border:2px dashed #d1d5db;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px">Sin logo</div>'}
-        <div>
-          <input type="file" id="logoFile" accept="image/png,image/jpeg" style="font-size:13px" onchange="cargarLogo()">
-          ${c.logoBase64 ? `<br><button class="btn-ghost" style="margin-top:6px" onclick="quitarLogo()">🗑️ Quitar logo</button>` : ''}
-        </div>
       </div>
     </div>
 
