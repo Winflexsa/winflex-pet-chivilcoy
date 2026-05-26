@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC</div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#dc2626;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v3.16-DIAG</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -782,6 +782,28 @@ async function loadData() {
 // MERGE INTELIGENTE para producciones y registros (igual que tablet)
 // Evita pisar items cargados desde la tablet
 // ============================================================
+
+// Limpia recursivamente nulls, undefined, strings vacíos, arrays/objetos vacíos.
+// Esto reduce significativamente el tamaño del JSON al subir al bin de JSONBin
+// (necesario para evitar el límite de 100KB del plan Free).
+function compactDeep(obj) {
+  if (Array.isArray(obj)) return obj.map(compactDeep);
+  if (obj && typeof obj === 'object') {
+    const out = {};
+    for (const k in obj) {
+      const v = compactDeep(obj[k]);
+      // Conservar 0 y false; descartar null/undefined/"" y arrays/objetos vacíos
+      if (v === null || v === undefined) continue;
+      if (v === '') continue;
+      if (Array.isArray(v) && v.length === 0) continue;
+      if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) continue;
+      out[k] = v;
+    }
+    return out;
+  }
+  return obj;
+}
+
 function mergeArrayPorId(remoteArr, localArr) {
   const out = new Map();
   (remoteArr || []).forEach(item => {
@@ -878,6 +900,161 @@ async function saveTransportistas() {
   toast('Transportistas guardados', 'success');
 }
 
+function diagnosticarBin() {
+  const st = document.getElementById('diagnBinStatus');
+  if (!DATA) { st.innerHTML = '<span style="color:#dc2626">DATA no cargado</span>'; return; }
+
+  // Calcular tamaño REAL (sin compactar) y COMPACTADO
+  const fullStr = JSON.stringify(DATA);
+  const compactStr = JSON.stringify(compactDeep(DATA));
+  const fullKB = Math.round(fullStr.length / 1024 * 10) / 10;
+  const compactKB = Math.round(compactStr.length / 1024 * 10) / 10;
+  const limite = 100;
+
+  // Breakdown por sección
+  const partes = {
+    pedidos: JSON.stringify(compactDeep(DATA.pedidos || [])).length,
+    producciones: JSON.stringify(compactDeep(DATA.producciones || [])).length,
+    registrosProduccion: JSON.stringify(compactDeep(DATA.registrosProduccion || [])).length,
+    remitos: JSON.stringify(compactDeep(DATA.remitos || [])).length,
+    catalogos: JSON.stringify(compactDeep(DATA.catalogos || {})).length,
+    config: JSON.stringify(compactDeep(DATA.config || {})).length,
+    costosMensuales: JSON.stringify(compactDeep(DATA.costosMensuales || {})).length
+  };
+
+  const status = compactKB <= limite ? 'OK' : 'EXCEDE LÍMITE';
+  const color = compactKB <= limite ? '#16a34a' : '#dc2626';
+  const bar = Math.min(100, Math.round(compactKB / limite * 100));
+  const barColor = bar < 80 ? '#16a34a' : bar < 100 ? '#d97706' : '#dc2626';
+
+  let html = `
+    <div style="background:white;padding:14px;border-radius:8px;border:1px solid #e5e7eb">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div><b>Tamaño al subir al bin:</b> <span style="color:${color};font-size:18px;font-weight:700">${compactKB} KB</span> / ${limite} KB</div>
+        <span style="background:${color};color:white;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700">${status}</span>
+      </div>
+      <div style="height:14px;background:#e5e7eb;border-radius:7px;overflow:hidden;margin-bottom:14px">
+        <div style="height:100%;width:${bar}%;background:${barColor};transition:width 0.3s"></div>
+      </div>
+      <div style="font-size:12px;color:#6b7280;margin-bottom:10px">Sin compresión: ${fullKB} KB · Con compresión automática: ${compactKB} KB (ahorra ${fullKB - compactKB} KB)</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Desglose:</div>
+      <table style="width:100%;font-size:12px">
+        ${Object.entries(partes).sort((a,b) => b[1]-a[1]).map(([k,v]) => {
+          const kb = Math.round(v/1024*10)/10;
+          const pct = Math.round(v/compactStr.length*100);
+          const count = Array.isArray(DATA[k]) ? DATA[k].length : '-';
+          return `<tr>
+            <td style="padding:4px 0">${k}</td>
+            <td style="padding:4px 0;text-align:right">${count !== '-' ? count + ' items · ' : ''}<b>${kb} KB</b> (${pct}%)</td>
+          </tr>`;
+        }).join('')}
+      </table>
+  `;
+  if (compactKB > limite) {
+    html += `<div style="margin-top:14px;padding:10px;background:#fee2e2;border-radius:6px;color:#991b1b;font-size:13px"><b>⚠️ Tu bin excede 100 KB.</b> JSONBin Free va a rechazar las sincronizaciones.<br>Solución: apretá el botón <b>"Purgar histórico"</b> abajo para borrar bobinas/registros viejos.</div>`;
+  } else if (compactKB > 90) {
+    html += `<div style="margin-top:14px;padding:10px;background:#fef3c7;border-radius:6px;color:#92400e;font-size:13px"><b>⚠️ Estás cerca del límite.</b> Considerá purgar algunas producciones viejas pronto.</div>`;
+  }
+  html += '</div>';
+  st.innerHTML = html;
+}
+
+async function purgarHistoricoProducciones() {
+  const dias = +document.getElementById('purgarDias').value || 60;
+  const st = document.getElementById('purgarStatus');
+  if (!DATA) { st.innerHTML = '<span style="color:#dc2626">DATA no cargado</span>'; return; }
+
+  const limiteDate = new Date();
+  limiteDate.setDate(limiteDate.getDate() - dias);
+  const limiteStr = limiteDate.toISOString().slice(0, 10);
+
+  // OPs que están finalizadas/despachadas/canceladas (sus bobinas se pueden purgar)
+  const opsFinalizadas = new Set(
+    (DATA.pedidos || [])
+      .filter(p => ['Despachada', 'Finalizada', 'Cancelada'].includes(p.estadoWorkflow))
+      .map(p => p.id)
+  );
+
+  const bobinasAntes = (DATA.producciones || []).length;
+  const registrosAntes = (DATA.registrosProduccion || []).length;
+
+  // Solo borrar bobinas/registros que:
+  // 1) fecha < límite Y
+  // 2) pertenecen a una OP finalizada (no a una en producción)
+  const bobinasParaPurgar = (DATA.producciones || []).filter(b => {
+    if (!b.fecha) return false;
+    if (b.fecha >= limiteStr) return false;
+    return opsFinalizadas.has(b.pedidoId);
+  });
+  const registrosParaPurgar = (DATA.registrosProduccion || []).filter(r => {
+    if (!r.fecha) return false;
+    if (r.fecha >= limiteStr) return false;
+    return opsFinalizadas.has(r.pedidoId);
+  });
+
+  if (bobinasParaPurgar.length === 0 && registrosParaPurgar.length === 0) {
+    st.innerHTML = `<span style="color:#6b7280">No hay bobinas ni registros viejos para purgar (más antiguos que ${dias} días, asociados a OPs finalizadas).</span>`;
+    return;
+  }
+
+  const kgPurga = bobinasParaPurgar.reduce((s,b) => s+(+b.kg||0), 0);
+  if (!confirm(`¿Purgar del bin remoto?\n\n• ${bobinasParaPurgar.length} bobinas (${Math.round(kgPurga)} kg)\n• ${registrosParaPurgar.length} registros horarios\n\nTodas tienen más de ${dias} días y son de OPs ya despachadas/finalizadas.\n\nLos kgReales de los pedidos NO se modifican (se respetan los totales históricos).\n\nEsta acción libera espacio en el bin de JSONBin.`)) return;
+
+  // Marcar las bobinas como purgadas en _pcModifiedBobinas para que el merge no las traiga de vuelta
+  if (!window._pcModifiedBobinas) window._pcModifiedBobinas = new Set();
+  const idsBobinasPurga = new Set(bobinasParaPurgar.map(b => b.id));
+  const idsRegistrosPurga = new Set(registrosParaPurgar.map(r => r.id));
+  idsBobinasPurga.forEach(id => window._pcModifiedBobinas.add(id));
+
+  // Filtrar localmente
+  DATA.producciones = (DATA.producciones || []).filter(b => !idsBobinasPurga.has(b.id));
+  DATA.registrosProduccion = (DATA.registrosProduccion || []).filter(r => !idsRegistrosPurga.has(r.id));
+
+  st.innerHTML = '<span style="color:#0891b2">Subiendo cambios al bin...</span>';
+
+  // Ahora se complica: el saveData normal toma producciones DEL REMOTO, no del local.
+  // Necesitamos un saveData especial que tome el local (después de filtrar) y haga PUT.
+  await saveDataConPurga();
+
+  // Recalcular tamaño
+  const newSize = Math.round(JSON.stringify(compactDeep(DATA)).length / 1024 * 10) / 10;
+  st.innerHTML = `<span style="color:#16a34a;font-weight:600">✓ Purgados ${bobinasParaPurgar.length} bobinas (${Math.round(kgPurga)} kg) y ${registrosParaPurgar.length} registros.</span><br><span style="color:#6b7280">Tamaño nuevo del bin: ${newSize} KB</span>`;
+
+  // Refrescar diagnóstico si está abierto
+  setTimeout(() => { if (document.getElementById('diagnBinStatus').innerHTML) diagnosticarBin(); }, 500);
+}
+
+// saveData especial para purga: NO sobreescribe producciones con el remoto,
+// usa el local (que ya tiene los items purgados)
+async function saveDataConPurga() {
+  DATA.lastUpdate = new Date().toISOString();
+  localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+  setSyncStatus('Purgando bin...', 'syncing');
+  const creds = getCredentials();
+  if (!creds) { setSyncStatus('Sin credenciales', 'error'); return; }
+  try {
+    const cleanedPayload = compactDeep(DATA);
+    const bodyStr = JSON.stringify(cleanedPayload);
+    const headers = { 'Content-Type': 'application/json', 'X-Master-Key': creds.masterKey };
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}`, {
+      method: 'PUT', headers, body: bodyStr
+    });
+    if (r.ok) {
+      isDirty = false;
+      setSyncStatus('Sincronizado (purgado)', 'ok');
+      console.log('[saveDataConPurga] OK, ' + Math.round(bodyStr.length/1024) + ' KB');
+    } else {
+      let body = '';
+      try { body = await r.text(); } catch(e){}
+      setSyncStatus('Error PUT (HTTP ' + r.status + ')', 'error');
+      console.error('[saveDataConPurga] HTTP ' + r.status + ':', body);
+    }
+  } catch (e) {
+    console.error('[saveDataConPurga] error:', e);
+    setSyncStatus('Sin conexión', 'error');
+  }
+}
+
 async function restaurarKgRealesHistoricos() {
   const st = document.getElementById('restaurarStatus');
   if (!DATA || !DATA.pedidos) { st.innerHTML = '<span style="color:#dc2626">No hay datos cargados</span>'; return; }
@@ -960,22 +1137,45 @@ async function saveData() {
     merged.lastUpdate = new Date().toISOString();
     console.log('[PC saveData] merged. Final prod:', merged.producciones.length, 'reg:', merged.registrosProduccion.length);
 
+    // 4) COMPRIMIR el payload antes de enviar (clean nulls + sin espacios)
+    // Esto evita superar el límite de 100KB del plan Free de JSONBin
+    const cleanedPayload = compactDeep(merged);
+    const bodyStr = JSON.stringify(cleanedPayload);
+    const sizeKB = Math.round(bodyStr.length / 1024 * 10) / 10;
+    console.log('[PC saveData] Payload size:', sizeKB, 'KB');
+    if (bodyStr.length > 95000) {
+      console.warn('[PC saveData] Payload muy cerca del límite de 100KB');
+    }
+
     const headers = { 'Content-Type': 'application/json', 'X-Master-Key': creds.masterKey };
     const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}`, {
-      method: 'PUT', headers, body: JSON.stringify(merged)
+      method: 'PUT', headers, body: bodyStr
     });
     if (r.ok) {
       DATA = merged;
       localStorage.setItem(LS_KEY, JSON.stringify(DATA));
       isDirty = false;
-      setSyncStatus('Sincronizado', 'ok');
-      console.log('[PC saveData] PUT ok');
+      setSyncStatus('Sincronizado · ' + sizeKB + ' KB', 'ok');
+      console.log('[PC saveData] PUT ok, ' + sizeKB + ' KB');
     } else {
-      setSyncStatus('Error sync (HTTP ' + r.status + ')', 'error');
+      // Si es error de tamaño, dar mensaje específico
+      let body = '';
+      try { body = await r.text(); } catch(e){}
+      if (r.status === 413 || (body && body.toLowerCase().includes('size'))) {
+        setSyncStatus('Bin lleno (' + sizeKB + ' KB) — purgá histórico', 'error');
+        console.error('[PC saveData] Bin excede límite. Tamaño:', sizeKB, 'KB. Body:', body);
+      } else {
+        setSyncStatus('Error sync (HTTP ' + r.status + ')', 'error');
+        console.error('[PC saveData] HTTP error:', r.status, body);
+      }
     }
   } catch (e) {
     console.error('[PC saveData] error:', e);
-    setSyncStatus('Sin conexión', 'error');
+    if (e.message && e.message.includes('Failed to fetch')) {
+      setSyncStatus('CORS / red — revisar bin', 'error');
+    } else {
+      setSyncStatus('Sin conexión', 'error');
+    }
   }
 }
 
@@ -5128,6 +5328,25 @@ function renderConfig() {
       <p style="font-size:13px;color:#6b7280;margin-bottom:10px">Transportistas habituales para elegir al armar el remito.</p>
       <div id="transportistasList"></div>
       <button class="btn-ghost" style="margin-top:8px" onclick="addTransportista()">+ Agregar transportista</button>
+    </div>
+
+    <div class="detail-section" style="border:2px solid #dc2626;background:#fef2f2">
+      <h3>📊 Diagnóstico del bin (tamaño JSONBin)</h3>
+      <p style="font-size:13px;color:#991b1b;margin-bottom:10px">JSONBin Free tiene un límite de <b>100 KB por bin</b>. Si tu bin pasa ese tamaño, la app empieza a fallar (errores CORS, no se sincroniza). Apretá el botón para ver el tamaño actual.</p>
+      <button class="btn btn-pri" style="background:#dc2626" onclick="diagnosticarBin()">📊 Analizar tamaño del bin</button>
+      <div id="diagnBinStatus" style="margin-top:14px;font-size:13px"></div>
+    </div>
+
+    <div class="detail-section" style="border:2px solid #fbbf24;background:#fffbeb">
+      <h3>🗑️ Purgar producciones viejas (libera espacio en bin)</h3>
+      <p style="font-size:13px;color:#92400e;margin-bottom:10px">Si el bin está muy grande, podés borrar las bobinas y registros horarios de hace más de X días. Las que están asociadas a OPs no finalizadas <b>no se tocan</b>. Esta acción NO afecta los pedidos ni los kg producidos históricos.</p>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <label style="font-size:13px;color:#92400e">Borrar bobinas/registros más antiguos que:</label>
+        <input type="number" id="purgarDias" value="60" min="30" max="365" style="width:80px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px">
+        <span style="font-size:13px;color:#92400e">días</span>
+      </div>
+      <button class="btn btn-pri" style="background:#d97706" onclick="purgarHistoricoProducciones()">🗑️ Purgar histórico</button>
+      <div id="purgarStatus" style="margin-top:10px;font-size:13px"></div>
     </div>
 
     <div class="detail-section" style="border:2px solid #fbbf24;background:#fffbeb">
