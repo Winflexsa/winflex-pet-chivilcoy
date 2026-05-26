@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#0891b2;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v3.20-BACKUP</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v3.21-COMPRESS</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -721,7 +721,7 @@ async function loadData() {
       console.log('[loadData] Respuesta JSONBin:', r.status);
       if (r.ok) {
         const j = await r.json();
-        DATA = migrateLegacyData(j.record);
+        DATA = migrateLegacyData(decompressDataFromBin(j.record));
         autoLimpiarAdjuntos(DATA); // Auto-limpieza después de cargar del remoto
         // Set de pedidos que tienen bobinas en el remoto → solo esos se recalculan.
         // Los que no tienen bobinas mantienen su kgReales histórico (cargado manualmente desde Excel).
@@ -801,8 +801,8 @@ async function migrarABinNuevo() {
     return;
   }
 
-  // Calcular tamaño del payload limpio
-  const cleanedPayload = compactDeep(DATA);
+  // Calcular tamaño del payload limpio + comprimido
+  const cleanedPayload = compactDeep(compressDataForBin(DATA));
   const bodyStr = JSON.stringify(cleanedPayload);
   const sizeKB = Math.round(bodyStr.length / 1024 * 10) / 10;
 
@@ -905,6 +905,87 @@ function exportarDataJSON() {
       Tiene todos tus pedidos, producciones, registros, remitos, catálogos y config.
     </div>`;
   }
+}
+
+// ============================================================
+// COMPRESIÓN DE PEDIDOS — para que el bin entre en 100 KB de JSONBin Free
+// Los pedidos en MEMORIA usan nombres largos (compatibilidad con todo el código).
+// Solo al subir/bajar al bin se aplica el mapeo a/desde nombres cortos.
+// ============================================================
+const PEDIDO_FIELD_MAP = {
+  'fechaIngreso': 'fi', 'fechaDespacho': 'fd', 'fechaEntrega': 'fe',
+  'cliente': 'cl', 'medida': 'med', 'color': 'col',
+  'partida': 'pt', 'kgPedidos': 'kp', 'kgReales': 'kr',
+  'kgPorBobina': 'kpb', 'formula': 'fm',
+  'ancho': 'a', 'espesor': 'e', 'estadoWorkflow': 'ew',
+  'mezclaTeoricaTexto': 'mtt', 'producto': 'prd',
+  'codigoProducto': 'cp', 'kgPorHora': 'kph',
+  'horasPorDia': 'hpd', 'scrapTeorico': 'st',
+  'metrosBobina': 'mb', 'diametroBobina': 'db',
+  'siliconaGramosM2': 'sgm', 'destinoCodigo': 'dc',
+  'conoTipo': 'ct', 'kgPorBobina6': 'kpb6', 'kgFinalCono3': 'kfc3',
+  'siliconaPct': 'sp', 'siliconaCaras': 'scs',
+  'nroOP': 'no', 'nroSolicitud': 'ns',
+  'recetaCodigo': 'rc', 'productoTipo': 'pdt',
+  'silicona': 'si', 'observaciones': 'obs'
+};
+const FORMULA_FIELD_MAP = {
+  'preforma': 'pf', 'scrap': 'sr', 'virgen': 'v', 'master': 'm'
+};
+// Mapeo inverso (auto-generado)
+const PEDIDO_REVERSE_MAP = Object.entries(PEDIDO_FIELD_MAP).reduce((a, [l, s]) => { a[s] = l; return a; }, {});
+const FORMULA_REVERSE_MAP = Object.entries(FORMULA_FIELD_MAP).reduce((a, [l, s]) => { a[s] = l; return a; }, {});
+
+function compressPedido(p) {
+  if (!p || typeof p !== 'object') return p;
+  const out = {};
+  for (const k in p) {
+    const sk = PEDIDO_FIELD_MAP[k] || k;
+    const v = p[k];
+    if (k === 'formula' && v && typeof v === 'object' && !Array.isArray(v)) {
+      const fOut = {};
+      for (const fk in v) fOut[FORMULA_FIELD_MAP[fk] || fk] = v[fk];
+      out[sk] = fOut;
+    } else {
+      out[sk] = v;
+    }
+  }
+  return out;
+}
+
+function decompressPedido(p) {
+  if (!p || typeof p !== 'object') return p;
+  // Si ya tiene nombres largos (p.ej. 'cliente'), está sin comprimir → devolver tal cual
+  if ('cliente' in p || 'fechaIngreso' in p || 'kgPedidos' in p) return p;
+  // Si tiene 'cl' o 'fi' o 'kp', está comprimido → descomprimir
+  const out = {};
+  for (const k in p) {
+    const lk = PEDIDO_REVERSE_MAP[k] || k;
+    const v = p[k];
+    if (lk === 'formula' && v && typeof v === 'object' && !Array.isArray(v)) {
+      const fOut = {};
+      for (const fk in v) fOut[FORMULA_REVERSE_MAP[fk] || fk] = v[fk];
+      out[lk] = fOut;
+    } else {
+      out[lk] = v;
+    }
+  }
+  return out;
+}
+
+// Comprimir/descomprimir todo el DATA (solo pedidos por ahora)
+function compressDataForBin(data) {
+  const out = JSON.parse(JSON.stringify(data));
+  if (Array.isArray(out.pedidos)) {
+    out.pedidos = out.pedidos.map(compressPedido);
+  }
+  return out;
+}
+function decompressDataFromBin(data) {
+  if (Array.isArray(data.pedidos)) {
+    data.pedidos = data.pedidos.map(decompressPedido);
+  }
+  return data;
 }
 
 function compactDeep(obj) {
@@ -1052,9 +1133,9 @@ function diagnosticarBin() {
   const st = document.getElementById('diagnBinStatus');
   if (!DATA) { st.innerHTML = '<span style="color:#dc2626">DATA no cargado</span>'; return; }
 
-  // Calcular tamaño REAL (sin compactar) y COMPACTADO
+  // Calcular tamaño REAL (sin compactar) y COMPACTADO (lo que se sube al bin)
   const fullStr = JSON.stringify(DATA);
-  const compactStr = JSON.stringify(compactDeep(DATA));
+  const compactStr = JSON.stringify(compactDeep(compressDataForBin(DATA)));
   const fullKB = Math.round(fullStr.length / 1024 * 10) / 10;
   const compactKB = Math.round(compactStr.length / 1024 * 10) / 10;
   const limite = 100;
@@ -1328,7 +1409,7 @@ async function saveDataConPurga() {
   const creds = getCredentials();
   if (!creds) { setSyncStatus('Sin credenciales', 'error'); return; }
   try {
-    const cleanedPayload = compactDeep(DATA);
+    const cleanedPayload = compactDeep(compressDataForBin(DATA));
     const bodyStr = JSON.stringify(cleanedPayload);
     const headers = { 'Content-Type': 'application/json', 'X-Master-Key': creds.masterKey };
     const r = await fetch(`https://api.jsonbin.io/v3/b/${creds.binId}`, {
@@ -1404,7 +1485,7 @@ async function saveData() {
     });
     if (!fresh.ok) { setSyncStatus('Error fetch (HTTP ' + fresh.status + ')', 'error'); return; }
     const j = await fresh.json();
-    const remote = j.record;
+    const remote = decompressDataFromBin(j.record);
     console.log('[PC saveData] GET ok. Remote prod:', (remote.producciones||[]).length, 'reg:', (remote.registrosProduccion||[]).length, 'Local prod:', (DATA.producciones||[]).length, 'reg:', (DATA.registrosProduccion||[]).length);
 
     // 2) Construir el payload final:
@@ -1432,9 +1513,9 @@ async function saveData() {
     merged.lastUpdate = new Date().toISOString();
     console.log('[PC saveData] merged. Final prod:', merged.producciones.length, 'reg:', merged.registrosProduccion.length);
 
-    // 4) COMPRIMIR el payload antes de enviar (clean nulls + sin espacios)
+    // 4) COMPRIMIR el payload antes de enviar (compresión campos pedidos + clean nulls + sin espacios)
     // Esto evita superar el límite de 100KB del plan Free de JSONBin
-    const cleanedPayload = compactDeep(merged);
+    const cleanedPayload = compactDeep(compressDataForBin(merged));
     const bodyStr = JSON.stringify(cleanedPayload);
     const sizeKB = Math.round(bodyStr.length / 1024 * 10) / 10;
     console.log('[PC saveData] Payload size:', sizeKB, 'KB');
@@ -1485,7 +1566,7 @@ async function silentReloadPC() {
     });
     if (!r.ok) return;
     const j = await r.json();
-    const remote = j.record;
+    const remote = decompressDataFromBin(j.record);
     // Merge: pedidos/catálogos del local (los manejo yo), producciones/registros del REMOTO
     // (la PC nunca crea/borra producciones; mergear podría resucitar borrados de tablet)
     const merged = JSON.parse(JSON.stringify(DATA));
