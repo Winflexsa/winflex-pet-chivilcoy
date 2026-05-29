@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.1-LIMPIO</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.2-PALLETS</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -11689,25 +11689,31 @@ function renderRemitosDisponibles() {
     const bobNros = pl.bobinas.map(b => b.nroBobina).filter(Boolean).sort((a,b) => +a - +b);
     const rangoBob = bobNros.length > 0 ? (bobNros.length === 1 ? '#' + bobNros[0] : '#' + bobNros[0] + ' a #' + bobNros[bobNros.length-1]) : '';
     listHtml += `
-      <div onclick="togglePalletByIdx(${idx})" style="background:white;border:2px solid ${allSelected?'#16a34a':'#e5e7eb'};border-radius:10px;padding:14px;cursor:pointer;transition:all 0.15s;${allSelected?'box-shadow:0 0 0 3px rgba(22,163,74,0.15)':''}">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-              <div style="font-size:20px">${allSelected?'☑':'☐'}</div>
-              <div style="font-size:16px;font-weight:700;color:#15803d">Pallet ${pl.nroPallet}</div>
+      <div style="background:white;border:2px solid ${allSelected?'#16a34a':'#e5e7eb'};border-radius:10px;padding:14px;transition:all 0.15s;${allSelected?'box-shadow:0 0 0 3px rgba(22,163,74,0.15)':''}">
+        <div onclick="togglePalletByIdx(${idx})" style="cursor:pointer">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+                <div style="font-size:20px">${allSelected?'☑':'☐'}</div>
+                <div style="font-size:16px;font-weight:700;color:#15803d">Pallet ${pl.nroPallet}</div>
+                ${pl.bobinas.length > 10 ? `<span style="background:#fef2f2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">⚠️ ${pl.bobinas.length} bobinas</span>` : ''}
+              </div>
+              <div style="font-size:14px;font-weight:600;color:#1f2937;margin-bottom:2px">${ped.cliente}</div>
+              <div style="font-size:12px;color:#6b7280">OP ${ped.nroOP||'-'} · ${ped.ancho||'-'}×${ped.espesor||'-'} mic · ${ped.color||'-'}</div>
+              <div style="font-size:11px;color:#9ca3af;margin-top:4px">Partida: <code>${ped.op||'-'}</code></div>
             </div>
-            <div style="font-size:14px;font-weight:600;color:#1f2937;margin-bottom:2px">${ped.cliente}</div>
-            <div style="font-size:12px;color:#6b7280">OP ${ped.nroOP||'-'} · ${ped.ancho||'-'}×${ped.espesor||'-'} mic · ${ped.color||'-'}</div>
-            <div style="font-size:11px;color:#9ca3af;margin-top:4px">Partida: <code>${ped.op||'-'}</code></div>
+            <div style="text-align:right">
+              <div style="font-size:18px;font-weight:700;color:#16a34a">${fmtNum(totalKg)}</div>
+              <div style="font-size:11px;color:#6b7280">kg</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:6px">${pl.bobinas.length} bob${rangoBob?'<br>'+rangoBob:''}</div>
+            </div>
           </div>
-          <div style="text-align:right">
-            <div style="font-size:18px;font-weight:700;color:#16a34a">${fmtNum(totalKg)}</div>
-            <div style="font-size:11px;color:#6b7280">kg</div>
-            <div style="font-size:11px;color:#6b7280;margin-top:6px">${pl.bobinas.length} bob${rangoBob?'<br>'+rangoBob:''}</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6">
+            ${pl.bobinas.map(b => b.fecha).filter((v,i,a) => a.indexOf(v) === i).map(d => fmtFecha(d)).join(', ')}
           </div>
         </div>
-        <div style="font-size:11px;color:#9ca3af;margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6">
-          ${pl.bobinas.map(b => b.fecha).filter((v,i,a) => a.indexOf(v) === i).map(d => fmtFecha(d)).join(', ')}
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;text-align:right">
+          <button onclick="event.stopPropagation();abrirReasignarPallet(${idx})" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer">✏️ Reasignar pallets</button>
         </div>
       </div>
     `;
@@ -11720,6 +11726,126 @@ function togglePalletByIdx(idx) {
   const pl = (window._palletsActuales || [])[idx];
   if (!pl) { console.warn('Pallet idx no encontrado:', idx); return; }
   togglePalletSeleccion(pl.nroPallet, pl.pedidoId);
+}
+
+// Modal para reasignar el N° de pallet de las bobinas de un grupo.
+// Útil para arreglar el caso típico: el operario no incrementó el N° pallet en la tablet
+// y todas las bobinas quedaron en "Pallet 1". Acá se reparten en pallets reales.
+function abrirReasignarPallet(idx) {
+  const pl = (window._palletsActuales || [])[idx];
+  if (!pl) return;
+  const ped = DATA.pedidos.find(x => x.id === pl.pedidoId);
+  if (!ped) return;
+
+  // Ordenar bobinas por nroBobina o fecha+hora
+  const bobs = [...pl.bobinas].sort((a, b) => {
+    const na = +a.nroBobina || 0, nb = +b.nroBobina || 0;
+    if (na !== nb) return na - nb;
+    return ((a.fecha||'') + (a.hora||'')).localeCompare((b.fecha||'') + (b.hora||''));
+  });
+
+  // Calcular sugerencia: cada N bobinas (default 6) = pallet nuevo
+  const sugBobsPorPallet = 6;
+  const cardHtml = bobs.map((b, i) => {
+    const palletSug = pl.nroPallet + Math.floor(i / sugBobsPorPallet);
+    return `
+      <tr style="border-bottom:1px solid #f3f4f6">
+        <td style="padding:6px 8px;font-size:12px">#${b.nroBobina||'-'}</td>
+        <td style="padding:6px 8px;font-size:12px">${fmtFecha(b.fecha)} ${b.hora||''}</td>
+        <td style="padding:6px 8px;font-size:12px">${fmtNum(b.kg)} kg</td>
+        <td style="padding:6px 8px"><input type="number" min="1" id="rp_${b.id}" data-bobid="${b.id}" data-prev="${b.nroPallet}" value="${b.nroPallet}" style="width:80px;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:13px;text-align:center"></td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal" style="max-width:720px;max-height:90vh;display:flex;flex-direction:column">
+        <div class="modal-h">
+          <h3>✏️ Reasignar N° de pallet</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body" style="overflow-y:auto;flex:1">
+          <div style="background:#fffbeb;border:1px solid #fde68a;padding:10px 12px;border-radius:6px;margin-bottom:12px;font-size:13px;color:#92400e">
+            <b>${ped.cliente}</b> · OP ${ped.nroOP||'-'} · ${bobs.length} bobinas en este grupo<br>
+            <span style="font-size:12px">Editá el N° pallet de cada bobina. Las que tengan el mismo N° se van a agrupar como un pallet. Útil cuando el operario no incrementó el N° en la tablet.</span>
+          </div>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+            <label style="font-size:13px;color:#374151">⚡ Auto-asignar de a:</label>
+            <input type="number" id="rp_chunk" value="${sugBobsPorPallet}" min="1" max="20" style="width:60px;padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:13px;text-align:center">
+            <span style="font-size:13px;color:#374151">bobinas por pallet</span>
+            <button class="btn-ghost" onclick="autoAsignarPallets(${idx})" style="font-size:12px;background:#dbeafe;color:#1e40af">🔢 Aplicar</button>
+            <span style="font-size:11px;color:#6b7280;margin-left:8px">empieza desde el N° ${pl.nroPallet}</span>
+          </div>
+
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="background:#f9fafb;border-bottom:2px solid #e5e7eb">
+                <th style="padding:8px;text-align:left;font-size:12px;color:#6b7280">Bobina</th>
+                <th style="padding:8px;text-align:left;font-size:12px;color:#6b7280">Fecha/Hora</th>
+                <th style="padding:8px;text-align:left;font-size:12px;color:#6b7280">Kg</th>
+                <th style="padding:8px;text-align:left;font-size:12px;color:#6b7280">N° Pallet</th>
+              </tr>
+            </thead>
+            <tbody>${cardHtml}</tbody>
+          </table>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="guardarReasignacionPallets()">💾 Guardar cambios</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Auto-asignar: agarra el chunk size, asigna pallet 1...N, empezando desde el N° del primer pallet
+function autoAsignarPallets(idx) {
+  const pl = (window._palletsActuales || [])[idx];
+  if (!pl) return;
+  const chunk = +document.getElementById('rp_chunk').value || 6;
+  const startNum = pl.nroPallet;
+  // Ordenar bobinas por nroBobina/fecha
+  const bobs = [...pl.bobinas].sort((a, b) => {
+    const na = +a.nroBobina || 0, nb = +b.nroBobina || 0;
+    if (na !== nb) return na - nb;
+    return ((a.fecha||'') + (a.hora||'')).localeCompare((b.fecha||'') + (b.hora||''));
+  });
+  bobs.forEach((b, i) => {
+    const inp = document.getElementById('rp_' + b.id);
+    if (inp) inp.value = startNum + Math.floor(i / chunk);
+  });
+  toast('Sugerencia aplicada — revisá antes de guardar', 'success');
+}
+
+async function guardarReasignacionPallets() {
+  const inputs = document.querySelectorAll('input[id^="rp_"][data-bobid]');
+  let cambios = 0;
+  inputs.forEach(inp => {
+    const bobId = inp.getAttribute('data-bobid');
+    const nuevo = +inp.value || 1;
+    const prev = +inp.getAttribute('data-prev') || 1;
+    if (nuevo === prev) return;
+    const b = DATA.producciones.find(x => x.id === bobId);
+    if (!b) return;
+    b.nroPallet = nuevo;
+    b.timestamp = new Date().toISOString(); // tocar timestamp para que gane en el merge
+    cambios++;
+  });
+  if (cambios === 0) {
+    toast('Nada cambió', 'success');
+    closeModal();
+    return;
+  }
+  // Marcar bobinas como modificadas por la PC para que el merge las preserve
+  if (!window._pcModifiedBobinas) window._pcModifiedBobinas = new Set();
+  inputs.forEach(inp => window._pcModifiedBobinas.add(inp.getAttribute('data-bobid')));
+
+  closeModal();
+  await saveData();
+  toast(`${cambios} bobinas reasignadas`, 'success');
+  renderRemitos();
 }
 
 function togglePalletSeleccion(nroPallet, pedidoId) {

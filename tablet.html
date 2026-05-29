@@ -246,7 +246,7 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
 <div id="screenLogin" class="screen">
   <div class="login-box">
     <h1>🏭 Winflex PET</h1>
-    <p class="sub">Tablet de operarios · Chivilcoy <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.1-LIMPIO</span></p>
+    <p class="sub">Tablet de operarios · Chivilcoy <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.2-PALLETS</span></p>
     <p class="sub" style="font-size:13px;color:#9ca3af">Ingresá tu PIN personal</p>
     <div class="pin-display" id="pinDisplay"></div>
     <div class="keypad">
@@ -1414,15 +1414,39 @@ function _openBobinaModalImpl(bobinaId) {
     };
   }
 
+  // Calcular estado del pallet actual para mostrarlo prominente en el modal.
+  // (Si es edit, "pallet actual" se refiere al pallet de esta bobina; si es nuevo, al último abierto.)
+  const todasDelPedido = (DATA.producciones || []).filter(x => x.pedidoId === p.id);
+  const palletActualNum = b.nroPallet || 1;
+  const bobinasDelPalletActual = todasDelPedido.filter(x => +x.nroPallet === palletActualNum && (!isEdit || x.id !== b.id));
+  const kgDelPalletActual = bobinasDelPalletActual.reduce((s,x) => s + (+x.kg||0), 0);
+  const proxPallet = palletActualNum + 1;
+
   document.getElementById('modalContainer').innerHTML = `
     <div class="modal-bg" >
       <div class="modal">
         <h3>${isEdit ? 'Editar bobina' : 'Nueva bobina'} <button class="close" onclick="closeModal()">✕</button></h3>
-        <p style="font-size:12px;color:#15803d;background:#f0fdf4;padding:8px 12px;border-radius:6px;margin-bottom:14px">🎯 Operario: <b>${(SESSION.operario ? SESSION.operario.nombre : '—')}</b></p>
+        <p style="font-size:12px;color:#15803d;background:#f0fdf4;padding:8px 12px;border-radius:6px;margin-bottom:10px">🎯 Operario: <b>${(SESSION.operario ? SESSION.operario.nombre : '—')}</b></p>
+
+        <!-- PANEL DE PALLET — bien visible para que el operario sepa qué pallet está armando -->
+        <div style="background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:2px solid #f59e0b;border-radius:10px;padding:12px;margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Pallet actual</div>
+              <div style="font-size:32px;font-weight:800;color:#78350f;line-height:1;margin-top:2px">N° <span id="palletDisplay">${palletActualNum}</span></div>
+              <div style="font-size:12px;color:#92400e;margin-top:6px">${bobinasDelPalletActual.length} bobinas ya en este pallet · ${Math.round(kgDelPalletActual)} kg</div>
+            </div>
+            <button type="button" onclick="iniciarPalletNuevo(${proxPallet})" style="background:#16a34a;color:white;border:none;padding:14px 18px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.1)">
+              🆕 Pallet nuevo<br>
+              <span style="font-size:11px;font-weight:500;opacity:0.9">(N° ${proxPallet})</span>
+            </button>
+          </div>
+        </div>
+
         <div class="field-row-3">
           <div class="field"><label>Hora</label><input type="time" id="b_hora" value="${b.hora||new Date().toTimeString().slice(0,5)}"></div>
           <div class="field"><label>N° Bobina</label><input type="number" id="b_nro" value="${b.nroBobina}" min="1"></div>
-          <div class="field"><label>N° Pallet</label><input type="number" id="b_pallet" value="${b.nroPallet}" min="1"></div>
+          <div class="field"><label>N° Pallet</label><input type="number" id="b_pallet" value="${b.nroPallet}" min="1" oninput="document.getElementById('palletDisplay').textContent=this.value"></div>
         </div>
         <div class="field">
           <label>Partida (auto-completa de la OP)</label>
@@ -1468,6 +1492,15 @@ function _openBobinaModalImpl(bobinaId) {
   setTimeout(() => { try { document.getElementById('b_kg').focus(); document.getElementById('b_kg').select(); } catch(e){} }, 100);
 }
 
+// Cambia el N° pallet al siguiente y actualiza el display visible
+function iniciarPalletNuevo(nro) {
+  const inp = document.getElementById('b_pallet');
+  const disp = document.getElementById('palletDisplay');
+  if (inp) inp.value = nro;
+  if (disp) disp.textContent = nro;
+  toast('Pallet nuevo: N° ' + nro, 'success');
+}
+
 // Recalcula metros cuando cambia kg en el modal bobina
 function recalcMetros() {
   const kg = +document.getElementById('b_kg').value || 0;
@@ -1495,7 +1528,10 @@ async function saveBobina(id, isEdit) {
     operario: SESSION.operario.nombre,
     turno: SESSION.turno,
     fecha: new Date().toISOString().slice(0,10),
-    timestamp: isEdit ? (DATA.producciones.find(x => x.id === id)?.timestamp || new Date().toISOString()) : new Date().toISOString(),
+    // FIX: en edits TAMBIÉN actualizamos timestamp.
+    // Antes se mantenía el original, lo que hacía que el merge entre tablets
+    // pudiera ignorar cambios (race condition con timestamps iguales).
+    timestamp: new Date().toISOString(),
     hora: document.getElementById('b_hora').value,
     nroBobina: +document.getElementById('b_nro').value || 0,
     nroPallet: +document.getElementById('b_pallet').value || 1,
