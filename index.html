@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.3-PALLETS-DET</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.4-CRONOGRAMA</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -237,6 +237,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <nav class="tabs">
     <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
     <button class="tab" data-tab="pedidos">📋 Pedidos</button>
+    <button class="tab" data-tab="cronograma">📅 Cronograma</button>
     <button class="tab" data-tab="consulta">🔍 Consulta</button>
     <button class="tab" data-tab="producciones">⚙️ Producciones</button>
     <button class="tab" data-tab="remitos">📦 Remitos</button>
@@ -319,6 +320,21 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
             <tbody></tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- CRONOGRAMA -->
+    <div id="tab-cronograma" class="tab-content hidden">
+      <div class="panel">
+        <div class="panel-h" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>📅 Cronograma semanal de producción</h2>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <button class="btn-ghost" onclick="cronoSemana(-1)" style="padding:6px 12px">← Sem. anterior</button>
+            <button class="btn-ghost" onclick="cronoSemana(0)" style="padding:6px 12px;background:#dbeafe;color:#1e40af;font-weight:600">📍 Hoy</button>
+            <button class="btn-ghost" onclick="cronoSemana(1)" style="padding:6px 12px">Sem. siguiente →</button>
+          </div>
+        </div>
+        <div id="cronogramaContent"></div>
       </div>
     </div>
 
@@ -948,6 +964,8 @@ function migrateLegacyData(d) {
   if (!d.config.horarioTurnoDia) d.config.horarioTurnoDia = { inicio: 6, fin: 18 };  // 6am a 6pm = día
   // Registros de producción (parámetros horarios - planilla WEC001)
   if (!d.registrosProduccion) d.registrosProduccion = [];
+  // Cronograma semanal: clave = fecha YYYY-MM-DD, valor = { ops: [{pedidoId, kgPlan, notas, status}], notas: '' }
+  if (!d.planificacion || typeof d.planificacion !== 'object') d.planificacion = {};
 
   // ─── Migración v4.0: PINs nuevos + agregar Jonathan al catálogo operarios ───
   // Esta migración se aplica una sola vez por dispositivo. Marca con un flag para no repetir.
@@ -2209,6 +2227,7 @@ function switchTab(name) {
 function render() {
   if (currentTab === 'dashboard') renderDashboard();
   else if (currentTab === 'pedidos') renderPedidos();
+  else if (currentTab === 'cronograma') renderCronograma();
   else if (currentTab === 'consulta') renderConsulta();
   else if (currentTab === 'producciones') renderProducciones();
   else if (currentTab === 'remitos') renderRemitos();
@@ -12856,6 +12875,348 @@ function enviarMailRemito(remitoId) {
   window.location.href = url;
 
   toast('Abriendo cliente de mail con resumen', 'success');
+}
+
+// ============================================================
+// CRONOGRAMA SEMANAL — planificación de OPs por día
+// ============================================================
+// Agustín (o Matías) asigna a cada día qué OPs se van a producir, con
+// kg planificados, prioridad, status y notas. Matías puede ver el plan
+// completo de la semana sin tener que preguntarle a Agustín.
+
+let cronoBaseFecha = null;
+
+function cronoSemana(direccion) {
+  if (!cronoBaseFecha) cronoBaseFecha = cronoGetLunesDeHoy();
+  if (direccion === 0) cronoBaseFecha = cronoGetLunesDeHoy();
+  else cronoBaseFecha.setDate(cronoBaseFecha.getDate() + direccion * 7);
+  renderCronograma();
+}
+
+function cronoGetLunesDeHoy() {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const dia = hoy.getDay();
+  const diff = dia === 0 ? -6 : 1 - dia;
+  hoy.setDate(hoy.getDate() + diff);
+  return hoy;
+}
+
+function cronoFechaKey(d) {
+  // Usar fecha local para no caer en problemas de UTC
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+  const dia = d.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${dia}`;
+}
+
+function cronoFechaCorta(d) {
+  const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${dias[d.getDay()]} ${d.getDate()} ${meses[d.getMonth()]}`;
+}
+
+function renderCronograma() {
+  if (!cronoBaseFecha) cronoBaseFecha = cronoGetLunesDeHoy();
+  const cont = document.getElementById('cronogramaContent');
+  if (!cont) return;
+  if (!DATA.planificacion) DATA.planificacion = {};
+
+  const dias = [];
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(cronoBaseFecha);
+    d.setDate(d.getDate() + i);
+    dias.push(d);
+  }
+
+  // Producción real por fecha
+  const prodPorFecha = {};
+  (DATA.producciones || []).forEach(b => {
+    if (!b.fecha) return;
+    if (!prodPorFecha[b.fecha]) prodPorFecha[b.fecha] = {};
+    if (!prodPorFecha[b.fecha][b.pedidoId]) prodPorFecha[b.fecha][b.pedidoId] = 0;
+    prodPorFecha[b.fecha][b.pedidoId] += (+b.kg || 0);
+  });
+
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const ultimoDia = dias[dias.length - 1];
+  const rangoTxt = `Semana del ${dias[0].getDate()} ${meses[dias[0].getMonth()]} al ${ultimoDia.getDate()} ${meses[ultimoDia.getMonth()]} ${ultimoDia.getFullYear()}`;
+
+  let totalPlanSemana = 0, totalProdSemana = 0, opsSemana = 0;
+  dias.forEach(d => {
+    const key = cronoFechaKey(d);
+    const plan = DATA.planificacion[key];
+    if (plan && plan.ops) {
+      plan.ops.forEach(op => {
+        totalPlanSemana += (+op.kgPlan || 0);
+        opsSemana++;
+      });
+    }
+    const prod = prodPorFecha[key] || {};
+    Object.values(prod).forEach(kg => { totalProdSemana += kg; });
+  });
+
+  let html = `
+    <div style="background:linear-gradient(135deg,#3b82f6,#1e40af);color:white;padding:14px 20px;border-radius:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:13px;opacity:0.9">${rangoTxt}</div>
+        <div style="font-size:18px;font-weight:700;margin-top:4px">${opsSemana} OPs planificadas · ${fmtNum(totalPlanSemana)} kg planificados</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;opacity:0.85">PRODUCIDO HASTA AHORA</div>
+        <div style="font-size:22px;font-weight:700">${fmtNum(totalProdSemana)} kg</div>
+        <div style="font-size:11px;opacity:0.85">${totalPlanSemana > 0 ? Math.round(totalProdSemana / totalPlanSemana * 100) + '% del plan' : ''}</div>
+      </div>
+    </div>
+  `;
+
+  html += '<div style="display:grid;grid-template-columns:repeat(6, 1fr);gap:8px;min-width:1100px;overflow-x:auto">';
+  const hoyKey = cronoFechaKey(new Date());
+  dias.forEach(d => {
+    const key = cronoFechaKey(d);
+    const esHoy = key === hoyKey;
+    const plan = DATA.planificacion[key] || { ops: [], notas: '' };
+    const ops = plan.ops || [];
+    const totalKgPlan = ops.reduce((s, op) => s + (+op.kgPlan || 0), 0);
+    const prodDia = prodPorFecha[key] || {};
+    const totalKgProd = Object.values(prodDia).reduce((s, kg) => s + kg, 0);
+
+    html += `
+      <div style="background:white;border:2px solid ${esHoy?'#3b82f6':'#e5e7eb'};border-radius:10px;padding:10px;min-height:280px;display:flex;flex-direction:column${esHoy?';box-shadow:0 0 0 3px rgba(59,130,246,0.15)':''}">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f3f4f6;padding-bottom:8px;margin-bottom:8px">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:${esHoy?'#1e40af':'#1f2937'}">${cronoFechaCorta(d)}${esHoy?' <span style="background:#3b82f6;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:4px">HOY</span>':''}</div>
+          </div>
+          <button onclick="cronoAbrirAgregarOp('${key}')" style="background:#16a34a;color:white;border:none;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer">+ OP</button>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px;overflow-y:auto;max-height:420px">`;
+
+    if (ops.length === 0) {
+      html += `<div style="text-align:center;color:#9ca3af;font-size:12px;padding:30px 8px;font-style:italic">Sin OPs planificadas</div>`;
+    } else {
+      const opsSorted = [...ops].sort((a, b) => (a.prioridad || 99) - (b.prioridad || 99) || (b.kgPlan || 0) - (a.kgPlan || 0));
+      opsSorted.forEach((op, idx) => {
+        // Encontrar idx original en el array (para edit/quitar)
+        const origIdx = ops.indexOf(op);
+        const ped = DATA.pedidos.find(x => x.id === op.pedidoId);
+        if (!ped) {
+          html += `<div style="background:#fef2f2;border:1px solid #fca5a5;padding:6px 8px;border-radius:6px;font-size:11px;color:#991b1b">OP eliminada · <button onclick="cronoQuitarOp('${key}', ${origIdx})" style="font-size:11px;background:none;border:none;cursor:pointer;color:#991b1b">✕</button></div>`;
+          return;
+        }
+        const statusInfo = cronoStatusInfo(op.status || 'pendiente');
+        const kgReal = prodDia[op.pedidoId] || 0;
+        const pctAvance = (op.kgPlan && kgReal) ? Math.min(100, Math.round(kgReal / op.kgPlan * 100)) : 0;
+        html += `
+          <div onclick="cronoEditarOp('${key}', ${origIdx})" style="background:${statusInfo.bg};border:1px solid ${statusInfo.border};border-radius:6px;padding:8px;cursor:pointer">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px">
+              <div style="font-size:11px;font-weight:700;color:#1f2937;flex:1;min-width:0">${ped.cliente}</div>
+              <div style="font-size:14px">${statusInfo.icon}</div>
+            </div>
+            <div style="font-size:10px;color:#6b7280;margin-top:2px">OP ${ped.nroOP||'-'} · ${ped.ancho||'-'}×${ped.espesor||'-'}mic</div>
+            <div style="font-size:11px;font-weight:700;color:${statusInfo.color};margin-top:4px">${fmtNum(op.kgPlan)} kg ${kgReal ? '<span style="color:#16a34a;font-weight:600;font-size:10px">· ' + fmtNum(kgReal) + 'kg real (' + pctAvance + '%)</span>' : ''}</div>
+            ${op.notas ? `<div style="font-size:10px;color:#6b7280;margin-top:3px;font-style:italic">📝 ${op.notas.substring(0,60)}${op.notas.length>60?'…':''}</div>` : ''}
+          </div>
+        `;
+      });
+    }
+
+    html += `</div>`;
+    html += `
+      <div style="border-top:1px solid #f3f4f6;padding-top:6px;margin-top:6px;font-size:11px;color:#6b7280;display:flex;justify-content:space-between">
+        <div>Plan: <b style="color:#1f2937">${fmtNum(totalKgPlan)}</b></div>
+        <div>Real: <b style="color:${totalKgProd >= totalKgPlan && totalKgPlan > 0 ? '#16a34a' : totalKgProd > 0 ? '#0891b2' : '#9ca3af'}">${fmtNum(totalKgProd)}</b></div>
+      </div>
+    `;
+    html += `</div>`;
+  });
+  html += '</div>';
+
+  html += `<div style="margin-top:14px;background:#f9fafb;padding:12px;border-radius:8px;font-size:12px;color:#6b7280">💡 <b>Tip:</b> Click en cualquier OP para editarla o cambiarle el status. Las barras de "Real" se actualizan automáticamente con las bobinas que va cargando Agustín en la tablet.</div>`;
+
+  cont.innerHTML = html;
+}
+
+function cronoStatusInfo(status) {
+  switch (status) {
+    case 'curso':       return { icon: '🔄', bg: '#eff6ff', border: '#93c5fd', color: '#1e40af' };
+    case 'completado':  return { icon: '✅', bg: '#f0fdf4', border: '#86efac', color: '#15803d' };
+    case 'demorado':    return { icon: '⚠️', bg: '#fffbeb', border: '#fbbf24', color: '#92400e' };
+    default:            return { icon: '⏳', bg: '#f9fafb', border: '#d1d5db', color: '#374151' };
+  }
+}
+
+function cronoAbrirAgregarOp(fechaKey) {
+  const activos = (DATA.pedidos || []).filter(p => {
+    const wf = p.estadoWorkflow || '';
+    return wf !== 'Finalizada' && wf !== 'Cancelada' && wf !== 'Despachada';
+  });
+  if (activos.length === 0) {
+    alert('No hay pedidos activos para planificar. Cargá primero un pedido en la pestaña Pedidos.');
+    return;
+  }
+
+  const opsHtml = activos
+    .sort((a, b) => (a.cliente||'').localeCompare(b.cliente||''))
+    .map(p => {
+      const restante = Math.max(0, (+p.kgPedidos || 0) - (+p.kgReales || 0));
+      return `<option value="${p.id}" data-restante="${restante}">${p.cliente} — OP ${p.nroOP||'-'} · ${p.ancho||'-'}×${p.espesor||'-'}mic · ${fmtNum(p.kgPedidos)} kg ped. (rest. ${fmtNum(restante)})</option>`;
+    }).join('');
+
+  const d = new Date(fechaKey + 'T00:00');
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal" style="max-width:560px">
+        <div class="modal-h">
+          <h3>📅 Agregar OP al ${cronoFechaCorta(d)} ${d.getFullYear()}</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label>Pedido / OP</label>
+            <select id="cr_pedidoId" onchange="cronoOnPedidoChange()">
+              <option value="">— Seleccionar —</option>
+              ${opsHtml}
+            </select>
+          </div>
+          <div class="field">
+            <label>Kg planificados para este día</label>
+            <input type="number" id="cr_kgPlan" value="0" min="0" step="50">
+            <div class="hint" id="cr_kgHint">Cuántos kg apuntás a producir este día</div>
+          </div>
+          <div class="field">
+            <label>Status inicial</label>
+            <select id="cr_status">
+              <option value="pendiente">⏳ Pendiente</option>
+              <option value="curso">🔄 En curso</option>
+              <option value="completado">✅ Completado</option>
+              <option value="demorado">⚠️ Demorado</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Notas (opcional)</label>
+            <textarea id="cr_notas" rows="2" placeholder="Ej: arrancar 7AM · usar mezcla X"></textarea>
+          </div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-pri" onclick="cronoGuardarNuevaOp('${fechaKey}')">💾 Agregar al día</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function cronoOnPedidoChange() {
+  const sel = document.getElementById('cr_pedidoId');
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.value) return;
+  const restante = +opt.getAttribute('data-restante') || 0;
+  const inp = document.getElementById('cr_kgPlan');
+  const hint = document.getElementById('cr_kgHint');
+  if (inp && restante > 0) {
+    inp.value = Math.min(restante, 3000);
+  }
+  if (hint) hint.textContent = `Restante del pedido: ${fmtNum(restante)} kg. Sugerencia: ${fmtNum(Math.min(restante, 3000))} kg para este día.`;
+}
+
+async function cronoGuardarNuevaOp(fechaKey) {
+  const pedidoId = document.getElementById('cr_pedidoId').value;
+  const kgPlan = +document.getElementById('cr_kgPlan').value || 0;
+  const status = document.getElementById('cr_status').value;
+  const notas = document.getElementById('cr_notas').value.trim();
+  if (!pedidoId) { alert('Seleccioná un pedido'); return; }
+  if (!DATA.planificacion) DATA.planificacion = {};
+  if (!DATA.planificacion[fechaKey]) DATA.planificacion[fechaKey] = { ops: [], notas: '' };
+  DATA.planificacion[fechaKey].ops.push({
+    pedidoId, kgPlan, status, notas,
+    prioridad: DATA.planificacion[fechaKey].ops.length + 1,
+    creado: new Date().toISOString()
+  });
+  closeModal();
+  await saveData();
+  renderCronograma();
+  toast('OP agregada al cronograma', 'success');
+}
+
+function cronoEditarOp(fechaKey, opIdx) {
+  const plan = DATA.planificacion[fechaKey];
+  if (!plan || !plan.ops || !plan.ops[opIdx]) return;
+  const op = plan.ops[opIdx];
+  const ped = DATA.pedidos.find(x => x.id === op.pedidoId);
+  if (!ped) return;
+  const d = new Date(fechaKey + 'T00:00');
+  const realDia = (DATA.producciones || [])
+    .filter(b => b.fecha === fechaKey && b.pedidoId === op.pedidoId)
+    .reduce((s, b) => s + (+b.kg || 0), 0);
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal" style="max-width:560px">
+        <div class="modal-h">
+          <h3>📝 ${cronoFechaCorta(d)} ${d.getFullYear()} — ${ped.cliente}</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="background:#f9fafb;padding:10px;border-radius:6px;margin-bottom:14px;font-size:13px">
+            <div><b>Cliente:</b> ${ped.cliente} · <b>OP:</b> ${ped.nroOP||'-'}</div>
+            <div><b>Producto:</b> ${ped.productoTipo||'-'} ${ped.ancho||'-'}×${ped.espesor||'-'} mic · ${ped.color||'-'}</div>
+            <div><b>Pedido total:</b> ${fmtNum(ped.kgPedidos)} kg · <b>Ya producido:</b> ${fmtNum(ped.kgReales||0)} kg · <b>Restante:</b> ${fmtNum(Math.max(0, (+ped.kgPedidos||0)-(+ped.kgReales||0)))} kg</div>
+            ${realDia > 0 ? `<div style="margin-top:6px;color:#15803d"><b>✓ Real cargado este día:</b> ${fmtNum(realDia)} kg</div>` : ''}
+          </div>
+          <div class="field">
+            <label>Kg planificados</label>
+            <input type="number" id="cr_kgPlan" value="${op.kgPlan||0}" min="0" step="50">
+          </div>
+          <div class="field">
+            <label>Status</label>
+            <select id="cr_status">
+              <option value="pendiente" ${op.status==='pendiente'?'selected':''}>⏳ Pendiente</option>
+              <option value="curso" ${op.status==='curso'?'selected':''}>🔄 En curso</option>
+              <option value="completado" ${op.status==='completado'?'selected':''}>✅ Completado</option>
+              <option value="demorado" ${op.status==='demorado'?'selected':''}>⚠️ Demorado</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Notas</label>
+            <textarea id="cr_notas" rows="3" placeholder="Opcional">${op.notas||''}</textarea>
+          </div>
+        </div>
+        <div class="modal-f" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sec" style="color:#dc2626" onclick="cronoQuitarOp('${fechaKey}', ${opIdx})">🗑️ Quitar del día</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+            <button class="btn btn-pri" onclick="cronoGuardarEditOp('${fechaKey}', ${opIdx})">💾 Guardar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function cronoGuardarEditOp(fechaKey, opIdx) {
+  const plan = DATA.planificacion[fechaKey];
+  if (!plan || !plan.ops || !plan.ops[opIdx]) return;
+  plan.ops[opIdx].kgPlan = +document.getElementById('cr_kgPlan').value || 0;
+  plan.ops[opIdx].status = document.getElementById('cr_status').value;
+  plan.ops[opIdx].notas = document.getElementById('cr_notas').value.trim();
+  closeModal();
+  await saveData();
+  renderCronograma();
+  toast('Cambios guardados', 'success');
+}
+
+async function cronoQuitarOp(fechaKey, opIdx) {
+  if (!confirm('¿Quitar esta OP del cronograma del día?')) return;
+  const plan = DATA.planificacion[fechaKey];
+  if (!plan || !plan.ops) return;
+  plan.ops.splice(opIdx, 1);
+  if (plan.ops.length === 0 && !plan.notas) {
+    delete DATA.planificacion[fechaKey];
+  }
+  closeModal();
+  await saveData();
+  renderCronograma();
+  toast('OP quitada del día', 'success');
 }
 
 </script>
