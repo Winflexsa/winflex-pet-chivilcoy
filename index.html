@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.2-PALLETS</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.3-PALLETS-DET</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -11712,7 +11712,8 @@ function renderRemitosDisponibles() {
             ${pl.bobinas.map(b => b.fecha).filter((v,i,a) => a.indexOf(v) === i).map(d => fmtFecha(d)).join(', ')}
           </div>
         </div>
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;text-align:right">
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+          <button onclick="event.stopPropagation();abrirDetallePallet(${idx})" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer">👁️ Detalle / 🖨️ Imprimir</button>
           <button onclick="event.stopPropagation();abrirReasignarPallet(${idx})" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer">✏️ Reasignar pallets</button>
         </div>
       </div>
@@ -11728,7 +11729,330 @@ function togglePalletByIdx(idx) {
   togglePalletSeleccion(pl.nroPallet, pl.pedidoId);
 }
 
-// Modal para reasignar el N° de pallet de las bobinas de un grupo.
+// Modal de DETALLE de un pallet, con todas las bobinas listadas y opciones de impresión.
+// Útil para: revisar contenido antes de remitir, imprimir etiqueta para colgar al pallet,
+// imprimir detalle completo (todas las bobinas con datos para registro).
+function abrirDetallePallet(idx) {
+  const pl = (window._palletsActuales || [])[idx];
+  if (!pl) return;
+  const ped = DATA.pedidos.find(x => x.id === pl.pedidoId);
+  if (!ped) return;
+
+  const bobs = [...pl.bobinas].sort((a, b) => {
+    const na = +a.nroBobina || 0, nb = +b.nroBobina || 0;
+    if (na !== nb) return na - nb;
+    return ((a.fecha||'') + (a.hora||'')).localeCompare((b.fecha||'') + (b.hora||''));
+  });
+  const totalKg = bobs.reduce((s, b) => s + (+b.kg||0), 0);
+  const totalMts = bobs.reduce((s, b) => s + (+b.metros||0), 0);
+  const fechas = [...new Set(bobs.map(b => b.fecha))].sort();
+  const operarios = [...new Set(bobs.map(b => b.operario).filter(Boolean))];
+  const bobNros = bobs.map(b => b.nroBobina).filter(Boolean).map(n => +n).sort((a,b) => a-b);
+  const rangoBob = bobNros.length === 0 ? '-' : (bobNros.length === 1 ? '#' + bobNros[0] : '#' + bobNros[0] + ' a #' + bobNros[bobNros.length-1]);
+
+  // Guardar globalmente para que las funciones de impresión accedan
+  window._palletDetalle = { pl, ped, bobs, totalKg, totalMts, fechas, rangoBob };
+
+  const rowsHtml = bobs.map(b => `
+    <tr style="border-bottom:1px solid #f3f4f6">
+      <td style="padding:6px 8px;font-size:12px;font-weight:600">#${b.nroBobina||'-'}</td>
+      <td style="padding:6px 8px;font-size:12px">${fmtFecha(b.fecha)}</td>
+      <td style="padding:6px 8px;font-size:12px">${b.hora||'-'}</td>
+      <td style="padding:6px 8px;font-size:12px;text-align:right">${fmtNum(b.kg||0)}</td>
+      <td style="padding:6px 8px;font-size:12px;text-align:right">${b.metros||'-'}</td>
+      <td style="padding:6px 8px;font-size:11px"><code>${b.partida||'-'}</code></td>
+      <td style="padding:6px 8px;font-size:11px;color:#6b7280">${(b.mezclaReal||'-').substring(0,30)}</td>
+      <td style="padding:6px 8px;font-size:11px;color:#6b7280">${b.operario||'-'}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal" style="max-width:880px;max-height:90vh;display:flex;flex-direction:column">
+        <div class="modal-h">
+          <h3>📦 Pallet ${pl.nroPallet} — ${ped.cliente}</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body" style="overflow-y:auto;flex:1">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:10px;margin-bottom:14px">
+            <div style="background:#f0fdf4;border:1px solid #86efac;padding:10px;border-radius:8px">
+              <div style="font-size:11px;color:#15803d;font-weight:600;text-transform:uppercase">Pallet</div>
+              <div style="font-size:22px;font-weight:800;color:#15803d">N° ${pl.nroPallet}</div>
+            </div>
+            <div style="background:#eff6ff;border:1px solid #93c5fd;padding:10px;border-radius:8px">
+              <div style="font-size:11px;color:#1e40af;font-weight:600;text-transform:uppercase">Total kg</div>
+              <div style="font-size:22px;font-weight:800;color:#1e40af">${fmtNum(totalKg)}</div>
+            </div>
+            <div style="background:#fefce8;border:1px solid #fde047;padding:10px;border-radius:8px">
+              <div style="font-size:11px;color:#854d0e;font-weight:600;text-transform:uppercase">Bobinas</div>
+              <div style="font-size:22px;font-weight:800;color:#854d0e">${bobs.length}</div>
+              <div style="font-size:11px;color:#854d0e">${rangoBob}</div>
+            </div>
+            <div style="background:#fdf2f8;border:1px solid #f9a8d4;padding:10px;border-radius:8px">
+              <div style="font-size:11px;color:#9f1239;font-weight:600;text-transform:uppercase">Metros</div>
+              <div style="font-size:22px;font-weight:800;color:#9f1239">${fmtNum(totalMts)}</div>
+            </div>
+          </div>
+
+          <div style="background:#f9fafb;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px">
+            <div><b>Cliente:</b> ${ped.cliente}</div>
+            <div><b>OP:</b> ${ped.nroOP||'-'} · <b>Partida:</b> <code>${ped.op||'-'}</code></div>
+            <div><b>Producto:</b> ${ped.productoTipo||'-'} ${ped.ancho||'-'}×${ped.espesor||'-'} mic · ${ped.color||'-'}</div>
+            <div><b>Fechas de carga:</b> ${fechas.map(fmtFecha).join(', ')}</div>
+            ${operarios.length ? `<div><b>Operario${operarios.length>1?'s':''}:</b> ${operarios.join(', ')}</div>` : ''}
+          </div>
+
+          <h4 style="margin:0 0 8px;font-size:14px">Bobinas del pallet</h4>
+          <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;background:white;border:1px solid #e5e7eb;border-radius:6px">
+            <thead>
+              <tr style="background:#f9fafb;border-bottom:2px solid #e5e7eb">
+                <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280">N° Bob.</th>
+                <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280">Fecha</th>
+                <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280">Hora</th>
+                <th style="padding:8px;text-align:right;font-size:11px;color:#6b7280">Kg</th>
+                <th style="padding:8px;text-align:right;font-size:11px;color:#6b7280">Mts</th>
+                <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280">Partida</th>
+                <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280">Mezcla real</th>
+                <th style="padding:8px;text-align:left;font-size:11px;color:#6b7280">Operario</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+            <tfoot>
+              <tr style="background:#f0fdf4;border-top:2px solid #16a34a;font-weight:700">
+                <td colspan="3" style="padding:8px;font-size:12px">TOTAL</td>
+                <td style="padding:8px;font-size:12px;text-align:right">${fmtNum(totalKg)} kg</td>
+                <td style="padding:8px;font-size:12px;text-align:right">${fmtNum(totalMts)} m</td>
+                <td colspan="3" style="padding:8px;font-size:12px">${bobs.length} bobinas</td>
+              </tr>
+            </tfoot>
+          </table>
+          </div>
+        </div>
+        <div class="modal-f" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-sec" onclick="closeModal()">Cerrar</button>
+          <button class="btn btn-pri" style="background:#0891b2" onclick="imprimirEtiquetaPallet()">🏷️ Imprimir etiqueta (pegar al pallet)</button>
+          <button class="btn btn-pri" onclick="imprimirDetallePallet()">📄 Imprimir detalle completo</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// Imprime una etiqueta grande (cuarto de A4 / A5) para colgar al pallet en planta.
+// Datos grandes: Cliente, OP, N° pallet, kg, bobinas, partida, fecha.
+function imprimirEtiquetaPallet() {
+  const d = window._palletDetalle;
+  if (!d) return;
+  const { pl, ped, bobs, totalKg, fechas, rangoBob } = d;
+  const fechasTxt = fechas.map(fmtFecha).join(' / ');
+  const logoHtml = DATA.config?.logoBase64
+    ? `<img src="${DATA.config.logoBase64}" style="max-height:48px;max-width:160px">`
+    : `<div style="font-size:22px;font-weight:800;color:#16a34a;letter-spacing:1px">WINFLEX</div>`;
+
+  const html = `<!DOCTYPE html><html><head>
+    <meta charset="utf-8">
+    <title>Etiqueta Pallet ${pl.nroPallet} — ${ped.cliente}</title>
+    <style>
+      @page { size: A5; margin: 12mm; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #111; }
+      .etiqueta { border: 4px solid #16a34a; border-radius: 12px; padding: 14px 18px; }
+      .head { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 14px; }
+      .head .meta { text-align: right; font-size: 11px; color: #6b7280; }
+      .row { margin-bottom: 10px; font-size: 14px; }
+      .row .lbl { color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .row .val { font-size: 18px; font-weight: 700; color: #111; margin-top: 2px; }
+      .pallet-box { background: #16a34a; color: white; padding: 20px; border-radius: 10px; text-align: center; margin: 18px 0; }
+      .pallet-box .lbl { font-size: 13px; opacity: 0.9; letter-spacing: 1px; }
+      .pallet-box .num { font-size: 84px; font-weight: 900; line-height: 1; margin: 6px 0; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .kg-bobs { display: flex; gap: 14px; margin-top: 14px; }
+      .kg-bobs > div { flex: 1; text-align: center; border: 2px solid #e5e7eb; border-radius: 8px; padding: 12px; }
+      .kg-bobs .val { font-size: 28px; font-weight: 800; color: #16a34a; }
+      .kg-bobs .lbl { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+      .footer { margin-top: 14px; font-size: 10px; color: #9ca3af; text-align: center; border-top: 1px solid #e5e7eb; padding-top: 8px; }
+      @media print { .no-print { display: none; } }
+    </style>
+  </head><body>
+    <div class="etiqueta">
+      <div class="head">
+        ${logoHtml}
+        <div class="meta">
+          <div>Etiqueta de pallet</div>
+          <div>${fechasTxt}</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="lbl">Cliente</div>
+        <div class="val" style="font-size:24px">${ped.cliente}</div>
+      </div>
+
+      <div class="grid2">
+        <div class="row">
+          <div class="lbl">OP</div>
+          <div class="val">${ped.nroOP||'-'}</div>
+        </div>
+        <div class="row">
+          <div class="lbl">Partida</div>
+          <div class="val">${ped.op||'-'}</div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="row">
+          <div class="lbl">Producto</div>
+          <div class="val">${ped.productoTipo||'PET'} ${ped.color||''}</div>
+        </div>
+        <div class="row">
+          <div class="lbl">Medida</div>
+          <div class="val">${ped.ancho||'-'} × ${ped.espesor||'-'} mic</div>
+        </div>
+      </div>
+
+      <div class="pallet-box">
+        <div class="lbl">PALLET</div>
+        <div class="num">${pl.nroPallet}</div>
+      </div>
+
+      <div class="kg-bobs">
+        <div>
+          <div class="val">${fmtNum(totalKg)}</div>
+          <div class="lbl">Kg netos</div>
+        </div>
+        <div>
+          <div class="val">${bobs.length}</div>
+          <div class="lbl">Bobinas (${rangoBob})</div>
+        </div>
+      </div>
+
+      <div class="footer">Winflex S.A. — Planta Chivilcoy · Generado ${new Date().toLocaleString('es-AR')}</div>
+    </div>
+    <div class="no-print" style="text-align:center;margin-top:14px;font-family:Arial">
+      <button onclick="window.print()" style="background:#16a34a;color:white;border:none;padding:10px 24px;font-size:14px;font-weight:600;border-radius:6px;cursor:pointer">🖨️ Imprimir ahora</button>
+      <button onclick="window.close()" style="background:#e5e7eb;color:#374151;border:none;padding:10px 24px;font-size:14px;font-weight:600;border-radius:6px;cursor:pointer;margin-left:8px">Cerrar</button>
+    </div>
+    <scr${""}ipt>setTimeout(() => window.print(), 400);</scr${""}ipt>
+  </body></html>`;
+
+  const w = window.open('', '_blank', 'width=720,height=900');
+  if (!w) { alert('El navegador bloqueó la ventana de impresión. Habilitá pop-ups para este sitio.'); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
+// Imprime detalle completo del pallet con todas las bobinas (para registro/archivo).
+function imprimirDetallePallet() {
+  const d = window._palletDetalle;
+  if (!d) return;
+  const { pl, ped, bobs, totalKg, totalMts, fechas, rangoBob } = d;
+  const fechasTxt = fechas.map(fmtFecha).join(', ');
+  const operarios = [...new Set(bobs.map(b => b.operario).filter(Boolean))];
+  const logoHtml = DATA.config?.logoBase64
+    ? `<img src="${DATA.config.logoBase64}" style="max-height:40px;max-width:140px">`
+    : `<div style="font-size:18px;font-weight:800;color:#16a34a;letter-spacing:1px">WINFLEX</div>`;
+
+  const rowsHtml = bobs.map(b => `
+    <tr>
+      <td style="padding:5px 8px;border:1px solid #e5e7eb;font-weight:600">#${b.nroBobina||'-'}</td>
+      <td style="padding:5px 8px;border:1px solid #e5e7eb">${fmtFecha(b.fecha)}</td>
+      <td style="padding:5px 8px;border:1px solid #e5e7eb">${b.hora||'-'}</td>
+      <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:right">${fmtNum(b.kg||0)}</td>
+      <td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:right">${b.metros||'-'}</td>
+      <td style="padding:5px 8px;border:1px solid #e5e7eb">${b.ancho||'-'}×${b.espesor||'-'}</td>
+      <td style="padding:5px 8px;border:1px solid #e5e7eb"><code style="font-size:10px">${b.partida||'-'}</code></td>
+      <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:10px">${(b.mezclaReal||'-').substring(0,40)}</td>
+      <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:10px">${b.operario||'-'}</td>
+      <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:10px">${b.observaciones||''}</td>
+    </tr>
+  `).join('');
+
+  const html = `<!DOCTYPE html><html><head>
+    <meta charset="utf-8">
+    <title>Detalle Pallet ${pl.nroPallet} — ${ped.cliente}</title>
+    <style>
+      @page { size: A4 landscape; margin: 12mm; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #111; font-size: 12px; }
+      .head { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #16a34a; padding-bottom: 8px; margin-bottom: 12px; }
+      .head h1 { font-size: 18px; margin: 0; color: #15803d; }
+      .head .meta { text-align: right; font-size: 10px; color: #6b7280; }
+      .resumen { background: #f9fafb; padding: 10px; border-radius: 6px; margin-bottom: 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+      .resumen > div { font-size: 11px; }
+      .resumen b { font-size: 14px; display: block; color: #15803d; }
+      table { width: 100%; border-collapse: collapse; font-size: 11px; }
+      th { background: #f0fdf4; padding: 6px 8px; border: 1px solid #86efac; text-align: left; font-size: 11px; color: #15803d; }
+      tfoot td { background: #f0fdf4; padding: 6px 8px; border: 2px solid #16a34a; font-weight: 700; }
+      .footer { margin-top: 14px; font-size: 10px; color: #9ca3af; text-align: center; }
+      @media print { .no-print { display: none; } }
+    </style>
+  </head><body>
+    <div class="head">
+      ${logoHtml}
+      <div>
+        <h1>Detalle de Pallet ${pl.nroPallet}</h1>
+        <div style="font-size:11px;color:#6b7280">${ped.cliente} · OP ${ped.nroOP||'-'} · ${ped.productoTipo||'PET'} ${ped.ancho||'-'}×${ped.espesor||'-'} mic ${ped.color||''}</div>
+      </div>
+      <div class="meta">
+        <div>Generado: ${new Date().toLocaleString('es-AR')}</div>
+        <div>Fechas: ${fechasTxt}</div>
+      </div>
+    </div>
+
+    <div class="resumen">
+      <div>Pallet N° <b>${pl.nroPallet}</b></div>
+      <div>Total kg <b>${fmtNum(totalKg)}</b></div>
+      <div>Bobinas <b>${bobs.length} · ${rangoBob}</b></div>
+      <div>Total metros <b>${fmtNum(totalMts)}</b></div>
+      <div style="grid-column:1/-1;font-size:11px;border-top:1px solid #e5e7eb;padding-top:6px;margin-top:4px">
+        Partida: <b>${ped.op||'-'}</b>
+        ${operarios.length ? ' · Operario' + (operarios.length>1?'s':'') + ': <b>' + operarios.join(', ') + '</b>' : ''}
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>N° Bob.</th>
+          <th>Fecha</th>
+          <th>Hora</th>
+          <th style="text-align:right">Kg</th>
+          <th style="text-align:right">Metros</th>
+          <th>Medida</th>
+          <th>Partida</th>
+          <th>Mezcla real</th>
+          <th>Operario</th>
+          <th>Observ.</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3">TOTAL</td>
+          <td style="text-align:right">${fmtNum(totalKg)} kg</td>
+          <td style="text-align:right">${fmtNum(totalMts)} m</td>
+          <td colspan="5">${bobs.length} bobinas (${rangoBob})</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div class="footer">Winflex S.A. — Planta Chivilcoy — Documento interno de control de pallet</div>
+
+    <div class="no-print" style="text-align:center;margin-top:14px;font-family:Arial">
+      <button onclick="window.print()" style="background:#16a34a;color:white;border:none;padding:10px 24px;font-size:14px;font-weight:600;border-radius:6px;cursor:pointer">🖨️ Imprimir ahora</button>
+      <button onclick="window.close()" style="background:#e5e7eb;color:#374151;border:none;padding:10px 24px;font-size:14px;font-weight:600;border-radius:6px;cursor:pointer;margin-left:8px">Cerrar</button>
+    </div>
+    <scr${""}ipt>setTimeout(() => window.print(), 400);</scr${""}ipt>
+  </body></html>`;
+
+  const w = window.open('', '_blank', 'width=1100,height=900');
+  if (!w) { alert('El navegador bloqueó la ventana de impresión. Habilitá pop-ups para este sitio.'); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
+
 // Útil para arreglar el caso típico: el operario no incrementó el N° pallet en la tablet
 // y todas las bobinas quedaron en "Pallet 1". Acá se reparten en pallets reales.
 function abrirReasignarPallet(idx) {
