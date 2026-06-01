@@ -6355,16 +6355,85 @@ function exportPedidosCSV() {
 }
 
 // ============================================================
-// INIT
+// INIT — siempre forzar Gist si no está configurado.
+// JSONBin queda como fallback inactivo (las apps ya migraron a Gist).
 // ============================================================
 loadData().then(() => {
-  if (!getCredentials()) {
-    // Primera vez en este dispositivo: pedir credenciales antes de hacer nada
-    openCredentialsModal(true);
+  if (!getGistCredentials() && !getCredentials()) {
+    // Primera vez en este dispositivo (ni Gist ni JSONBin): abrir setup de Gist
+    abrirSetupGistInicial();
+  } else if (!getGistCredentials() && getCredentials()) {
+    // Caso especial: tiene JSONBin viejo pero no Gist. Forzar migración.
+    abrirSetupGistInicial();
   } else {
     setTimeout(() => document.getElementById('pinInput').focus(), 100);
   }
 });
+
+// Modal inicial: pedir Gist ID + Token sin necesidad de entrar a Configuración
+function abrirSetupGistInicial() {
+  const teniaJSONBin = !!getCredentials();
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg">
+      <div class="modal" style="max-width:560px">
+        <div class="modal-h">
+          <h3>🚀 Conectar a GitHub Gist</h3>
+        </div>
+        <div class="modal-body">
+          <div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;padding:10px 12px;border-radius:6px;font-size:13px;margin-bottom:14px">
+            ${teniaJSONBin
+              ? '<b>Nueva sincronización</b>. La app migró de JSONBin a GitHub Gist. Pegá las credenciales que te pasó el admin (Matías) para conectarte.'
+              : '<b>Primera vez en este dispositivo</b>. Pegá las credenciales del Gist que te pasó el admin (Matías).'}
+          </div>
+          <div class="field">
+            <label>Gist ID</label>
+            <input type="text" id="setup_gistId" placeholder="07265bb8a6c36ddcfffa6a7441095eb4" autocomplete="off" style="font-family:monospace;font-size:13px">
+          </div>
+          <div class="field">
+            <label>Token (empieza con ghp_)</label>
+            <input type="text" id="setup_gistToken" placeholder="ghp_..." autocomplete="off" style="font-family:monospace;font-size:13px">
+          </div>
+          <div id="setupGistStatus" style="margin-top:8px;font-size:13px"></div>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-pri" style="background:#16a34a" onclick="setupGistConectar()">🔗 Conectarme al Gist</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function setupGistConectar() {
+  const gistId = document.getElementById('setup_gistId').value.trim();
+  const token = document.getElementById('setup_gistToken').value.trim();
+  const st = document.getElementById('setupGistStatus');
+  if (!gistId || !token) { st.innerHTML = '<span style="color:#dc2626">Gist ID y Token son obligatorios</span>'; return; }
+  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
+    st.innerHTML = '<span style="color:#dc2626">El token debe empezar con ghp_ o github_pat_</span>'; return;
+  }
+  st.innerHTML = '<span style="color:#0891b2">Probando conexión...</span>';
+  try {
+    const r = await fetch('https://api.github.com/gists/' + gistId, {
+      headers: { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github+json' }
+    });
+    if (!r.ok) {
+      st.innerHTML = `<span style="color:#dc2626">Error HTTP ${r.status}. Verificá Gist ID y Token.</span>`;
+      return;
+    }
+    const j = await r.json();
+    const f = j.files && j.files['winflex.json'];
+    if (!f) {
+      st.innerHTML = '<span style="color:#dc2626">El Gist no tiene archivo winflex.json. ¿Es el Gist correcto?</span>';
+      return;
+    }
+    setGistCredentials(gistId, token);
+    localStorage.removeItem(CRED_KEY); // limpiar JSONBin viejo si había
+    st.innerHTML = '<span style="color:#16a34a">✓ Conectado. Recargando...</span>';
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    st.innerHTML = '<span style="color:#dc2626">Error de red: ' + (e.message||e) + '</span>';
+  }
+}
 
 // SEED se inyecta acá abajo en la próxima línea ⤵
 const SEED = {
