@@ -225,7 +225,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.4-CRONOGRAMA</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.6-LIMPIEZA</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -509,6 +509,19 @@ function renderGistSection() {
           <button class="btn-ghost" onclick="copiarCredsCompletas()" style="font-size:12px;background:#dbeafe;color:#1e40af;font-weight:600">📋 Copiar credenciales completas (para mandar al equipo)</button>
           <button class="btn-ghost" onclick="desconectarGist()" style="font-size:12px;color:#dc2626;margin-left:8px">🔌 Desconectar</button>
         </div>
+        <div style="margin-top:12px;padding:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px">
+          <div style="font-size:12px;color:#991b1b;margin-bottom:6px"><b>🆘 ¿Aparece "Offline (cache)" o errores de JSON?</b><br>
+          Esto pasa si el Gist quedó corrupto (string truncado, save incompleto). Apretá el botón para forzar la subida del cache local al Gist, sobrescribiendo lo que esté roto.</div>
+          <button class="btn-ghost" onclick="recuperarGistDesdeCache()" style="font-size:12px;background:#dc2626;color:white;font-weight:600;padding:8px 14px">🆘 Forzar subida del cache local al Gist</button>
+          <div id="recoveryStatus" style="margin-top:8px;font-size:12px"></div>
+        </div>
+
+        <div style="margin-top:12px;padding:10px;background:#fffbeb;border:1px solid #fbbf24;border-radius:6px">
+          <div style="font-size:12px;color:#92400e;margin-bottom:6px"><b>📊 Análisis de tamaño del Gist</b><br>
+          GitHub Gist tiene un límite efectivo de ~1 MB por archivo. Si tu bin se acerca a 800 KB, conviene limpiar adjuntos viejos para evitar que se corrompa.</div>
+          <button class="btn-ghost" onclick="analizarTamanoGist()" style="font-size:12px;background:#d97706;color:white;font-weight:600;padding:8px 14px">📊 Analizar tamaño y desglose</button>
+          <div id="analisisTamanoStatus" style="margin-top:8px;font-size:12px"></div>
+        </div>
       </div>
     `;
     setup.innerHTML = '';
@@ -626,6 +639,169 @@ function desconectarGist() {
   if (!confirm('¿Desconectar de GitHub Gist?\n\nLa app va a volver a usar JSONBin (si tenés credenciales configuradas) o a quedarse offline.\n\n¿Continuar?')) return;
   localStorage.removeItem('winflex_gist_credentials');
   location.reload();
+}
+
+// Función de recovery: subir el cache local AL GIST sin hacer GET previo.
+// Útil cuando el Gist quedó con JSON corrupto (string truncado, save incompleto).
+// Como saveData normal hace primero un GET y mergea, si el GET falla por JSON inválido
+// el save también falla → loop infinito de "Offline". Esta función evita el GET y
+// fuerza un PATCH con lo que tengamos local.
+
+// Diagnóstico: analiza el tamaño actual del payload y desglosa por sección.
+// Identifica qué pedidos tienen OC adjuntos y ofrece limpiarlos.
+function analizarTamanoGist() {
+  const st = document.getElementById('analisisTamanoStatus');
+  if (!st) return;
+
+  // Calcular tamaño total comprimido (lo que se sube al Gist)
+  const compressed = compactDeep(compressDataForBin(DATA));
+  const totalKB = Math.round(JSON.stringify(compressed).length / 1024 * 10) / 10;
+
+  // Tamaño por sección
+  const pedKB = Math.round(JSON.stringify(compressed.pedidos || []).length / 1024 * 10) / 10;
+  const prodKB = Math.round(JSON.stringify(DATA.producciones || []).length / 1024 * 10) / 10;
+  const regKB = Math.round(JSON.stringify(DATA.registrosProduccion || []).length / 1024 * 10) / 10;
+  const remKB = Math.round(JSON.stringify(DATA.remitos || []).length / 1024 * 10) / 10;
+  const catKB = Math.round(JSON.stringify(DATA.catalogos || {}).length / 1024 * 10) / 10;
+
+  // Tamaño del logo
+  const logoKB = DATA.config?.logoBase64 ? Math.round(DATA.config.logoBase64.length / 1024 * 10) / 10 : 0;
+
+  // Adjuntos OC: contar y pesar
+  const pedidosConOC = (DATA.pedidos || []).filter(p => p.ocAdjunto && p.ocAdjunto.dataUrl);
+  const ocTotalKB = pedidosConOC.reduce((s, p) => s + (p.ocAdjunto.dataUrl.length || 0), 0) / 1024;
+
+  // De los pedidos con OC, cuántos son finalizados/despachados (candidatos a limpieza)
+  const limpiables = pedidosConOC.filter(p => {
+    const wf = p.estadoWorkflow || '';
+    return wf === 'Finalizada' || wf === 'Despachada' || wf === 'Cancelada';
+  });
+  const limpiablesKB = limpiables.reduce((s, p) => s + (p.ocAdjunto.dataUrl.length || 0), 0) / 1024;
+
+  // Detectar 5 pedidos con OC más pesada
+  const top5OC = [...pedidosConOC]
+    .sort((a, b) => (b.ocAdjunto.dataUrl.length || 0) - (a.ocAdjunto.dataUrl.length || 0))
+    .slice(0, 5)
+    .map(p => `<li><b>${p.cliente}</b> (${p.estadoWorkflow||'?'}) — ${Math.round(p.ocAdjunto.dataUrl.length / 1024)} KB · ${p.ocAdjunto.nombre || '-'}</li>`)
+    .join('');
+
+  const pctLimite = Math.round(totalKB / 1024 * 100);
+  const colorAviso = totalKB > 800 ? '#dc2626' : totalKB > 600 ? '#d97706' : '#15803d';
+
+  st.innerHTML = `
+    <div style="background:white;padding:14px;border-radius:6px;border:1px solid #fde68a;margin-top:8px">
+      <div style="font-size:18px;font-weight:700;color:${colorAviso};margin-bottom:4px">
+        ${totalKB} KB / ~1024 KB (${pctLimite}%)
+      </div>
+      <div style="background:#f3f4f6;height:8px;border-radius:4px;overflow:hidden;margin-bottom:14px">
+        <div style="background:${colorAviso};height:100%;width:${Math.min(100, pctLimite)}%"></div>
+      </div>
+
+      <div style="font-size:13px;line-height:1.7">
+        <b>📊 Desglose:</b><br>
+        • <b>Pedidos</b> (comprimidos): ${pedKB} KB · ${(DATA.pedidos||[]).length} items<br>
+        • <b>Producciones</b> (bobinas): ${prodKB} KB · ${(DATA.producciones||[]).length} items<br>
+        • <b>Registros producción</b>: ${regKB} KB · ${(DATA.registrosProduccion||[]).length} items<br>
+        • <b>Remitos</b>: ${remKB} KB · ${(DATA.remitos||[]).length} items<br>
+        • <b>Catálogos</b>: ${catKB} KB<br>
+        ${logoKB > 0 ? `• <b style="color:#92400e">Logo Winflex</b>: ${logoKB} KB ${logoKB > 100 ? '⚠️ Pesa mucho' : ''}<br>` : ''}
+        ${ocTotalKB > 0 ? `• <b style="color:#dc2626">OC adjuntas</b>: ${Math.round(ocTotalKB)} KB en ${pedidosConOC.length} pedidos<br>` : '• Sin OC adjuntas<br>'}
+      </div>
+
+      ${top5OC ? `<div style="margin-top:12px;font-size:12px"><b>Top 5 OC adjuntas más pesadas:</b><ol style="margin:6px 0 0;padding-left:20px;color:#374151">${top5OC}</ol></div>` : ''}
+
+      ${limpiables.length > 0 ? `
+        <div style="margin-top:14px;padding:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px">
+          <div style="font-size:13px;color:#991b1b;margin-bottom:8px">
+            <b>🗑️ Pedidos finalizados/despachados con OC adjunta:</b> ${limpiables.length} pedidos · ${Math.round(limpiablesKB)} KB liberables<br>
+            <span style="font-size:11px">Estos pedidos ya están cerrados, no necesitan tener la OC adjunta en el sistema.</span>
+          </div>
+          <button class="btn-ghost" onclick="limpiarAdjuntosViejos()" style="font-size:12px;background:#dc2626;color:white;font-weight:600;padding:8px 14px">🗑️ Limpiar OC de los ${limpiables.length} pedidos cerrados (libera ~${Math.round(limpiablesKB)} KB)</button>
+        </div>
+      ` : ''}
+
+      ${logoKB > 100 ? `
+        <div style="margin-top:14px;padding:10px;background:#fffbeb;border:1px solid #fbbf24;border-radius:6px;font-size:12px;color:#92400e">
+          <b>⚠️ El logo pesa ${logoKB} KB</b>. Si subiste una imagen HD, redimensionala antes de subir (recomendado: máx 300×100 px, < 50 KB). Andá a Configuración → 🖼️ Logo Winflex → quitar y subir uno más chico.
+        </div>
+      ` : ''}
+
+      ${totalKB > 800 ? `
+        <div style="margin-top:14px;padding:10px;background:#fef2f2;border:2px solid #dc2626;border-radius:6px;font-size:13px;color:#991b1b">
+          <b>🚨 ATENCIÓN: estás cerca del límite de 1 MB de GitHub Gist.</b><br>
+          Si seguís subiendo más datos sin limpiar nada, el Gist puede corromperse (lo que ya pasó hace un rato). Limpiá adjuntos viejos antes de seguir.
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+// Quita los adjuntos OC de pedidos finalizados/despachados/cancelados.
+async function limpiarAdjuntosViejos() {
+  const candidatos = (DATA.pedidos || []).filter(p => {
+    if (!p.ocAdjunto || !p.ocAdjunto.dataUrl) return false;
+    const wf = p.estadoWorkflow || '';
+    return wf === 'Finalizada' || wf === 'Despachada' || wf === 'Cancelada';
+  });
+  if (candidatos.length === 0) { alert('No hay pedidos cerrados con OC adjunta para limpiar.'); return; }
+  const totalKB = Math.round(candidatos.reduce((s, p) => s + (p.ocAdjunto.dataUrl.length || 0), 0) / 1024);
+  if (!confirm(`Limpiar las OC adjuntas de ${candidatos.length} pedidos cerrados (finalizados, despachados o cancelados).\n\nVa a liberar ~${totalKB} KB en el Gist.\n\nNOTA: los pedidos NO se borran, solo se les quita la OC pegada (PDF/imagen). Los datos del pedido quedan intactos.\n\n¿Continuar?`)) return;
+
+  let liberadoKB = 0;
+  candidatos.forEach(p => {
+    if (p.ocAdjunto && p.ocAdjunto.dataUrl) {
+      liberadoKB += (p.ocAdjunto.dataUrl.length || 0) / 1024;
+    }
+    delete p.ocAdjunto;
+  });
+
+  await saveData();
+  alert(`✓ Limpieza completa. Se quitaron las OC de ${candidatos.length} pedidos cerrados, liberando ${Math.round(liberadoKB)} KB.`);
+  analizarTamanoGist();
+}
+
+async function recuperarGistDesdeCache() {
+  const st = document.getElementById('recoveryStatus');
+  if (!st) return;
+  const gistCreds = getGistCredentials();
+  if (!gistCreds) { st.innerHTML = '<span style="color:#dc2626">Sin credenciales Gist</span>'; return; }
+  const cached = localStorage.getItem(LS_KEY);
+  if (!cached) { st.innerHTML = '<span style="color:#dc2626">No hay cache local</span>'; return; }
+
+  let cachedData;
+  try { cachedData = JSON.parse(cached); } catch (e) {
+    st.innerHTML = '<span style="color:#dc2626">Cache local también está corrupto: ' + e.message + '</span>'; return;
+  }
+
+  if (!confirm(`⚠️ ATENCIÓN — Recovery del Gist\n\nEsto va a SOBRESCRIBIR el contenido del Gist con tu cache local (sin mergear con lo remoto).\n\nCache local tiene:\n• ${(cachedData.pedidos||[]).length} pedidos\n• ${(cachedData.producciones||[]).length} bobinas\n• ${(cachedData.registrosProduccion||[]).length} registros\n\nSi tablet/otros usuarios hicieron cambios después del último sync de esta PC, esos cambios SE PIERDEN.\n\n¿Continuar?`)) return;
+
+  st.innerHTML = '<span style="color:#0891b2">Subiendo al Gist...</span>';
+
+  try {
+    const compressed = compactDeep(compressDataForBin(cachedData));
+    const content = JSON.stringify(compressed);
+    const sizeKB = Math.round(content.length / 1024 * 10) / 10;
+    const r = await fetch('https://api.github.com/gists/' + gistCreds.gistId, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': 'token ' + gistCreds.token,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ files: { 'winflex.json': { content } } })
+    });
+    if (r.ok) {
+      st.innerHTML = '<span style="color:#16a34a">✓ Recovery exitoso. Subidos ' + sizeKB + ' KB. Recargando en 3 seg...</span>';
+      console.log('[recovery] OK,', sizeKB, 'KB subidos');
+      setTimeout(() => location.reload(), 3000);
+    } else {
+      const txt = await r.text().catch(() => '');
+      st.innerHTML = '<span style="color:#dc2626">Error HTTP ' + r.status + ': ' + txt.substring(0,200) + '</span>';
+    }
+  } catch (e) {
+    console.error('[recovery] error:', e);
+    st.innerHTML = '<span style="color:#dc2626">Error: ' + (e.message||e) + '</span>';
+  }
 }
 
 async function ejecutarMigracionGist() {
@@ -1038,8 +1214,14 @@ async function loadData() {
         setSyncStatus('Gist no encontrado / token inválido', 'error');
       }
     } catch (e) {
+      const isParseError = e instanceof SyntaxError || (e.message||'').includes('JSON');
       console.warn('[loadData] Gist offline:', e.message || e);
-      setSyncStatus('Gist offline', 'error');
+      if (isParseError) {
+        setSyncStatus('⚠️ Gist corrupto — ver Configuración → Recovery', 'error');
+        console.error('[loadData] El JSON del Gist está corrupto. Andá a Configuración → 🚀 Sincronización GitHub Gist → "🆘 Forzar subida del cache local al Gist" para arreglarlo.');
+      } else {
+        setSyncStatus('Gist offline', 'error');
+      }
     }
     // Si Gist falla, NO caer en JSONBin (porque ya migramos). Usar cache local.
     if (cached) {
@@ -1282,6 +1464,44 @@ const FORMULA_FIELD_MAP = {
 const PEDIDO_REVERSE_MAP = Object.entries(PEDIDO_FIELD_MAP).reduce((a, [l, s]) => { a[s] = l; return a; }, {});
 const FORMULA_REVERSE_MAP = Object.entries(FORMULA_FIELD_MAP).reduce((a, [l, s]) => { a[s] = l; return a; }, {});
 
+// Compresión de PRODUCCIONES (bobinas) — cada doc tiene ~15 campos, comprimirlos ahorra mucho
+const PROD_FIELD_MAP = {
+  'pedidoId': 'pi', 'operario': 'op', 'turno': 'tu', 'fecha': 'fc', 'timestamp': 'ts',
+  'hora': 'hr', 'nroBobina': 'nb', 'nroPallet': 'np', 'partida': 'pt',
+  'ancho': 'a', 'espesor': 'e', 'kg': 'k', 'metros': 'mt',
+  'mezclaReal': 'mr', 'siliconaPct': 'sp', 'observaciones': 'obs'
+};
+const PROD_REVERSE_MAP = Object.entries(PROD_FIELD_MAP).reduce((a, [l, s]) => { a[s] = l; return a; }, {});
+
+// Compresión de REGISTROS DE PRODUCCIÓN (parámetros horarios)
+const REG_FIELD_MAP = {
+  'pedidoId': 'pi', 'operario': 'op', 'turno': 'tu', 'fecha': 'fc', 'timestamp': 'ts',
+  'hora': 'hr', 'kgHora': 'kh', 'tempExtrusor': 'te', 'tempCabezal': 'tc',
+  'velocidad': 'vl', 'amperaje': 'am', 'observaciones': 'obs'
+};
+const REG_REVERSE_MAP = Object.entries(REG_FIELD_MAP).reduce((a, [l, s]) => { a[s] = l; return a; }, {});
+
+function compressGeneric(obj, fieldMap) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const out = {};
+  for (const k in obj) {
+    const sk = fieldMap[k] || k;
+    out[sk] = obj[k];
+  }
+  return out;
+}
+function decompressGeneric(obj, reverseMap, longFieldSample) {
+  if (!obj || typeof obj !== 'object') return obj;
+  // Si ya está descomprimido (tiene campos largos), no tocarlo
+  if (longFieldSample && longFieldSample in obj) return obj;
+  const out = {};
+  for (const k in obj) {
+    const lk = reverseMap[k] || k;
+    out[lk] = obj[k];
+  }
+  return out;
+}
+
 function compressPedido(p) {
   if (!p || typeof p !== 'object') return p;
   const out = {};
@@ -1319,7 +1539,10 @@ function decompressPedido(p) {
   return out;
 }
 
-// Comprimir/descomprimir todo el DATA (solo pedidos por ahora)
+// Comprimir/descomprimir todo el DATA.
+// NOTA: por ahora solo pedidos están comprimidos. Producciones y registros NO,
+// para no romper compatibilidad con la tablet (que aún no tiene los mapas PROD/REG).
+// Cuando actualicemos la tablet, extender estas funciones a comprimir esas secciones.
 function compressDataForBin(data) {
   const out = JSON.parse(JSON.stringify(data));
   if (Array.isArray(out.pedidos)) {
@@ -1331,6 +1554,8 @@ function decompressDataFromBin(data) {
   if (Array.isArray(data.pedidos)) {
     data.pedidos = data.pedidos.map(decompressPedido);
   }
+  // Las funciones decompressGeneric quedan disponibles para uso futuro, pero por ahora
+  // producciones/registros vienen sin comprimir desde la tablet, así que no se tocan.
   return data;
 }
 
@@ -1887,6 +2112,22 @@ async function saveData() {
       const content = JSON.stringify(compressed);
       const sizeKB = Math.round(content.length / 1024 * 10) / 10;
 
+      // Validar que el JSON sea parseable antes de subirlo (paranoia post-corrupción).
+      // Si no se puede re-parsear, NO subir — eso protege al Gist de quedar corrupto.
+      try {
+        JSON.parse(content);
+      } catch (e) {
+        console.error('[PC saveData Gist] El payload local NO es JSON válido. Aborto save para no corromper el Gist:', e);
+        setSyncStatus('⚠️ Payload local corrupto · NO subido', 'error');
+        return;
+      }
+
+      // Si el payload se acerca peligrosamente al límite de 1 MB de Gist, avisar.
+      // No bloquea el save, pero advierte para que el usuario limpie antes que se rompa.
+      if (sizeKB > 900) {
+        console.warn('[PC saveData Gist] Payload pesa', sizeKB, 'KB — cerca del límite de 1 MB de GitHub Gist. Andá a Configuración → 📊 Analizar tamaño para limpiar adjuntos viejos.');
+      }
+
       const r = await fetch('https://api.github.com/gists/' + gistCreds.gistId, {
         method: 'PATCH',
         headers: {
@@ -1909,8 +2150,13 @@ async function saveData() {
         console.error('[PC saveData Gist] HTTP ' + r.status + ':', txt);
       }
     } catch (e) {
+      const isParseError = e instanceof SyntaxError || (e.message||'').includes('JSON');
       console.error('[PC saveData Gist] Error:', e);
-      setSyncStatus('Error red (Gist)', 'error');
+      if (isParseError) {
+        setSyncStatus('⚠️ Gist corrupto — ver Configuración → Recovery', 'error');
+      } else {
+        setSyncStatus('Error red (Gist)', 'error');
+      }
     }
     return;
   }
