@@ -1,0 +1,32 @@
+{
+  "id": "winflex-pet-chivilcoy",
+  "name": "Winflex PET Chivilcoy",
+  "short_name": "PET Chivilcoy",
+  "description": "Producción de bobinas de PET — Winflex Chivilcoy",
+  "start_url": ".",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#0f8a5f",
+  "icons": [
+    {
+      "src": "icon-pet-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-pet-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-pet-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
