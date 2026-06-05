@@ -15,13 +15,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .hidden { display: none !important; }
 
 /* Login */
-#login { position: fixed; inset: 0; background: linear-gradient(135deg, #064e3b 0%, #16a34a 100%); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.login-box { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 360px; }
-.login-box h1 { font-size: 22px; margin-bottom: 6px; color: #0f172a; }
-.login-box .sub { color: #6b7280; font-size: 13px; margin-bottom: 24px; }
-.pin-input { width: 100%; padding: 14px; font-size: 22px; text-align: center; letter-spacing: 8px; border: 2px solid #e5e7eb; border-radius: 8px; margin-bottom: 16px; }
-.pin-input:focus { outline: none; border-color: #16a34a; }
-.btn-primary { background: #16a34a; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; }
+#login { position: fixed; inset: 0; background: #eef1f6; display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.login-box { background: white; padding: 40px 36px; border-radius: 20px; box-shadow: 0 12px 40px rgba(15,23,42,0.10); width: 380px; text-align: center; }
+.login-logo { display: flex; flex-direction: column; align-items: center; margin-bottom: 18px; }
+.login-wordmark { font-size: 34px; font-weight: 800; color: #3a3a38; letter-spacing: -1px; line-height: 1; margin-top: 8px; }
+.login-wordmark sup { font-size: 13px; font-weight: 700; color: #6b7280; }
+.login-tagline { font-size: 9px; font-weight: 600; color: #9ca3af; letter-spacing: 4px; margin-top: 4px; }
+.login-box h1 { font-size: 20px; margin: 4px 0 4px; color: #1f2937; font-weight: 700; }
+.login-box .sub { color: #6b7280; font-size: 14px; margin-bottom: 22px; }
+.pin-input { width: 100%; padding: 16px; font-size: 24px; text-align: center; letter-spacing: 10px; border: 1.5px solid #e5e7eb; border-radius: 10px; margin-bottom: 16px; background: #f8fafc; box-sizing: border-box; }
+.pin-input:focus { outline: none; border-color: #16a34a; background: #fff; }
+.btn-primary { background: #16a34a; color: white; border: none; padding: 15px 20px; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; }
 .btn-primary:hover { background: #15803d; }
 .login-err { color: #dc2626; font-size: 13px; margin-top: 8px; text-align: center; }
 
@@ -208,13 +212,21 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
 <!-- LOGIN -->
 <div id="login">
   <div class="login-box">
-    <h1>Winflex PET Chivilcoy</h1>
-    <p class="sub">Gestión de producción · PC</p>
-    <input type="password" id="pinInput" class="pin-input" maxlength="6" placeholder="PIN" autofocus>
-    <button class="btn-primary" onclick="doLogin()">Ingresar</button>
+    <div class="login-logo">
+      <svg width="92" height="56" viewBox="0 0 120 70" xmlns="http://www.w3.org/2000/svg" aria-label="Winflex">
+        <path d="M12 14 L40 56 L60 24" fill="none" stroke="#5cb84a" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M56 24 L80 56 L108 14" fill="none" stroke="#1f8a4e" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="login-wordmark">winflex<sup>s.a.</sup></div>
+      <div class="login-tagline">ENVASES ESPECIALES</div>
+    </div>
+    <h1>Winflex PET — Chivilcoy</h1>
+    <p class="sub">Ingresá tu PIN para continuar</p>
+    <input type="password" id="pinInput" class="pin-input" maxlength="6" placeholder="• • • •" autofocus>
+    <button class="btn-primary" onclick="doLogin()">Entrar</button>
     <div id="loginErr" class="login-err"></div>
     <p style="margin-top:18px;font-size:11px;color:#9ca3af;text-align:center">
-      <a href="#" onclick="event.preventDefault(); document.getElementById('loginHelp').style.display='block'; return false;" style="color:#6b7280;text-decoration:underline">¿Problemas para entrar?</a>
+      <a href="#" onclick="event.preventDefault(); document.getElementById('loginHelp').style.display='block'; return false;" style="color:#9ca3af;text-decoration:underline">¿Problemas para entrar?</a>
     </p>
     <div id="loginHelp" style="display:none;margin-top:12px;padding:12px;background:#fef3c7;border-radius:6px;font-size:12px;color:#92400e;line-height:1.5">
       <b>Si no podés entrar:</b><br>
@@ -235,7 +247,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.8-ESTADOS</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.9-LOGIN</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
