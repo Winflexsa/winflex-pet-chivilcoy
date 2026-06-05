@@ -80,6 +80,12 @@ tbody tr:hover { background: #f9fafb; }
 .wf-Despachada { background: #dcfce7; color: #14532d; }
 .wf-Finalizada { background: #d1fae5; color: #065f46; }
 .wf-Cancelada { background: #fee2e2; color: #991b1b; }
+.dbtn-grp { display: inline-flex; gap: 2px; }
+.dbtn { font-size: 10px; font-weight: 600; padding: 2px 6px; border: 1px solid #d1d5db; background: #fff; color: #9ca3af; cursor: pointer; border-radius: 4px; line-height: 1.4; }
+.dbtn:hover { border-color: #9ca3af; color: #4b5563; }
+.dbtn.on.don-Chivilcoy { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+.dbtn.on.don-Parcial { background: #ffedd5; color: #9a3412; border-color: #fdba74; }
+.dbtn.on.don-Despachado { background: #d1fae5; color: #065f46; border-color: #6ee7b7; }
 /* Legacy badges (compatibilidad) */
 .wf-Borrador { background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; }
 .wf-Confirmada { background: #dcfce7; color: #15803d; }
@@ -229,7 +235,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.7-PERSIST</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.8-ESTADOS</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -298,6 +304,21 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
               <div class="msel-dropdown" id="fMesOptions"></div>
             </div>
           </div>
+          <div class="filter-group">
+            <label>Ordenar por</label>
+            <select id="fSort" onchange="onSortChange()">
+              <option value="fechaIngreso|desc">Fecha de carga (nuevos primero)</option>
+              <option value="fechaIngreso|asc">Fecha de carga (viejos primero)</option>
+              <option value="fechaEntrega|asc">Fecha de entrega (más próxima)</option>
+              <option value="pendiente|desc">Kg pendientes (mayor)</option>
+              <option value="cliente|asc">Cliente (A-Z)</option>
+            </select>
+          </div>
+          <div class="filter-group" style="justify-content:flex-end">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:500">
+              <input type="checkbox" id="fVerCerrados" onchange="renderPedidos()" style="width:auto"> Ver cerrados/cancelados
+            </label>
+          </div>
           <button class="btn btn-ghost" onclick="clearFilters()">Limpiar</button>
         </div>
         <div style="overflow-x:auto">
@@ -316,8 +337,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
                 <th class="num" data-sort="kgPedidos">Kg ped</th>
                 <th class="num" data-sort="kgReales">Kg real</th>
                 <th class="num">Pend</th>
+                <th>Producción</th>
+                <th>Despacho</th>
                 <th>Estado</th>
-                <th>Progreso</th>
                 <th></th>
               </tr>
             </thead>
@@ -1011,6 +1033,19 @@ function migrateLegacyData(d) {
       p.estadoWorkflow = estadoMap[p.estadoWorkflow];
       migrated++;
     }
+    // ── DOS EJES: separar el despacho del estado de producción ──
+    // "Despachada" era un valor del workflow que en realidad es logística → pasa al eje despacho.
+    if (p.estadoWorkflow === 'Despachada') {
+      p.estadoWorkflow = 'Finalizada';
+      if (p.estadoDespacho === undefined) p.estadoDespacho = 'Despachado';
+      migrated++;
+    }
+    // Default del eje despacho: lo finalizado histórico se asume ya despachado (pedidos cerrados),
+    // el resto arranca en Chivilcoy hasta que se marque a mano.
+    if (p.estadoDespacho === undefined) {
+      p.estadoDespacho = (p.estadoWorkflow === 'Finalizada') ? 'Despachado' : 'Chivilcoy';
+      migrated++;
+    }
     if (p.silicona === undefined) p.silicona = '';
     if (p.mezclaTeoricaTexto === undefined) {
       const f = p.formula || {};
@@ -1457,7 +1492,7 @@ const PEDIDO_FIELD_MAP = {
   'cliente': 'cl', 'medida': 'med', 'color': 'col',
   'partida': 'pt', 'kgPedidos': 'kp', 'kgReales': 'kr',
   'kgPorBobina': 'kpb', 'formula': 'fm',
-  'ancho': 'a', 'espesor': 'e', 'estadoWorkflow': 'ew',
+  'ancho': 'a', 'espesor': 'e', 'estadoWorkflow': 'ew', 'estadoDespacho': 'eds',
   'mezclaTeoricaTexto': 'mtt', 'producto': 'prd',
   'codigoProducto': 'cp', 'kgPorHora': 'kph',
   'horasPorDia': 'hpd', 'scrapTeorico': 'st',
@@ -2364,15 +2399,28 @@ function toast(msg, type) {
 //   - "Cancelada" → CANCELADO (independientemente de kg)
 //   - "Finalizada" / "Despachada" → FINALIZADO aunque kgReales < kgPedidos (merma natural)
 //   - resto → se calcula por kg
+// ── DOS EJES ──
+// Eje producción: estadoWorkflow (OC/OP/En producción/Parcial/Finalizada/Cancelada)
+// Eje despacho:   estadoDespacho (Chivilcoy/Parcial/Despachado)
+// Un pedido está CERRADO solo si está producido Y despachado completo.
+function estaProducido(p) {
+  const wf = p.estadoWorkflow || '';
+  if (wf === 'Finalizada') return true;
+  const kgPed = +p.kgPedidos || 0, kgReal = +p.kgReales || 0;
+  return kgPed > 0 && kgReal >= kgPed;
+}
+function estaCerrado(p) {
+  if ((p.estadoWorkflow || '') === 'Cancelada') return false;
+  return estaProducido(p) && (p.estadoDespacho || 'Chivilcoy') === 'Despachado';
+}
 function calcEstado(p) {
   const wf = p.estadoWorkflow || '';
   if (wf === 'Cancelada') return 'CANCELADO';
-  if (wf === 'Finalizada' || wf === 'Despachada') return 'FINALIZADO';
-  const kgPed = +p.kgPedidos || 0;
+  if (estaCerrado(p)) return 'FINALIZADO';
+  // No cerrado: si hay algo de producción o despacho en marcha → PARCIAL, si no PENDIENTE
   const kgReal = +p.kgReales || 0;
-  if (kgPed === 0) return 'PENDIENTE';
-  if (kgReal >= kgPed) return 'FINALIZADO';
-  if (kgReal > 0) return 'PARCIAL';
+  const desp = p.estadoDespacho || 'Chivilcoy';
+  if (kgReal > 0 || wf === 'Parcial' || estaProducido(p) || desp !== 'Chivilcoy') return 'PARCIAL';
   return 'PENDIENTE';
 }
 function calcPendiente(p) {
@@ -2390,9 +2438,8 @@ function isVencido(p) {
   if (!fecha) return false;
   // Cancelados nunca están vencidos
   if ((p.estadoWorkflow || '') === 'Cancelada') return false;
-  // Si el estado workflow ya cerró la OP, no está vencida (puede haber kg menor por merma)
-  const wf = p.estadoWorkflow || '';
-  if (wf === 'Finalizada' || wf === 'Despachada') return false;
+  // Si el pedido ya está cerrado (producido + despachado), no está vencido
+  if (estaCerrado(p)) return false;
   const d = parseFechaLocal(fecha);
   if (!d) return false;
   // Comparación contra "hoy a medianoche" en hora local
@@ -2661,15 +2708,25 @@ function renderPedidos() {
       const m = mesDe(p.fechaIngreso);
       if (!m || !filtros.meses.includes(m)) return false;
     }
+    // Por defecto ocultar cerrados y cancelados. Se muestran si:
+    //  - tildás "ver cerrados", o - hay una búsqueda activa, o - filtrás por estado explícito
+    if (!filtros.verCerrados && !filtros.buscar && filtros.estados.length === 0) {
+      const e = calcEstado(p);
+      if (e === 'FINALIZADO' || e === 'CANCELADO') return false;
+    }
     return true;
   });
 
   // sort
   lista.sort((a, b) => {
-    let va = a[sortField], vb = b[sortField];
-    if (sortField.startsWith('kg') || sortField === 'ancho' || sortField === 'espesor') { va = +va || 0; vb = +vb || 0; }
-    if (typeof va === 'string') va = va.toLowerCase();
-    if (typeof vb === 'string') vb = vb.toLowerCase();
+    let va, vb;
+    if (sortField === 'pendiente') { va = calcPendiente(a); vb = calcPendiente(b); }
+    else {
+      va = a[sortField]; vb = b[sortField];
+      if (sortField.startsWith('kg') || sortField === 'ancho' || sortField === 'espesor') { va = +va || 0; vb = +vb || 0; }
+      if (typeof va === 'string') va = va.toLowerCase();
+      if (typeof vb === 'string') vb = vb.toLowerCase();
+    }
     return (va < vb ? -1 : va > vb ? 1 : 0) * (sortDir === 'asc' ? 1 : -1);
   });
 
@@ -2677,7 +2734,8 @@ function renderPedidos() {
 
   const tbody = document.querySelector('#tablaPedidos tbody');
   tbody.innerHTML = lista.map(p => {
-    const progreso = isVencido(p) ? 'VENCIDO' : calcEstado(p);
+    const e = isVencido(p) ? 'VENCIDO' : calcEstado(p);
+    const eLabel = e === 'FINALIZADO' ? 'CERRADO' : e;
     const wf = p.estadoWorkflow || 'Confirmada';
     const wfClass = 'wf-' + wf.replace(/\s+/g,'').replace('ó','o');
     const pend = calcPendiente(p);
@@ -2695,12 +2753,30 @@ function renderPedidos() {
       <td class="num">${fmtNum(p.kgReales)}</td>
       <td class="num">${pend > 0 ? fmtNum(pend) : '<span class="muted">—</span>'}</td>
       <td><span class="wf ${wfClass}">${wf}</span></td>
-      <td><span class="estado estado-${progreso}">${progreso}</span></td>
+      <td onclick="event.stopPropagation()">${despachoBtns(p)}</td>
+      <td><span class="estado estado-${e}">${eLabel}</span></td>
       <td onclick="event.stopPropagation()"><button class="btn-ghost" onclick="openPedidoModal('${p.id}')" title="Editar">✏️</button> <button class="btn-ghost" onclick="deletePedido('${p.id}')" title="Eliminar">🗑️</button></td>
     </tr>`;
   }).join('');
 
-  if (lista.length === 0) tbody.innerHTML = '<tr><td colspan="15" class="muted" style="text-align:center;padding:30px">Sin resultados</td></tr>';
+  if (lista.length === 0) tbody.innerHTML = '<tr><td colspan="16" class="muted" style="text-align:center;padding:30px">Sin resultados</td></tr>';
+}
+
+// Botones manuales del eje despacho (Chivilcoy / Parcial / Despachado)
+function despachoBtns(p) {
+  const d = p.estadoDespacho || 'Chivilcoy';
+  const mk = (v, lbl) => `<button class="dbtn ${d===v?'on '+('don-'+v):''}" onclick="setDespacho('${p.id}','${v}')" title="${v}">${lbl}</button>`;
+  return `<div class="dbtn-grp">${mk('Chivilcoy','Chiv')}${mk('Parcial','Parc')}${mk('Despachado','Lanús')}</div>`;
+}
+
+async function setDespacho(id, val) {
+  const p = DATA.pedidos.find(x => x.id === id);
+  if (!p) return;
+  p.estadoDespacho = val;
+  await saveData();
+  renderPedidos();
+  if (currentDetailPedidoId === id) renderPedidoDetail();
+  toast('Despacho: ' + val, 'success');
 }
 
 // --- MULTI-SELECT FILTROS (pedidos) ---
@@ -2710,15 +2786,25 @@ let mselState = {
   fEstado: [],
   fMes: []
 };
-const ESTADOS_WORKFLOW = ['OC','OP','En producción','Parcial','Despachada','Finalizada','Cancelada','VENCIDO'];
+const ESTADOS_WORKFLOW = ['OC','OP','En producción','Parcial','Finalizada','Cancelada','VENCIDO'];
 
 function getPedidosFilters() {
   return {
     buscar: document.getElementById('fBuscar').value,
     clientes: mselState.fCliente.slice(),
     estados:  mselState.fEstado.slice(),
-    meses:    mselState.fMes.slice()
+    meses:    mselState.fMes.slice(),
+    verCerrados: !!(document.getElementById('fVerCerrados') && document.getElementById('fVerCerrados').checked)
   };
+}
+
+// Selector "Ordenar por" → setea sortField/sortDir y re-renderiza
+function onSortChange() {
+  const sel = document.getElementById('fSort');
+  if (!sel) return;
+  const [f, d] = sel.value.split('|');
+  sortField = f; sortDir = d || 'asc';
+  renderPedidos();
 }
 
 function clearFilters() {
@@ -2743,7 +2829,6 @@ function populateFilters() {
     { value: 'OP', label: 'OP' },
     { value: 'En producción', label: 'En producción' },
     { value: 'Parcial', label: 'Parcial' },
-    { value: 'Despachada', label: 'Despachada' },
     { value: 'Finalizada', label: 'Finalizada' },
     { value: 'Cancelada', label: 'Cancelada' },
     { value: 'VENCIDO', label: '⚠ Vencidos' }
@@ -2907,7 +2992,8 @@ function openPedidoModal(id) {
       fechaInicioProd: '', fechaFinProd: '',
       destinoCodigo: 'T',
       confeccion: '', observaciones: '',
-      estadoWorkflow: 'OC'
+      estadoWorkflow: 'OC',
+      estadoDespacho: 'Chivilcoy'
     };
   }
 
@@ -3024,10 +3110,16 @@ function openPedidoModal(id) {
             </div>
             <div class="field"><label>Kg / bobina (cono 6)</label><input type="number" id="m_kgPorBobina6" value="${p.kgPorBobina6||p.kgPorBobina||80}" min="0"></div>
             <div class="field" id="cono3_field" style="${p.conoTipo==='3'?'':'display:none'}"><label>Kg final cono 3 (Lanús)</label><input type="number" id="m_kgFinalCono3" value="${p.kgFinalCono3||0}" min="0"><div class="hint">Después de rebobinar en Lanús</div></div>
-            <div class="field"><label>Estado</label>
+            <div class="field"><label>Producción</label>
               <select id="m_estado">
-                ${['OC','OP','En producción','Parcial','Despachada','Finalizada','Cancelada'].map(e =>
+                ${['OC','OP','En producción','Parcial','Finalizada','Cancelada'].map(e =>
                   `<option value="${e}" ${e===(p.estadoWorkflow||'OC')?'selected':''}>${e}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field"><label>Despacho</label>
+              <select id="m_despacho">
+                ${['Chivilcoy','Parcial','Despachado'].map(d =>
+                  `<option value="${d}" ${d===(p.estadoDespacho||'Chivilcoy')?'selected':''}>${d}</option>`).join('')}
               </select>
             </div>
             <div class="field full"><label>Observaciones</label><textarea id="m_obs" rows="2">${p.observaciones||''}</textarea></div>
@@ -3195,6 +3287,7 @@ async function savePedido(id) {
     kgPorBobina6: +document.getElementById('m_kgPorBobina6').value || 0,
     kgFinalCono3: +document.getElementById('m_kgFinalCono3').value || 0,
     estadoWorkflow: document.getElementById('m_estado').value,
+    estadoDespacho: document.getElementById('m_despacho') ? document.getElementById('m_despacho').value : (existing?.estadoDespacho || 'Chivilcoy'),
     observaciones: document.getElementById('m_obs').value,
     destinoCodigo: document.getElementById('m_destino') ? document.getElementById('m_destino').value : (existing?.destinoCodigo || 'T'),
     productoTipo: document.getElementById('m_productoTipo') ? document.getElementById('m_productoTipo').value : (existing?.productoTipo || 'rPET'),
@@ -4230,7 +4323,7 @@ function renderPedidoDetail() {
   const bob = calcBobinas(p);
   const bobinasDelPedido = (DATA.producciones || []).filter(x => x.pedidoId === p.id);
 
-  const wfSteps = ['OC','OP','En producción','Despachada','Finalizada'];
+  const wfSteps = ['OC','OP','En producción','Parcial','Finalizada'];
   const wfIdx = wfSteps.indexOf(wf);
 
   document.getElementById('modalContainer').innerHTML = `
@@ -4240,7 +4333,7 @@ function renderPedidoDetail() {
           <div class="detail-title">
             <h2>${p.cliente} — <code>${p.op||p.partida||'-'}</code></h2>
             <span class="wf ${wfClass}">${wf}</span>
-            <span class="estado estado-${progreso}">${progreso}</span>
+            <span class="estado estado-${progreso}">${progreso==='FINALIZADO'?'CERRADO':progreso}</span>
             <button class="btn-ghost" onclick="closeModal()" style="margin-left:auto">✕</button>
           </div>
           <div class="wf-stepper">
@@ -4248,6 +4341,10 @@ function renderPedidoDetail() {
               const cls = i < wfIdx ? 'done' : (i === wfIdx ? 'current' : '');
               return `<span class="wf-step ${cls}" onclick="advanceWorkflow('${p.id}','${s}')">${s}</span>${i < wfSteps.length-1 ? '<span class="wf-arrow">→</span>' : ''}`;
             }).join('')}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <span style="font-size:12px;color:#6b7280">Despacho:</span>
+            ${despachoBtns(p)}
           </div>
         </div>
         <div class="detail-tabs">
