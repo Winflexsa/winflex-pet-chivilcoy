@@ -229,7 +229,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <header>
     <div>
       <h1>Winflex PET — Chivilcoy</h1>
-      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.6-LIMPIEZA</span></div>
+      <div class="sub">Gestión de Producción · PC <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.7-PERSIST</span></div>
     </div>
     <div class="right">
       <span id="syncStatus" class="sync-status">Listo</span>
@@ -455,7 +455,15 @@ function getGistCredentials() {
 }
 
 function setGistCredentials(gistId, token) {
-  localStorage.setItem('winflex_gist_credentials', JSON.stringify({ gistId, token }));
+  try {
+    localStorage.setItem('winflex_gist_credentials', JSON.stringify({ gistId, token }));
+    // Verificar que REALMENTE quedó escrito (si el localStorage está lleno o bloqueado, setItem puede fallar)
+    const back = localStorage.getItem('winflex_gist_credentials');
+    if (!back) throw new Error('no se pudo leer de vuelta');
+  } catch (e) {
+    alert('⚠️ No se pudieron guardar las credenciales en este navegador (almacenamiento lleno o bloqueado).\n\n' +
+          'Por eso te vuelve a pedir conectarte. Probá liberar espacio o revisar la config de "borrar datos al cerrar".\n\nDetalle: ' + (e.message || e));
+  }
 }
 
 // Crea un Gist nuevo en GitHub con los datos pasados, retorna { gistId, url, sizeKB }
@@ -6603,6 +6611,25 @@ function exportPedidosCSV() {
   a.href = url; a.download = `pedidos_PET_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
 }
+
+// ============================================================
+// PERSISTENCIA — pedirle al navegador que NO borre el localStorage del sitio.
+// Evita que las credenciales del Gist (y la cache) desaparezcan solas por
+// presión de disco o por config de "borrar datos al cerrar".
+// ============================================================
+(async () => {
+  try {
+    if (navigator.storage && navigator.storage.persist) {
+      const yaPersistido = await navigator.storage.persisted();
+      if (!yaPersistido) {
+        const ok = await navigator.storage.persist();
+        console.log('[storage] persistencia solicitada →', ok);
+      } else {
+        console.log('[storage] almacenamiento ya persistido ✓');
+      }
+    }
+  } catch (e) { console.warn('[storage] no se pudo pedir persistencia', e); }
+})();
 
 // ============================================================
 // INIT — siempre forzar Gist si no está configurado.
