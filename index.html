@@ -248,6 +248,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
       </div>
     </div>
     <div class="right">
+      <span id="userBadge" style="font-size:12px;color:#374151;font-weight:600;background:#f0fdf4;border:1px solid #86efac;padding:3px 10px;border-radius:12px"></span>
       <span id="syncStatus" class="sync-status">Listo</span>
       <button class="btn-icon" onclick="syncNow()">↻ Sincronizar</button>
       <button class="btn-icon" onclick="logout()">Salir</button>
@@ -258,7 +259,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
     <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
     <button class="tab" data-tab="pedidos">📋 Pedidos</button>
     <button class="tab" data-tab="cronograma">📅 Cronograma</button>
-    <button class="tab" data-tab="consulta">🔍 Consulta</button>
     <button class="tab" data-tab="producciones">⚙️ Producciones</button>
     <button class="tab" data-tab="remitos">📦 Remitos</button>
     <button class="tab" data-tab="mp">📦 Materia Prima</button>
@@ -269,6 +269,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
   <main>
     <!-- DASHBOARD -->
     <div id="tab-dashboard" class="tab-content">
+      <div id="dashOperativo"></div>
+      <div id="dashAcumuladoHeader" style="margin:24px 0 4px;display:flex;align-items:center;gap:10px">
+        <h2 style="margin:0;font-size:16px;color:#374151">📊 Resumen acumulado</h2>
+        <div style="flex:1;height:1px;background:#e5e7eb"></div>
+      </div>
       <div id="dashYearSelector"></div>
       <div class="kpi-grid" id="kpiGrid"></div>
       <div id="dashBreakdown"></div>
@@ -368,36 +373,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
             <button class="btn-ghost" onclick="cronoSemana(-1)" style="padding:6px 12px">← Sem. anterior</button>
             <button class="btn-ghost" onclick="cronoSemana(0)" style="padding:6px 12px;background:#dbeafe;color:#1e40af;font-weight:600">📍 Hoy</button>
             <button class="btn-ghost" onclick="cronoSemana(1)" style="padding:6px 12px">Sem. siguiente →</button>
+            <button class="btn btn-pri" onclick="generarCronogramaPDF()" style="padding:6px 12px;margin-left:6px">⬇ PDF</button>
           </div>
         </div>
         <div id="cronogramaContent"></div>
-      </div>
-    </div>
-
-    <!-- CONSULTA -->
-    <div id="tab-consulta" class="tab-content hidden">
-      <div class="panel">
-        <div class="panel-h"><h2>Consulta de producción</h2></div>
-        <div class="form-grid">
-          <div class="field">
-            <label>Cliente</label>
-            <select id="qCliente"><option value="">Todos</option></select>
-          </div>
-          <div class="field">
-            <label>OC</label>
-            <select id="qOc"><option value="">Todos</option></select>
-          </div>
-          <div class="field">
-            <label>OP</label>
-            <select id="qPartida"><option value="">Todas</option></select>
-          </div>
-          <div class="field">
-            <label>Ancho × Espesor</label>
-            <select id="qMedida"><option value="">Todas</option></select>
-          </div>
-        </div>
-        <div class="kpi-grid" id="consultaKpis" style="margin-top:20px"></div>
-        <table id="consultaTabla"></table>
       </div>
     </div>
 
@@ -947,6 +926,25 @@ function diagnosticarLogin() {
   alert(info);
 }
 
+// ── Usuario actual de la PC (login por persona) ──
+// Matías (pinAdmin) = rol 'admin' → ve los controles de cierre comercial.
+// Agustín y otros ingenieros del catálogo = rol 'ingenieria' → NO los ven.
+window.currentUser = null;
+function resolvePcUser(pin) {
+  if (!pin) return null;
+  if (DATA && DATA.config && pin === DATA.config.pinAdmin) {
+    return { nombre: 'Matías', rol: 'admin' };
+  }
+  const ops = (DATA && DATA.catalogos && DATA.catalogos.operarios) || [];
+  const o = ops.find(x => x.pin === pin && (x.rol === 'ingeniero' || x.rol === 'ingenieria'));
+  if (o) return { nombre: (o.nombre || 'Ingeniería'), rol: 'ingenieria' };
+  return null;
+}
+// ¿El usuario actual puede ver/operar el cierre comercial (entregado a cliente)?
+function puedeVerCierre() {
+  return !!(window.currentUser && window.currentUser.rol === 'admin');
+}
+
 async function doLogin() {
   const pin = document.getElementById('pinInput').value;
   const errEl = document.getElementById('loginErr');
@@ -981,8 +979,11 @@ async function doLogin() {
   }
   if (!DATA.config) DATA.config = {};
   if (!DATA.config.pinAdmin) DATA.config.pinAdmin = '1205';
-  console.log('[doLogin] Validando PIN. Esperado:', DATA.config.pinAdmin, 'Ingresado:', pin);
-  if (pin === DATA.config.pinAdmin) {
+  console.log('[doLogin] Validando PIN. Esperado admin:', DATA.config.pinAdmin, 'Ingresado:', pin);
+  const usuario = resolvePcUser(pin);
+  if (usuario) {
+    window.currentUser = usuario;
+    console.log('[doLogin] Ingresó:', usuario.nombre, '· rol:', usuario.rol);
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     initApp();
@@ -1000,6 +1001,7 @@ document.getElementById('pinInput').addEventListener('keypress', (e) => {
   if (e.key === 'Enter') doLogin();
 });
 function logout() {
+  window.currentUser = null;
   document.getElementById('app').classList.add('hidden');
   document.getElementById('login').classList.remove('hidden');
   document.getElementById('pinInput').value = '';
@@ -1512,7 +1514,8 @@ const PEDIDO_FIELD_MAP = {
   'siliconaPct': 'sp', 'siliconaCaras': 'scs',
   'nroOP': 'no', 'nroSolicitud': 'ns',
   'recetaCodigo': 'rc', 'productoTipo': 'pdt',
-  'silicona': 'si', 'observaciones': 'obs'
+  'silicona': 'si', 'observaciones': 'obs',
+  'entregadoCliente': 'ec', 'fechaEntregaCliente': 'fec'
 };
 const FORMULA_FIELD_MAP = {
   'preforma': 'pf', 'scrap': 'sr', 'virgen': 'v', 'master': 'm'
@@ -2511,6 +2514,10 @@ function fmtFecha(f) {
 // RENDER
 // ============================================================
 function initApp() {
+  const ub = document.getElementById('userBadge');
+  if (ub && window.currentUser) {
+    ub.textContent = '👤 ' + window.currentUser.nombre + (window.currentUser.rol === 'admin' ? '' : ' · ' + window.currentUser.rol);
+  }
   document.querySelectorAll('.tab').forEach(t => {
     t.addEventListener('click', () => switchTab(t.dataset.tab));
   });
@@ -2543,7 +2550,6 @@ function render() {
   if (currentTab === 'dashboard') renderDashboard();
   else if (currentTab === 'pedidos') renderPedidos();
   else if (currentTab === 'cronograma') renderCronograma();
-  else if (currentTab === 'consulta') renderConsulta();
   else if (currentTab === 'producciones') renderProducciones();
   else if (currentTab === 'remitos') renderRemitos();
   else if (currentTab === 'catalogos') renderCatalogos();
@@ -2553,7 +2559,257 @@ function render() {
 // --- DASHBOARD ---
 let dashYear = new Date().getFullYear(); // año actualmente seleccionado en dashboard
 
+// === Eficiencia de un día (kg/h real vs teórico ponderado por OP) ===
+function eficienciaDelDia(fechaKey) {
+  const bobs = (DATA.producciones || []).filter(b => b.fecha === fechaKey);
+  if (bobs.length === 0) return null;
+  const kgTotal = bobs.reduce((s, b) => s + (+b.kg || 0), 0);
+  const turnos = new Set(bobs.map(b => b.turno).filter(Boolean));
+  // Horas productivas: si hay registros horarios usamos la cantidad de horas distintas (más fino);
+  // si no, estimamos por turnos presentes (día≈11h, noche≈11h).
+  const regs = (DATA.registrosProduccion || []).filter(r => r.fecha === fechaKey);
+  let horas, horasFuente;
+  if (regs.length >= 2) {
+    const horasSet = new Set(regs.map(r => String(r.hora || '').slice(0, 2)).filter(Boolean));
+    horas = horasSet.size || regs.length;
+    horasFuente = 'registros';
+  } else {
+    horas = (turnos.size || 1) * 11;
+    horasFuente = 'turnos';
+  }
+  const kgHReal = horas > 0 ? kgTotal / horas : 0;
+  // Teórico ponderado por kg de cada OP producida ese día
+  const porOp = {};
+  bobs.forEach(b => { porOp[b.pedidoId] = (porOp[b.pedidoId] || 0) + (+b.kg || 0); });
+  let sumKg = 0, sumPond = 0;
+  Object.entries(porOp).forEach(([pid, kg]) => {
+    const ped = (DATA.pedidos || []).find(x => x.id === pid);
+    const teo = ped ? (+ped.kgPorHora || 0) : 0;
+    if (teo > 0) { sumKg += kg; sumPond += kg * teo; }
+  });
+  const kgHTeo = sumKg > 0 ? sumPond / sumKg : 0;
+  const ef = kgHTeo > 0 ? Math.round(kgHReal / kgHTeo * 100) : null;
+  return { fechaKey, kgTotal, horas, horasFuente, kgHReal, kgHTeo, ef, turnos: [...turnos], bobinas: bobs.length };
+}
+
+// === Acciones de cierre comercial (solo admin) ===
+async function marcarEntregadoCliente(id) {
+  if (!puedeVerCierre()) { toast('Solo disponible para tu usuario', 'error'); return; }
+  const p = (DATA.pedidos || []).find(x => x.id === id);
+  if (!p) return;
+  if (!confirm(`Marcar como ENTREGADO al cliente?\n\n${p.cliente} · OP ${p.nroOP||'-'} · ${fmtNum(p.kgReales)} kg\n\nEsto le da cierre comercial al pedido (lo hacés vos, no Agustín).`)) return;
+  p.entregadoCliente = true;
+  p.fechaEntregaCliente = cronoFechaKey(new Date());
+  await saveData();
+  toast('✓ Entregado al cliente registrado', 'success');
+  render();
+}
+async function desmarcarEntregadoCliente(id) {
+  if (!puedeVerCierre()) return;
+  const p = (DATA.pedidos || []).find(x => x.id === id);
+  if (!p) return;
+  if (!confirm('Deshacer la marca de "entregado al cliente"?')) return;
+  p.entregadoCliente = false;
+  p.fechaEntregaCliente = '';
+  await saveData();
+  toast('Marca de entrega deshecha', 'success');
+  render();
+}
+function setDiasVencidoCritico(val) {
+  const n = Math.max(1, +val || 7);
+  if (!DATA.config) DATA.config = {};
+  DATA.config.diasVencidoCritico = n;
+  renderDashboard();
+  saveData();
+}
+
+// === PANEL OPERATIVO DEL DASHBOARD (día a día) ===
+function renderDashboardOperativo() {
+  const cont = document.getElementById('dashOperativo');
+  if (!cont) return;
+  const peds = DATA.pedidos || [];
+  const activos = peds.filter(p => (p.estadoWorkflow || '') !== 'Cancelada');
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  if (DATA.config && DATA.config.diasVencidoCritico == null) DATA.config.diasVencidoCritico = 7;
+  const umbral = (DATA.config && +DATA.config.diasVencidoCritico) || 7;
+
+  // 1) Vencidos
+  const vencidos = activos.filter(p => isVencido(p)).map(p => {
+    const f = parseFechaLocal(p.fechaEntrega || p.fechaDespacho);
+    const dias = f ? Math.round((hoy - f) / (86400000)) : 0;
+    return { p, dias };
+  }).sort((a, b) => b.dias - a.dias);
+  const criticos = vencidos.filter(v => v.dias >= umbral);
+
+  // 2) Listos en Chivilcoy para enviar a Lanús (producido pero no despachado)
+  const listosChiv = activos.filter(p => estaProducido(p) && (p.estadoDespacho || 'Chivilcoy') !== 'Despachado')
+    .sort((a, b) => (a.fechaEntrega || '').localeCompare(b.fechaEntrega || ''));
+
+  // 3) Ya en Lanús (despachados) sin entregar a cliente
+  const enLanus = activos.filter(p => estaProducido(p) && (p.estadoDespacho || 'Chivilcoy') === 'Despachado' && !p.entregadoCliente)
+    .sort((a, b) => (a.fechaEntrega || '').localeCompare(b.fechaEntrega || ''));
+
+  // 4) Producción de los últimos 3 días con carga
+  const fechasConProd = [...new Set((DATA.producciones || []).map(b => b.fecha).filter(Boolean))].sort((a, b) => b.localeCompare(a)).slice(0, 3);
+
+  const fmtDiaCorto = (k) => { const d = parseFechaLocal(k); return d ? cronoFechaCorta(d) : k; };
+
+  // ---------- Tarjeta: Vencidos críticos ----------
+  let cardVencidos = `
+    <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid ${criticos.length ? '#dc2626' : '#86efac'};border-radius:10px;padding:14px;display:flex;flex-direction:column">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap">
+        <h3 style="margin:0;font-size:14px;color:#991b1b">🚨 Vencidos críticos</h3>
+        <label style="font-size:11px;color:#6b7280;display:flex;align-items:center;gap:4px">+ de
+          <input type="number" min="1" value="${umbral}" onchange="setDiasVencidoCritico(this.value)" style="width:46px;padding:2px 4px;border:1px solid #d1d5db;border-radius:4px;font-size:11px;text-align:center"> días
+        </label>
+      </div>`;
+  if (criticos.length === 0) {
+    cardVencidos += `<p class="muted" style="text-align:center;padding:14px 0;font-size:13px">✓ Sin vencidos de más de ${umbral} días${vencidos.length ? ` (hay ${vencidos.length} vencido${vencidos.length>1?'s':''} recientes)` : ''}</p>`;
+  } else {
+    cardVencidos += `<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto">`;
+    criticos.forEach(({ p, dias }) => {
+      cardVencidos += `
+        <div onclick="openPedidoDetail('${p.id}')" style="cursor:pointer;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:7px 9px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+            <span style="font-size:12px;font-weight:700;color:#1f2937">${p.cliente}</span>
+            <span style="font-size:11px;font-weight:700;color:#dc2626;white-space:nowrap">${dias} días</span>
+          </div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">OP ${p.nroOP||'-'} · ${p.ancho||'-'}×${p.espesor||'-'} · <b style="color:#dc2626">${fmtNum(calcPendiente(p))} kg pend.</b> · entrega ${fmtFecha(p.fechaEntrega||p.fechaDespacho)||'-'}</div>
+        </div>`;
+    });
+    cardVencidos += `</div>`;
+  }
+  cardVencidos += `</div>`;
+
+  // ---------- Tarjeta: Listos en Chivilcoy → Lanús ----------
+  let cardChiv = `
+    <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #e8731e;border-radius:10px;padding:14px;display:flex;flex-direction:column">
+      <h3 style="margin:0 0 10px;font-size:14px;color:#9a3412">📦 Listos en Chivilcoy para enviar a Lanús <span class="muted" style="font-size:12px;font-weight:400">(${listosChiv.length})</span></h3>`;
+  if (listosChiv.length === 0) {
+    cardChiv += `<p class="muted" style="text-align:center;padding:14px 0;font-size:13px">Nada pendiente de despacho</p>`;
+  } else {
+    cardChiv += `<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto">`;
+    listosChiv.forEach(p => {
+      const despTxt = (p.estadoDespacho === 'Parcial') ? '<span style="color:#d97706;font-weight:600"> · parcial</span>' : '';
+      cardChiv += `
+        <div onclick="openPedidoDetail('${p.id}')" style="cursor:pointer;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:7px 9px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+            <span style="font-size:12px;font-weight:700;color:#1f2937">${p.cliente}</span>
+            <span style="font-size:11px;font-weight:700;color:#16a34a;white-space:nowrap">${fmtNum(p.kgReales)} kg</span>
+          </div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">OP ${p.nroOP||'-'} · ${p.ancho||'-'}×${p.espesor||'-'}${despTxt}</div>
+        </div>`;
+    });
+    cardChiv += `</div>`;
+  }
+  cardChiv += `</div>`;
+
+  // ---------- Tarjeta: Ya en Lanús + cierre comercial ----------
+  const esAdmin = puedeVerCierre();
+  let cardLanus = `
+    <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #2563eb;border-radius:10px;padding:14px;display:flex;flex-direction:column">
+      <h3 style="margin:0 0 10px;font-size:14px;color:#1e40af">🏭 En Lanús${esAdmin ? ' · pendientes de entregar al cliente' : ' (despachados)'} <span class="muted" style="font-size:12px;font-weight:400">(${enLanus.length})</span></h3>`;
+  if (enLanus.length === 0) {
+    cardLanus += `<p class="muted" style="text-align:center;padding:14px 0;font-size:13px">${esAdmin ? '✓ Todo entregado' : 'Sin pedidos en Lanús'}</p>`;
+  } else {
+    cardLanus += `<div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto">`;
+    enLanus.forEach(p => {
+      cardLanus += `
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:7px 9px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+            <span onclick="openPedidoDetail('${p.id}')" style="cursor:pointer;font-size:12px;font-weight:700;color:#1f2937">${p.cliente}</span>
+            ${esAdmin ? `<button onclick="event.stopPropagation();marcarEntregadoCliente('${p.id}')" style="background:#16a34a;color:white;border:none;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">✓ Entregado</button>` : `<span style="font-size:11px;font-weight:700;color:#2563eb">${fmtNum(p.kgReales)} kg</span>`}
+          </div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">OP ${p.nroOP||'-'} · ${p.ancho||'-'}×${p.espesor||'-'} · ${fmtNum(p.kgReales)} kg</div>
+        </div>`;
+    });
+    cardLanus += `</div>`;
+  }
+  if (esAdmin) {
+    const entregadosMes = activos.filter(p => p.entregadoCliente && String(p.fechaEntregaCliente || '').slice(0, 7) === cronoFechaKey(new Date()).slice(0, 7));
+    cardLanus += `<div style="border-top:1px solid #f3f4f6;margin-top:8px;padding-top:8px;font-size:11px;color:#6b7280">✓ Entregados este mes: <b style="color:#16a34a">${entregadosMes.length}</b></div>`;
+  }
+  cardLanus += `</div>`;
+
+  // ---------- Tarjeta: Producción últimos 3 días ----------
+  let cardProd = `
+    <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #16a463;border-radius:10px;padding:14px;display:flex;flex-direction:column">
+      <h3 style="margin:0 0 10px;font-size:14px;color:#15803d">📈 Producción últimos días</h3>`;
+  if (fechasConProd.length === 0) {
+    cardProd += `<p class="muted" style="text-align:center;padding:14px 0;font-size:13px">Sin producción cargada todavía</p>`;
+  } else {
+    cardProd += `<div style="display:flex;flex-direction:column;gap:10px;max-height:280px;overflow-y:auto">`;
+    fechasConProd.forEach(fk => {
+      const bobs = (DATA.producciones || []).filter(b => b.fecha === fk);
+      const kgDia = bobs.reduce((s, b) => s + (+b.kg || 0), 0);
+      const porOp = {};
+      bobs.forEach(b => {
+        if (!porOp[b.pedidoId]) porOp[b.pedidoId] = 0;
+        porOp[b.pedidoId] += (+b.kg || 0);
+      });
+      cardProd += `<div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:#1f2937;border-bottom:1px solid #f3f4f6;padding-bottom:3px;margin-bottom:4px">
+          <span>${fmtDiaCorto(fk)}</span><span style="color:#16a34a">${fmtNum(kgDia)} kg</span>
+        </div>`;
+      Object.entries(porOp).sort((a, b) => b[1] - a[1]).forEach(([pid, kg]) => {
+        const ped = (DATA.pedidos || []).find(x => x.id === pid);
+        cardProd += `<div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7280;padding:1px 0">
+          <span>OP ${ped ? (ped.nroOP || '-') : '?'} · ${ped ? ped.cliente : 'OP eliminada'}</span><span style="font-weight:600;color:#374151">${fmtNum(kg)} kg</span>
+        </div>`;
+      });
+      cardProd += `</div>`;
+    });
+    cardProd += `</div>`;
+  }
+  cardProd += `</div>`;
+
+  // ---------- Tarjeta: Eficiencia diaria ----------
+  let cardEf = `
+    <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #7c3aed;border-radius:10px;padding:14px;display:flex;flex-direction:column">
+      <h3 style="margin:0 0 10px;font-size:14px;color:#6d28d9">⚡ Eficiencia diaria</h3>`;
+  if (fechasConProd.length === 0) {
+    cardEf += `<p class="muted" style="text-align:center;padding:14px 0;font-size:13px">Sin datos para calcular</p>`;
+  } else {
+    const efs = fechasConProd.map(eficienciaDelDia).filter(Boolean);
+    if (efs.length) {
+      const e0 = efs[0];
+      const col = e0.ef == null ? '#6b7280' : e0.ef >= 100 ? '#16a34a' : e0.ef >= 80 ? '#d97706' : '#dc2626';
+      cardEf += `
+        <div style="background:#faf5ff;border-radius:8px;padding:12px;margin-bottom:8px">
+          <div style="font-size:11px;color:#6b7280">${fmtDiaCorto(e0.fechaKey)} ${e0.turnos.length ? '· ' + e0.turnos.map(t => t==='dia'?'☀':'🌙').join('') : ''}</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:2px">
+            <span style="font-size:30px;font-weight:800;color:${col}">${e0.ef == null ? '–' : e0.ef + '%'}</span>
+            <span style="font-size:11px;color:#6b7280">${fmtNum(Math.round(e0.kgHReal))} / ${fmtNum(Math.round(e0.kgHTeo))} kg/h</span>
+          </div>
+          <div style="font-size:10px;color:#9ca3af;margin-top:2px">${fmtNum(e0.kgTotal)} kg en ~${e0.horas} h (${e0.horasFuente})</div>
+        </div>`;
+      efs.slice(1).forEach(e => {
+        const c = e.ef == null ? '#6b7280' : e.ef >= 100 ? '#16a34a' : e.ef >= 80 ? '#d97706' : '#dc2626';
+        cardEf += `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0;border-top:1px solid #f3f4f6">
+          <span style="color:#6b7280">${fmtDiaCorto(e.fechaKey)}</span>
+          <span><b style="color:${c}">${e.ef == null ? '–' : e.ef + '%'}</b> <span style="color:#9ca3af;font-size:10px">${fmtNum(Math.round(e.kgHReal))} kg/h</span></span>
+        </div>`;
+      });
+      cardEf += `<div style="font-size:10px;color:#9ca3af;margin-top:8px;font-style:italic">Real (kg ÷ horas) vs teórico (kg/h de la OP, ponderado).</div>`;
+    } else {
+      cardEf += `<p class="muted" style="text-align:center;padding:14px 0;font-size:13px">Falta kg/h teórico en las OPs producidas</p>`;
+    }
+  }
+  cardEf += `</div>`;
+
+  cont.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
+      ${cardVencidos}
+      ${cardChiv}
+      ${cardLanus}
+      ${cardProd}
+      ${cardEf}
+    </div>
+  `;
+}
+
 function renderDashboard() {
+  renderDashboardOperativo();
   const peds = DATA.pedidos || [];
   // Año de cada pedido (usando parseFechaLocal para evitar bug timezone).
   // Si no hay fecha de ingreso, agrupar en una categoría especial "Sin fecha".
@@ -2848,10 +3104,6 @@ function populateFilters() {
   // Mes: fijos
   buildMselOptions('fMes', MESES.map(m => ({ value: m, label: m })));
 
-  // Query (Consulta) — sigue siendo select simple
-  const qc = document.getElementById('qCliente');
-  if (qc) qc.innerHTML = '<option value="">Todos</option>' + clientes.map(c => `<option value="${c}">${c}</option>`).join('');
-
   // Listeners se registran solo una vez (idempotente)
   if (!window._filterListenersDone) {
     window._filterListenersDone = true;
@@ -2865,11 +3117,6 @@ function populateFilters() {
         else { sortField = f; sortDir = 'asc'; }
         renderPedidos();
       });
-    });
-
-    ['qCliente','qOc','qPartida','qMedida'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.addEventListener('change', renderConsulta);
     });
 
     // Cerrar dropdowns al hacer click fuera
@@ -3388,63 +3635,18 @@ async function deletePedido(id, fromModal) {
   toast('Pedido eliminado', 'success');
 }
 
-// --- CONSULTA ---
-function renderConsulta() {
-  const sel = {
-    cliente: document.getElementById('qCliente').value,
-    oc: document.getElementById('qOc').value,
-    op: document.getElementById('qPartida').value,
-    medida: document.getElementById('qMedida').value
-  };
-  const filtered = DATA.pedidos.filter(p => {
-    const opVal = p.op || p.partida || '';
-    const medVal = `${p.ancho||0}×${p.espesor||0}`;
-    return (!sel.cliente || p.cliente === sel.cliente) &&
-      (!sel.oc || p.oc === sel.oc) &&
-      (!sel.op || opVal === sel.op) &&
-      (!sel.medida || medVal === sel.medida);
-  });
-
-  const ocs = [...new Set(DATA.pedidos.filter(p => !sel.cliente || p.cliente === sel.cliente).map(p => p.oc).filter(Boolean))].sort();
-  const ops = [...new Set(filtered.map(p => p.op || p.partida).filter(Boolean))].sort();
-  const meds = [...new Set(filtered.map(p => `${p.ancho||0}×${p.espesor||0}`).filter(m => m !== '0×0'))].sort();
-
-  const repop = (id, items, val) => {
-    document.getElementById(id).innerHTML = '<option value="">Todos</option>' + items.map(x => `<option value="${x}" ${x===val?'selected':''}>${x}</option>`).join('');
-  };
-  repop('qOc', ocs, sel.oc);
-  repop('qPartida', ops, sel.op);
-  repop('qMedida', meds, sel.medida);
-
-  const kgPed = filtered.reduce((s,p) => s + (+p.kgPedidos || 0), 0);
-  const kgReal = filtered.reduce((s,p) => s + (+p.kgReales || 0), 0);
-  // Sumamos los pendientes pedido por pedido (Math.max 0). Así, una OP sobreproducida (kgReal > kgPed)
-  // no compensa otra OP que tiene producción faltante. Esto es lo que el usuario espera ver.
-  const pend = filtered.reduce((s,p) => s + calcPendiente(p), 0);
-
-  document.getElementById('consultaKpis').innerHTML = `
-    <div class="kpi"><div class="label">Pedidos</div><div class="val">${filtered.length}</div></div>
-    <div class="kpi"><div class="label">Kg pedidos</div><div class="val">${fmtNum(kgPed)}</div></div>
-    <div class="kpi ok"><div class="label">Kg producidos</div><div class="val">${fmtNum(kgReal)}</div></div>
-    <div class="kpi ${pend>0?'warn':'ok'}"><div class="label">Kg pendientes</div><div class="val">${fmtNum(pend)}</div></div>
-  `;
-
-  let html = '<thead><tr><th>Fecha</th><th>Cliente</th><th>OC</th><th>OP</th><th>Medida</th><th class="num">Kg ped</th><th class="num">Kg real</th><th>Estado</th></tr></thead><tbody>';
-  filtered.sort((a,b) => (a.fechaIngreso||'') > (b.fechaIngreso||'') ? -1 : 1);
-  filtered.forEach(p => {
-    const e = isVencido(p) ? 'VENCIDO' : calcEstado(p);
-    html += `<tr style="cursor:pointer" onclick="openPedidoDetail('${p.id}')"><td>${fmtFecha(p.fechaIngreso)}</td><td>${p.cliente}</td><td>${p.oc}</td><td><code>${p.op||p.partida||''}</code></td><td>${p.ancho||0}×${p.espesor||0}</td><td class="num">${fmtNum(p.kgPedidos)}</td><td class="num">${fmtNum(p.kgReales)}</td><td><span class="estado estado-${e}">${e}</span></td></tr>`;
-  });
-  html += '</tbody>';
-  document.getElementById('consultaTabla').innerHTML = html;
-}
-
 // --- PRODUCCIONES ---
 // ============================================================
 // PRODUCCIONES — vista detallada con filtros y sub-pestañas
 // ============================================================
 let prodSubTab = 'bobinas'; // 'bobinas' | 'registros'
 let prodFilters = { desde: '', hasta: '', opId: '', operario: '', turno: '' };
+let prodVista = 'mes';       // 'mes' | 'lista' (solo sub-pestaña Bobinas)
+let prodMesSel = '';         // 'YYYY-MM' seleccionado en la vista por mes
+let prodDiasAbiertos = {};   // { 'YYYY-MM-DD': true } días expandidos
+function prodSetVista(v) { prodVista = v; renderProducciones(); }
+function prodSetMes(m) { prodMesSel = m; prodDiasAbiertos = {}; renderProducciones(); }
+function prodToggleDia(fk) { prodDiasAbiertos[fk] = !prodDiasAbiertos[fk]; renderProducciones(); }
 
 function renderProducciones() {
   const c = document.getElementById('produccionesContent');
@@ -3534,33 +3736,93 @@ function renderProducciones() {
     </div>
   `;
 
+  // Builder de fila de bobina (reutilizado por vista mes y lista)
+  function bobinaRowHtml(b) {
+    const ped = DATA.pedidos.find(x => x.id === b.pedidoId);
+    return `<tr>
+      <td>${fmtFecha(b.fecha)}</td>
+      <td>${b.hora||'-'}</td>
+      <td>${b.turno==='dia'?'☀ Día':b.turno==='noche'?'🌙 Noche':'-'}</td>
+      <td><b>${ped?ped.nroOP:'-'}</b></td>
+      <td>${ped?ped.cliente:'-'}</td>
+      <td><code style="font-size:11px">${b.partida||ped?.op||'-'}</code></td>
+      <td class="num">${b.nroBobina||'-'}</td>
+      <td class="num">${b.nroPallet||'-'}</td>
+      <td class="num">${b.ancho||'-'}</td>
+      <td class="num">${b.espesor||'-'}</td>
+      <td class="num"><b>${fmtNum(b.kg)}</b></td>
+      <td class="num">${fmtNum(b.metros)}</td>
+      <td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(b.mezclaReal||'').replace(/"/g,'&quot;')}">${b.mezclaReal||'-'}</td>
+      <td style="font-size:11px">${b.operario||'-'}</td>
+      <td style="font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(b.observaciones||'').replace(/"/g,'&quot;')}">${b.observaciones||''}</td>
+    </tr>`;
+  }
+  const thBob = '<thead><tr><th>Fecha</th><th>Hora</th><th>Turno</th><th>OP</th><th>Cliente</th><th>Partida</th><th class="num">Bob#</th><th class="num">Pallet</th><th class="num">Ancho</th><th class="num">Esp</th><th class="num">Kg</th><th class="num">Metros</th><th>Mezcla real</th><th>Operario</th><th>Obs</th></tr></thead>';
+
   if (prodSubTab === 'bobinas') {
     if (bobinasFilt.length === 0) {
       html += '<p class="muted" style="padding:30px;text-align:center">Sin bobinas con esos filtros.</p>';
     } else {
-      html += '<div style="overflow-x:auto"><table style="font-size:12px"><thead><tr><th>Fecha</th><th>Hora</th><th>Turno</th><th>OP</th><th>Cliente</th><th>Partida</th><th class="num">Bob#</th><th class="num">Pallet</th><th class="num">Ancho</th><th class="num">Esp</th><th class="num">Kg</th><th class="num">Metros</th><th>Mezcla real</th><th>Operario</th><th>Obs</th></tr></thead><tbody>';
-      const sorted = [...bobinasFilt].sort((a,b) => (b.fecha+b.hora||'').localeCompare(a.fecha+a.hora||''));
-      sorted.forEach(b => {
-        const ped = DATA.pedidos.find(x => x.id === b.pedidoId);
-        html += `<tr>
-          <td>${fmtFecha(b.fecha)}</td>
-          <td>${b.hora||'-'}</td>
-          <td>${b.turno==='dia'?'☀ Día':b.turno==='noche'?'🌙 Noche':'-'}</td>
-          <td><b>${ped?ped.nroOP:'-'}</b></td>
-          <td>${ped?ped.cliente:'-'}</td>
-          <td><code style="font-size:11px">${b.partida||ped?.op||'-'}</code></td>
-          <td class="num">${b.nroBobina||'-'}</td>
-          <td class="num">${b.nroPallet||'-'}</td>
-          <td class="num">${b.ancho||'-'}</td>
-          <td class="num">${b.espesor||'-'}</td>
-          <td class="num"><b>${fmtNum(b.kg)}</b></td>
-          <td class="num">${fmtNum(b.metros)}</td>
-          <td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(b.mezclaReal||'').replace(/"/g,'&quot;')}">${b.mezclaReal||'-'}</td>
-          <td style="font-size:11px">${b.operario||'-'}</td>
-          <td style="font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(b.observaciones||'').replace(/"/g,'&quot;')}">${b.observaciones||''}</td>
-        </tr>`;
-      });
-      html += '</tbody></table></div>';
+      html += `
+        <div style="display:flex;gap:8px;align-items:center;margin:12px 0;flex-wrap:wrap">
+          <div style="display:flex;gap:2px;background:#f3f4f6;border-radius:8px;padding:3px">
+            <button onclick="prodSetVista('mes')" style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:${prodVista==='mes'?'white':'transparent'};color:${prodVista==='mes'?'#16a34a':'#6b7280'};box-shadow:${prodVista==='mes'?'0 1px 2px rgba(0,0,0,0.08)':'none'}">📅 Por mes</button>
+            <button onclick="prodSetVista('lista')" style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;background:${prodVista==='lista'?'white':'transparent'};color:${prodVista==='lista'?'#16a34a':'#6b7280'};box-shadow:${prodVista==='lista'?'0 1px 2px rgba(0,0,0,0.08)':'none'}">📋 Lista completa</button>
+          </div>`;
+
+      if (prodVista === 'mes') {
+        const mesesPresentes = [...new Set(bobinasFilt.map(b => mesKey(b.fecha)).filter(Boolean))].sort((a, b) => b.localeCompare(a));
+        const mesActual = mesKey(cronoFechaKey(new Date()));
+        if (!prodMesSel || !mesesPresentes.includes(prodMesSel)) {
+          prodMesSel = mesesPresentes.includes(mesActual) ? mesActual : (mesesPresentes[0] || '');
+        }
+        const mesLabel = (mk) => { const [y, m] = mk.split('-'); return `${MESES[+m - 1]} ${y}`; };
+        html += `
+          <select onchange="prodSetMes(this.value)" style="padding:6px 12px;border:1px solid #16a34a;border-radius:6px;font-size:13px;font-weight:600;color:#16a34a;background:#f0fdf4">
+            ${mesesPresentes.map(mk => `<option value="${mk}" ${mk===prodMesSel?'selected':''}>${mesLabel(mk)}</option>`).join('')}
+          </select>
+        </div>`;
+
+        const bobsMes = bobinasFilt.filter(b => mesKey(b.fecha) === prodMesSel);
+        const porDia = {};
+        bobsMes.forEach(b => { (porDia[b.fecha] = porDia[b.fecha] || []).push(b); });
+        const diasOrden = Object.keys(porDia).sort((a, b) => b.localeCompare(a));
+        const kgMes = bobsMes.reduce((s, b) => s + (+b.kg || 0), 0);
+
+        html += `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <span style="font-size:13px;font-weight:700;color:#15803d">${mesLabel(prodMesSel)}</span>
+          <span style="font-size:13px;color:#374151">${diasOrden.length} días con producción · ${bobsMes.length} bobinas · <b style="color:#16a34a">${fmtNum(kgMes)} kg</b></span>
+        </div>`;
+
+        html += `<div style="display:flex;flex-direction:column;gap:6px">`;
+        diasOrden.forEach(fk => {
+          const bobsDia = porDia[fk];
+          const kgDia = bobsDia.reduce((s, b) => s + (+b.kg || 0), 0);
+          const opsDia = [...new Set(bobsDia.map(b => { const pe = DATA.pedidos.find(x => x.id === b.pedidoId); return pe ? pe.cliente : null; }).filter(Boolean))];
+          const operDia = [...new Set(bobsDia.map(b => b.operario).filter(Boolean))];
+          const abierto = !!prodDiasAbiertos[fk];
+          const d = parseFechaLocal(fk);
+          html += `
+            <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">
+              <div onclick="prodToggleDia('${fk}')" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:${abierto?'#f9fafb':'white'};gap:8px;flex-wrap:wrap">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font-size:12px;color:#9ca3af;display:inline-block;transform:rotate(${abierto?90:0}deg)">▶</span>
+                  <span style="font-size:13px;font-weight:700;color:#1f2937">${d ? cronoFechaCorta(d) : fk}</span>
+                  <span style="font-size:11px;color:#6b7280">${bobsDia.length} bobinas${operDia.length?' · '+operDia.join(', '):''}</span>
+                </div>
+                <span style="font-size:14px;font-weight:700;color:#16a34a">${fmtNum(kgDia)} kg</span>
+              </div>
+              ${opsDia.length ? `<div style="padding:0 14px 6px 36px;font-size:11px;color:#9ca3af">${opsDia.join(' · ')}</div>` : ''}
+              ${abierto ? `<div style="overflow-x:auto;border-top:1px solid #f3f4f6"><table style="font-size:12px">${thBob}<tbody>${[...bobsDia].sort((a,b)=>(b.hora||'').localeCompare(a.hora||'')).map(bobinaRowHtml).join('')}</tbody></table></div>` : ''}
+            </div>`;
+        });
+        html += `</div>`;
+      } else {
+        html += `</div>`;
+        html += '<div style="overflow-x:auto"><table style="font-size:12px">' + thBob + '<tbody>';
+        html += [...bobinasFilt].sort((a, b) => (b.fecha + b.hora || '').localeCompare(a.fecha + a.hora || '')).map(bobinaRowHtml).join('');
+        html += '</tbody></table></div>';
+      }
     }
   } else {
     if (registrosFilt.length === 0) {
@@ -4403,6 +4665,25 @@ function renderDetailBody(p, bobinas) {
           ${p.ocAdjunto ? `<div class="detail-field"><span class="lbl">OC adjunta</span><span class="val"><a href="#" onclick="event.preventDefault();verOCAdjunto('${p.id}')" style="color:#16a34a;text-decoration:underline">📎 ${p.ocAdjunto.nombre||'archivo'}</a> <span class="muted" style="font-size:11px">(${p.ocAdjunto.size?Math.round(p.ocAdjunto.size/1024)+' KB':''})</span></span></div>` : ''}
         </div>
       </div>
+      ${(() => {
+        const enLanus = estaProducido(p) && (p.estadoDespacho || 'Chivilcoy') === 'Despachado';
+        if (p.entregadoCliente) {
+          return `<div class="detail-section" style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-weight:700;color:#15803d;font-size:14px">✓ Entregado al cliente${p.fechaEntregaCliente ? ' · ' + fmtFecha(p.fechaEntregaCliente) : ''}</span>
+              ${puedeVerCierre() ? `<button class="btn-ghost" style="font-size:11px;padding:4px 8px" onclick="desmarcarEntregadoCliente('${p.id}')">Deshacer</button>` : ''}
+            </div></div>`;
+        }
+        if (enLanus && puedeVerCierre()) {
+          return `<div class="detail-section" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+              <div><div style="font-weight:700;color:#1e40af;font-size:13px">🏭 En Lanús — pendiente de entregar al cliente</div>
+              <div style="font-size:11px;color:#6b7280;margin-top:2px">Cierre comercial (lo registrás vos)</div></div>
+              <button class="btn btn-pri" style="background:#16a34a" onclick="marcarEntregadoCliente('${p.id}')">✓ Marcar entregado a cliente</button>
+            </div></div>`;
+        }
+        return '';
+      })()}
       <div class="detail-section">
         <h3>Producto y especificaciones</h3>
         <div class="detail-grid">
@@ -13474,6 +13755,17 @@ function renderCronograma() {
     }
 
     html += `</div>`;
+    // Producido ese día en OPs que NO estaban planificadas → para que el total "Real" cierre OP por OP
+    const planificadosIds = new Set(ops.map(o => o.pedidoId));
+    const extras = Object.entries(prodDia).filter(([pid, kg]) => kg > 0 && !planificadosIds.has(pid));
+    if (extras.length) {
+      html += `<div style="border-top:1px dashed #e5e7eb;margin-top:6px;padding-top:5px"><div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:3px">Producido sin planificar</div>`;
+      extras.sort((a, b) => b[1] - a[1]).forEach(([pid, kg]) => {
+        const pe = DATA.pedidos.find(x => x.id === pid);
+        html += `<div style="display:flex;justify-content:space-between;font-size:10px;color:#6b7280;padding:1px 0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">OP ${pe ? (pe.nroOP || '-') : '?'} · ${pe ? pe.cliente : '—'}</span><span style="font-weight:600;white-space:nowrap;margin-left:4px">${fmtNum(kg)}kg</span></div>`;
+      });
+      html += `</div>`;
+    }
     html += `
       <div style="border-top:1px solid #f3f4f6;padding-top:6px;margin-top:6px;font-size:11px;color:#6b7280;display:flex;justify-content:space-between">
         <div>Plan: <b style="color:#1f2937">${fmtNum(totalKgPlan)}</b></div>
@@ -13487,6 +13779,104 @@ function renderCronograma() {
   html += `<div style="margin-top:14px;background:#f9fafb;padding:12px;border-radius:8px;font-size:12px;color:#6b7280">💡 <b>Tip:</b> Click en cualquier OP para editarla o cambiarle el status. Las barras de "Real" se actualizan automáticamente con las bobinas que va cargando Agustín en la tablet.</div>`;
 
   cont.innerHTML = html;
+}
+
+function generarCronogramaPDF() {
+  if (typeof window.jspdf === 'undefined') {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    s.onload = () => generarCronogramaPDF();
+    document.head.appendChild(s);
+    return;
+  }
+  if (!cronoBaseFecha) cronoBaseFecha = cronoGetLunesDeHoy();
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, M = 12;
+  const C_PRI = [22, 163, 74], C_BLUE = [30, 64, 175], C_DARK = [15, 23, 42], C_GRAY = [107, 114, 128], C_LIGHT = [243, 244, 246];
+  function safeS(s) { return (s == null) ? '-' : String(s).replace(/[^\x20-\x7EáéíóúñüÁÉÍÓÚÑÜ°²³%·\/\-\(\):,.]/g, ' '); }
+  const txt = (s, x, y, o = {}) => { doc.setFont('helvetica', o.bold ? 'bold' : 'normal'); doc.setFontSize(o.size || 9); doc.setTextColor(...(o.color || C_DARK)); doc.text(safeS(s), x, y, { align: o.align || 'left' }); };
+
+  const dias = []; for (let i = 0; i < 6; i++) { const d = new Date(cronoBaseFecha); d.setDate(d.getDate() + i); dias.push(d); }
+  const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const dias3 = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const ult = dias[5];
+  const rango = `Semana del ${dias[0].getDate()} ${meses[dias[0].getMonth()]} al ${ult.getDate()} ${meses[ult.getMonth()]} ${ult.getFullYear()}`;
+
+  const prodPorFecha = {};
+  (DATA.producciones || []).forEach(b => { if (!b.fecha) return; (prodPorFecha[b.fecha] = prodPorFecha[b.fecha] || {}); prodPorFecha[b.fecha][b.pedidoId] = (prodPorFecha[b.fecha][b.pedidoId] || 0) + (+b.kg || 0); });
+
+  doc.setFillColor(...C_PRI); doc.rect(0, 0, W, 24, 'F');
+  txt('WINFLEX PET - CRONOGRAMA SEMANAL DE PRODUCCION', M, 11, { bold: true, size: 14, color: [255, 255, 255] });
+  txt(rango, M, 18, { size: 10, color: [220, 252, 231] });
+  txt('Generado ' + new Date().toLocaleDateString('es-AR') + ' ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), W - M, 18, { size: 8, color: [220, 252, 231], align: 'right' });
+
+  let y = 30, totPlanSem = 0, totRealSem = 0;
+
+  dias.forEach(d => {
+    const key = cronoFechaKey(d);
+    const plan = (DATA.planificacion && DATA.planificacion[key]) || { ops: [], notas: '' };
+    const ops = plan.ops || [];
+    const prodDia = prodPorFecha[key] || {};
+    const planIds = new Set(ops.map(o => o.pedidoId));
+    const totPlanDia = ops.reduce((s, o) => s + (+o.kgPlan || 0), 0);
+    const totRealDia = Object.values(prodDia).reduce((s, k) => s + k, 0);
+    totPlanSem += totPlanDia; totRealSem += totRealDia;
+
+    const extras = Object.entries(prodDia).filter(([pid, kg]) => kg > 0 && !planIds.has(pid));
+    const filas = ops.length + extras.length;
+    const alto = 13 + Math.max(filas, 1) * 5 + 4;
+    if (y + alto > 282) { doc.addPage(); y = 15; }
+
+    doc.setFillColor(...C_LIGHT); doc.rect(M, y, W - 2 * M, 7, 'F');
+    txt(`${dias3[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`, M + 2, y + 5, { bold: true, size: 10 });
+    txt(`Plan ${fmtNum(totPlanDia)} kg  ·  Real ${fmtNum(totRealDia)} kg`, W - M - 2, y + 5, { size: 9, bold: true, color: C_GRAY, align: 'right' });
+    y += 9;
+
+    if (ops.length === 0 && extras.length === 0) {
+      txt('Sin OPs planificadas ni produccion.', M + 2, y + 3, { size: 8, color: C_GRAY }); y += 6;
+    } else {
+      txt('OP', M + 2, y + 3, { size: 7, bold: true, color: C_GRAY });
+      txt('Cliente', M + 22, y + 3, { size: 7, bold: true, color: C_GRAY });
+      txt('Medida', M + 78, y + 3, { size: 7, bold: true, color: C_GRAY });
+      txt('Estado', M + 103, y + 3, { size: 7, bold: true, color: C_GRAY });
+      txt('Plan kg', W - M - 48, y + 3, { size: 7, bold: true, color: C_GRAY, align: 'right' });
+      txt('Real kg', W - M - 22, y + 3, { size: 7, bold: true, color: C_GRAY, align: 'right' });
+      txt('%', W - M - 2, y + 3, { size: 7, bold: true, color: C_GRAY, align: 'right' });
+      y += 4;
+      [...ops].sort((a, b) => (a.prioridad || 99) - (b.prioridad || 99)).forEach(op => {
+        const ped = DATA.pedidos.find(x => x.id === op.pedidoId);
+        const kgReal = prodDia[op.pedidoId] || 0;
+        const pct = (op.kgPlan && kgReal) ? Math.round(kgReal / op.kgPlan * 100) : 0;
+        const statusTxt = { curso: 'En curso', completado: 'Completado', demorado: 'Demorado' }[op.status] || 'Pendiente';
+        txt(ped ? (ped.nroOP || '-') : '?', M + 2, y + 3, { size: 8 });
+        txt(ped ? ped.cliente : 'OP eliminada', M + 22, y + 3, { size: 8 });
+        txt(ped ? `${ped.ancho || '-'}x${ped.espesor || '-'}` : '-', M + 78, y + 3, { size: 8 });
+        txt(statusTxt, M + 103, y + 3, { size: 8 });
+        txt(fmtNum(op.kgPlan), W - M - 48, y + 3, { size: 8, align: 'right' });
+        txt(fmtNum(kgReal), W - M - 22, y + 3, { size: 8, align: 'right', color: kgReal ? C_PRI : C_GRAY });
+        txt(kgReal ? pct + '%' : '-', W - M - 2, y + 3, { size: 8, align: 'right' });
+        y += 5;
+      });
+      extras.sort((a, b) => b[1] - a[1]).forEach(([pid, kg]) => {
+        const pe = DATA.pedidos.find(x => x.id === pid);
+        txt(pe ? (pe.nroOP || '-') : '?', M + 2, y + 3, { size: 8, color: C_GRAY });
+        txt((pe ? pe.cliente : '-') + ' (sin planificar)', M + 22, y + 3, { size: 8, color: C_GRAY });
+        txt('-', W - M - 48, y + 3, { size: 8, align: 'right', color: C_GRAY });
+        txt(fmtNum(kg), W - M - 22, y + 3, { size: 8, align: 'right', color: C_BLUE });
+        y += 5;
+      });
+    }
+    y += 4;
+  });
+
+  if (y > 274) { doc.addPage(); y = 15; }
+  doc.setFillColor(...C_PRI); doc.rect(M, y, W - 2 * M, 8, 'F');
+  txt('TOTAL SEMANA', M + 2, y + 5.5, { bold: true, size: 10, color: [255, 255, 255] });
+  txt(`Plan ${fmtNum(totPlanSem)} kg  ·  Real ${fmtNum(totRealSem)} kg  ·  ${totPlanSem > 0 ? Math.round(totRealSem / totPlanSem * 100) : 0}%`, W - M - 2, y + 5.5, { bold: true, size: 10, color: [255, 255, 255], align: 'right' });
+
+  doc.save(`Cronograma_${cronoFechaKey(dias[0])}.pdf`);
+  toast('PDF del cronograma generado', 'success');
 }
 
 function cronoStatusInfo(status) {
