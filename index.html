@@ -3020,7 +3020,7 @@ function renderPedidos() {
       <td class="num">${pend > 0 ? fmtNum(pend) : '<span class="muted">—</span>'}</td>
       <td><span class="wf ${wfClass}">${wf}</span></td>
       <td onclick="event.stopPropagation()">${despachoBtns(p)}</td>
-      <td><span class="estado estado-${e}">${eLabel}</span></td>
+      <td><span class="estado estado-${e}">${eLabel}</span>${entregaInline(p)}</td>
       <td onclick="event.stopPropagation()"><button class="btn-ghost" onclick="openPedidoModal('${p.id}')" title="Editar">✏️</button> <button class="btn-ghost" onclick="deletePedido('${p.id}')" title="Eliminar">🗑️</button></td>
     </tr>`;
   }).join('');
@@ -3033,6 +3033,23 @@ function despachoBtns(p) {
   const d = p.estadoDespacho || 'Chivilcoy';
   const mk = (v, lbl) => `<button class="dbtn ${d===v?'on '+('don-'+v):''}" onclick="setDespacho('${p.id}','${v}')" title="${v}">${lbl}</button>`;
   return `<div class="dbtn-grp">${mk('Chivilcoy','Chiv')}${mk('Parcial','Parc')}${mk('Despachado','Lanús')}</div>`;
+}
+
+// Tilde de "entregado al cliente" inline en la lista de pedidos.
+// - Badge verde "✓ Entregado" visible para todos (informativo).
+// - Botón "☐ Entregar" clickeable directo desde la lista, SOLO para admin (vos), cuando ya está en Lanús.
+function entregaInline(p) {
+  const enLanus = estaProducido(p) && (p.estadoDespacho || 'Chivilcoy') === 'Despachado';
+  if (p.entregadoCliente) {
+    const undo = puedeVerCierre()
+      ? ` <span onclick="event.stopPropagation();desmarcarEntregadoCliente('${p.id}')" title="Deshacer entrega" style="cursor:pointer;color:#9ca3af">✕</span>`
+      : '';
+    return `<span class="chip" title="${p.fechaEntregaCliente ? 'Entregado ' + fmtFecha(p.fechaEntregaCliente) : 'Entregado al cliente'}" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;font-size:10px;margin-left:4px;white-space:nowrap">✓ Entregado${undo}</span>`;
+  }
+  if (enLanus && puedeVerCierre()) {
+    return `<span onclick="event.stopPropagation();marcarEntregadoCliente('${p.id}')" title="Marcar entregado al cliente" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;background:#eff6ff;color:#1d4ed8;border:1px dashed #93c5fd;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:600;margin-left:4px;white-space:nowrap">☐ Entregar</span>`;
+  }
+  return '';
 }
 
 async function setDespacho(id, val) {
