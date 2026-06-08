@@ -3033,12 +3033,16 @@ function renderPedidos() {
     // Cliente: multi (vacío = todos)
     if (filtros.clientes.length > 0 && !filtros.clientes.includes(p.cliente)) return false;
     // Estado: multi. Si incluye VENCIDO, filtra vencidos. Si incluye estados de workflow, matchea contra estadoWorkflow.
+    // Pseudo-estados de cierre comercial: __A_ENTREGAR__ (en Lanús sin entregar) y __ENTREGADO__ (entregado al cliente).
     if (filtros.estados.length > 0) {
       const wf = p.estadoWorkflow || 'Confirmada';
       const esVencido = isVencido(p);
+      const enLanusSinEntregar = (p.estadoDespacho || 'Chivilcoy') === 'Despachado' && !p.entregadoCliente;
       const matchVencido = filtros.estados.includes('VENCIDO') && esVencido;
       const matchWf = filtros.estados.includes(wf);
-      if (!matchVencido && !matchWf) return false;
+      const matchAEntregar = filtros.estados.includes('__A_ENTREGAR__') && enLanusSinEntregar;
+      const matchEntregado = filtros.estados.includes('__ENTREGADO__') && !!p.entregadoCliente;
+      if (!matchVencido && !matchWf && !matchAEntregar && !matchEntregado) return false;
     }
     // Mes: multi
     if (filtros.meses.length > 0) {
@@ -3186,7 +3190,9 @@ function populateFilters() {
     { value: 'Parcial', label: 'Parcial' },
     { value: 'Finalizada', label: 'Finalizada' },
     { value: 'Cancelada', label: 'Cancelada' },
-    { value: 'VENCIDO', label: '⚠ Vencidos' }
+    { value: 'VENCIDO', label: '⚠ Vencidos' },
+    { value: '__A_ENTREGAR__', label: '📦 A entregar (en Lanús)' },
+    { value: '__ENTREGADO__', label: '✓ Entregado al cliente' }
   ];
   buildMselOptions('fEstado', estadosOpts);
 
