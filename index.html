@@ -1013,6 +1013,15 @@ function logout() {
 // ============================================================
 function migrateLegacyData(d) {
   if (!d || !d.pedidos) return d;
+  // Tombstones de pedidos borrados (para el merge anti-pérdida). Si venía como array u otra cosa, normalizar a objeto.
+  if (!d.pedidosEliminados || typeof d.pedidosEliminados !== 'object' || Array.isArray(d.pedidosEliminados)) d.pedidosEliminados = {};
+  // Backfill de updatedAt en pedidos viejos para que el merge por timestamp funcione.
+  // Se usa una fecha vieja (fechaIngreso o epoch) para que cualquier edición futura gane.
+  d.pedidos.forEach(p => {
+    if (p && !p.updatedAt) {
+      p.updatedAt = p.fechaIngreso ? (p.fechaIngreso + 'T00:00:00.000Z') : new Date(0).toISOString();
+    }
+  });
   let migrated = 0;
   // Mapeo de estados v3.1 -> v3.2 y variantes legacy (capitalizadas/sin tilde/género)
   const estadoMap = {
@@ -1669,6 +1678,51 @@ function mergeArrayPorId(remoteArr, localArr) {
   return [...out.values()].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
 }
 
+// ============================================================
+// MERGE DE PEDIDOS — UNION por id + tombstones (anti-pérdida)
+// ------------------------------------------------------------
+// BUG histórico: el PC al guardar/refrescar reemplazaba el array de pedidos ENTERO
+// con su copia local (last-writer-wins). Si dos sesiones/equipos cargaban pedidos casi
+// a la vez, el segundo PUT pisaba al primero y un pedido recién cargado DESAPARECÍA
+// (aunque ya se hubiera mandado el mail de OC). Ahora se unen por id y se respetan
+// borrados con tombstones (pedidosEliminados = { id: fechaISO }).
+// ============================================================
+function mergePedidosUnion(remoteArr, localArr) {
+  const byId = new Map();
+  (remoteArr || []).forEach(p => { if (p && p.id) byId.set(p.id, p); });
+  (localArr || []).forEach(p => {
+    if (!p || !p.id) return;
+    const r = byId.get(p.id);
+    if (!r) { byId.set(p.id, p); return; }
+    // Mismo id en ambos lados → gana el de updatedAt más nuevo.
+    // Empate (o sin updatedAt) → gana el LOCAL (es el equipo que está editando).
+    const tl = p.updatedAt || ''; const tr = r.updatedAt || '';
+    byId.set(p.id, tl >= tr ? p : r);
+  });
+  return [...byId.values()];
+}
+function mergeTombstones(a, b) {
+  const out = {};
+  [a, b].forEach(obj => {
+    if (!obj || typeof obj !== 'object') return;
+    Object.entries(obj).forEach(([id, ts]) => { if (!out[id] || ts > out[id]) out[id] = ts; });
+  });
+  // Podar tombstones de más de 120 días para que no crezcan infinito.
+  const limite = new Date(Date.now() - 120 * 86400000).toISOString();
+  Object.keys(out).forEach(id => { if (out[id] < limite) delete out[id]; });
+  return out;
+}
+// Saca del array los pedidos cuyo borrado (tombstone) es MÁS NUEVO que su última edición.
+// Si el pedido se volvió a editar/recrear después del borrado, se mantiene.
+function aplicarTombstones(pedidos, tombstones) {
+  if (!tombstones) return pedidos || [];
+  return (pedidos || []).filter(p => {
+    const ts = tombstones[p.id];
+    if (!ts) return true;
+    return (p.updatedAt || '') > ts;
+  });
+}
+
 // Recalcula kgReales SOLO de pedidos que tengan bobinas cargadas en producciones.
 // Si un pedido no tiene producciones cargadas (ej. histórico viejo con kgReales manual del Excel),
 // se respeta su valor existente. Esto evita pisar valores históricos.
@@ -2158,6 +2212,11 @@ async function saveData() {
       });
       merged.registrosProduccion = remote.registrosProduccion || [];
 
+      // PEDIDOS: unir por id (NO pisar) + respetar borrados. Esto evita que un save
+      // concurrente desde otra sesión/equipo haga desaparecer pedidos recién cargados.
+      merged.pedidosEliminados = mergeTombstones(remote.pedidosEliminados, DATA.pedidosEliminados);
+      merged.pedidos = aplicarTombstones(mergePedidosUnion(remote.pedidos, DATA.pedidos), merged.pedidosEliminados);
+
       const pedConBobinasSV = new Set((merged.producciones || []).map(b => b.pedidoId).filter(Boolean));
       (merged.pedidos || []).forEach(p => {
         if (p && p.id && (+p.kgReales || 0) > 0 && !pedConBobinasSV.has(p.id)) {
@@ -2206,7 +2265,8 @@ async function saveData() {
         console.log('[PC saveData Gist] OK, ' + sizeKB + ' KB');
       } else {
         const txt = await r.text().catch(() => '');
-        setSyncStatus('Error Gist HTTP ' + r.status, 'error');
+        setSyncStatus('Error Gist HTTP ' + r.status + ' · NO guardado', 'error');
+        toast('⚠️ No se pudo guardar en la nube (HTTP ' + r.status + '). El pedido quedó solo en este equipo — NO mandes la OC hasta que sincronice.', 'error');
         console.error('[PC saveData Gist] HTTP ' + r.status + ':', txt);
       }
     } catch (e) {
@@ -2215,7 +2275,8 @@ async function saveData() {
       if (isParseError) {
         setSyncStatus('⚠️ Gist corrupto — ver Configuración → Recovery', 'error');
       } else {
-        setSyncStatus('Error red (Gist)', 'error');
+        setSyncStatus('Error red (Gist) · NO guardado', 'error');
+        toast('⚠️ Sin conexión con la nube. El pedido quedó solo en este equipo — NO mandes la OC hasta que sincronice.', 'error');
       }
     }
     return;
@@ -2338,9 +2399,12 @@ async function silentReloadPC() {
     const merged = JSON.parse(JSON.stringify(DATA));
     merged.producciones = remote.producciones || [];
     merged.registrosProduccion = remote.registrosProduccion || [];
-    // Si la PC no estaba editando pedidos, traer también lo que cambió remoto en pedidos
+    // Si la PC no estaba editando pedidos, traer también lo que cambió remoto en pedidos.
+    // Se UNE por id (no se pisa) para que un pedido cargado en este equipo y todavía no
+    // sincronizado no se pierda en el auto-refresh, y se respetan los borrados.
     if (!isDirty) {
-      merged.pedidos = remote.pedidos || merged.pedidos;
+      merged.pedidosEliminados = mergeTombstones(remote.pedidosEliminados, DATA.pedidosEliminados);
+      merged.pedidos = aplicarTombstones(mergePedidosUnion(remote.pedidos, DATA.pedidos), merged.pedidosEliminados);
       merged.catalogos = remote.catalogos || merged.catalogos;
       merged.config = remote.config || merged.config;
     }
@@ -2370,12 +2434,14 @@ async function silentReloadPC() {
     // Detectar si hubo cambios reales antes de re-renderizar
     const prodCountBefore = (DATA.producciones || []).length;
     const regCountBefore = (DATA.registrosProduccion || []).length;
+    const pedCountBefore = (DATA.pedidos || []).length;
     const prodCountAfter = merged.producciones.length;
     const regCountAfter = merged.registrosProduccion.length;
+    const pedCountAfter = (merged.pedidos || []).length;
     DATA = merged;
     localStorage.setItem(LS_KEY, JSON.stringify(DATA));
-    if (prodCountAfter !== prodCountBefore || regCountAfter !== regCountBefore) {
-      console.log('[PC silentReload] Cambios detectados. Prod:', prodCountBefore, '→', prodCountAfter, 'Reg:', regCountBefore, '→', regCountAfter);
+    if (prodCountAfter !== prodCountBefore || regCountAfter !== regCountBefore || pedCountAfter !== pedCountBefore) {
+      console.log('[PC silentReload] Cambios detectados. Prod:', prodCountBefore, '→', prodCountAfter, 'Reg:', regCountBefore, '→', regCountAfter, 'Ped:', pedCountBefore, '→', pedCountAfter);
       render();
     }
   } catch (e) { /* silent */ }
@@ -2600,6 +2666,7 @@ async function marcarEntregadoCliente(id) {
   if (!confirm(`Marcar como ENTREGADO al cliente?\n\n${p.cliente} · OP ${p.nroOP||'-'} · ${fmtNum(p.kgReales)} kg\n\nEsto le da cierre comercial al pedido (lo hacés vos, no Agustín).`)) return;
   p.entregadoCliente = true;
   p.fechaEntregaCliente = cronoFechaKey(new Date());
+  p.updatedAt = new Date().toISOString();
   await saveData();
   toast('✓ Entregado al cliente registrado', 'success');
   render();
@@ -2611,6 +2678,7 @@ async function desmarcarEntregadoCliente(id) {
   if (!confirm('Deshacer la marca de "entregado al cliente"?')) return;
   p.entregadoCliente = false;
   p.fechaEntregaCliente = '';
+  p.updatedAt = new Date().toISOString();
   await saveData();
   toast('Marca de entrega deshecha', 'success');
   render();
@@ -2645,8 +2713,11 @@ function renderDashboardOperativo() {
   const listosChiv = activos.filter(p => estaProducido(p) && (p.estadoDespacho || 'Chivilcoy') !== 'Despachado')
     .sort((a, b) => (a.fechaEntrega || '').localeCompare(b.fechaEntrega || ''));
 
-  // 3) Ya en Lanús (despachados) sin entregar a cliente
-  const enLanus = activos.filter(p => estaProducido(p) && (p.estadoDespacho || 'Chivilcoy') === 'Despachado' && !p.entregadoCliente)
+  // 3) Ya en Lanús (despachados) sin entregar a cliente.
+  // El estar "en Lanús" lo define el DESPACHO (estadoDespacho === 'Despachado'), NO si se
+  // produjo el 100% del pedido. Antes se exigía estaProducido() y eso ocultaba despachos
+  // con producción corta (kgReales < kgPedidos) que igual ya estaban físicamente en Lanús.
+  const enLanus = activos.filter(p => (p.estadoDespacho || 'Chivilcoy') === 'Despachado' && !p.entregadoCliente)
     .sort((a, b) => (a.fechaEntrega || '').localeCompare(b.fechaEntrega || ''));
 
   // 4) Producción de los últimos 3 días con carga
@@ -3039,7 +3110,7 @@ function despachoBtns(p) {
 // - Badge verde "✓ Entregado" visible para todos (informativo).
 // - Botón "☐ Entregar" clickeable directo desde la lista, SOLO para admin (vos), cuando ya está en Lanús.
 function entregaInline(p) {
-  const enLanus = estaProducido(p) && (p.estadoDespacho || 'Chivilcoy') === 'Despachado';
+  const enLanus = (p.estadoDespacho || 'Chivilcoy') === 'Despachado';
   if (p.entregadoCliente) {
     const undo = puedeVerCierre()
       ? ` <span onclick="event.stopPropagation();desmarcarEntregadoCliente('${p.id}')" title="Deshacer entrega" style="cursor:pointer;color:#9ca3af">✕</span>`
@@ -3056,6 +3127,7 @@ async function setDespacho(id, val) {
   const p = DATA.pedidos.find(x => x.id === id);
   if (!p) return;
   p.estadoDespacho = val;
+  p.updatedAt = new Date().toISOString();
   await saveData();
   renderPedidos();
   if (currentDetailPedidoId === id) renderPedidoDetail();
@@ -3599,6 +3671,8 @@ async function savePedido(id) {
   if (data.conoTipo !== '3') data.kgFinalCono3 = 0;
   // kgPorBobina (alias para compatibilidad) = kgPorBobina6
   data.kgPorBobina = data.kgPorBobina6;
+  // Marca de última edición (para el merge por id entre equipos)
+  data.updatedAt = new Date().toISOString();
 
   if (!data.cliente || !data.kgPedidos) { alert('Cliente y kg pedidos son obligatorios'); return; }
 
@@ -3645,6 +3719,9 @@ async function savePedido(id) {
 }
 async function deletePedido(id, fromModal) {
   if (!confirm('¿Eliminar este pedido?')) return;
+  // Tombstone: registrar el borrado para que el merge no resucite el pedido desde otro equipo.
+  DATA.pedidosEliminados = DATA.pedidosEliminados || {};
+  DATA.pedidosEliminados[id] = new Date().toISOString();
   DATA.pedidos = DATA.pedidos.filter(p => p.id !== id);
   if (fromModal) closeModal();
   await saveData();
@@ -4661,29 +4738,59 @@ function renderDetailBody(p, bobinas) {
   const body = document.getElementById('detailBody');
   if (currentDetailTab === 'info') {
     const pend = calcPendiente(p);
-    const bobEst = (p.kgPorBobina > 0) ? Math.ceil(p.kgPedidos/p.kgPorBobina) : 0;
+    const kgBob = +p.kgPorBobina6 || +p.kgPorBobina || 0;
+    const bobEst = (kgBob > 0) ? Math.ceil(p.kgPedidos / kgBob) : 0;
+    const bobReal = (kgBob > 0) ? Math.round((+p.kgReales || 0) / kgBob) : 0;
     const dias = (p.kgPorHora > 0 && p.horasPorDia > 0) ? (p.kgPedidos/(p.kgPorHora*p.horasPorDia)).toFixed(2) : '-';
     const rec = (DATA.catalogos.recetas || []).find(r => r.codigo === p.recetaCodigo);
     const destino = (DATA.catalogos.destinos || []).find(d => d.codigo === p.destinoCodigo);
+    const avance = p.kgPedidos > 0 ? Math.round((+p.kgReales || 0) / p.kgPedidos * 100) : 0;
+    const esCono3 = (p.conoTipo || '6') === '3';
+    const conoLabel = esCono3 ? 'Cono 3"' : 'Cono 6"';
 
     body.innerHTML = `
-      <div class="detail-section">
-        <h3>Identificación</h3>
-        <div class="detail-grid">
-          <div class="detail-field"><span class="lbl">Cliente</span><span class="val big">${p.cliente||'-'}</span></div>
-          <div class="detail-field"><span class="lbl">OC cliente</span><span class="val">${p.oc||'-'}</span></div>
-          <div class="detail-field"><span class="lbl">N° OP</span><span class="val big">${p.nroOP||'-'}</span></div>
-          <div class="detail-field"><span class="lbl">N° Solicitud</span><span class="val">${p.nroSolicitud||'-'}</span></div>
-          <div class="detail-field"><span class="lbl">OP (código partida)</span><span class="val"><code>${p.op||p.partida||'-'}</code></span></div>
-          <div class="detail-field"><span class="lbl">Destino</span><span class="val">${destino ? destino.codigo + ' — ' + destino.nombre : (p.destinoCodigo||'-')}</span></div>
-          <div class="detail-field"><span class="lbl">Producto</span><span class="val"><b>${p.productoTipo || '-'}</b></span></div>
-          <div class="detail-field"><span class="lbl">Fecha ingreso</span><span class="val">${fmtFecha(p.fechaIngreso)||'-'}</span></div>
-          <div class="detail-field"><span class="lbl">Fecha entrega</span><span class="val">${fmtFecha(p.fechaEntrega || p.fechaDespacho)||'-'}</span></div>
-          ${p.ocAdjunto ? `<div class="detail-field"><span class="lbl">OC adjunta</span><span class="val"><a href="#" onclick="event.preventDefault();verOCAdjunto('${p.id}')" style="color:#16a34a;text-decoration:underline">📎 ${p.ocAdjunto.nombre||'archivo'}</a> <span class="muted" style="font-size:11px">(${p.ocAdjunto.size?Math.round(p.ocAdjunto.size/1024)+' KB':''})</span></span></div>` : ''}
+      <!-- RESUMEN AMIGABLE: qué es el pedido + avance -->
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;margin-bottom:14px">
+        <div style="font-size:13px;color:#6b7280">Pedido de <b style="color:#15803d">${p.cliente||'-'}</b>${p.oc ? ' · OC <b>'+p.oc+'</b>' : ''}${p.nroOP ? ' · OP <b>'+p.nroOP+'</b>' : ''}</div>
+        <div style="font-size:22px;font-weight:800;color:#111827;margin-top:4px">${p.ancho||0} × ${p.espesor||0} <span style="font-size:13px;font-weight:600;color:#9ca3af">mm × mic</span> · ${p.productoTipo||'rPET'}</div>
+        <div style="font-size:13px;color:#374151;margin-top:4px">${p.color||'Cristal'}${(p.silicona && p.silicona!=='SIN') ? ' · con silicona '+(p.siliconaPct||0)+'%' : ' · sin silicona'} · entrega ${fmtFecha(p.fechaEntrega||p.fechaDespacho)||'a confirmar'}</div>
+        <div style="margin-top:12px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:#6b7280;margin-bottom:4px"><span><b style="color:#059669">${fmtNum(p.kgReales)}</b> de ${fmtNum(p.kgPedidos)} kg producidos</span><span><b>${avance}%</b>${pend>0?' · faltan '+fmtNum(pend)+' kg':''}</span></div>
+          <div style="height:10px;background:#dcfce7;border-radius:5px;overflow:hidden"><div style="height:100%;width:${Math.min(100,avance)}%;background:#16a34a"></div></div>
         </div>
       </div>
+
+      <!-- CÓMO ENTREGAR: cono, kg/bobina, bobinas, total -->
+      <div style="background:white;border:2px solid #f59e0b;border-radius:12px;padding:16px;margin-bottom:14px">
+        <h3 style="margin:0 0 12px;font-size:15px;color:#92400e;display:flex;align-items:center;gap:6px">📦 Cómo entregar</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px">
+          <div style="background:#fffbeb;border-radius:8px;padding:10px 12px">
+            <div style="font-size:11px;color:#92400e;text-transform:uppercase;font-weight:700;letter-spacing:.3px">Cono</div>
+            <div style="font-size:20px;font-weight:800;color:#78350f;line-height:1.1">${conoLabel}</div>
+            ${esCono3?'<div style="font-size:11px;color:#b45309;margin-top:3px">⚠ rebobinar en Lanús</div>':''}
+          </div>
+          <div style="background:#fffbeb;border-radius:8px;padding:10px 12px">
+            <div style="font-size:11px;color:#92400e;text-transform:uppercase;font-weight:700;letter-spacing:.3px">Kg por bobina</div>
+            <div style="font-size:20px;font-weight:800;color:#78350f;line-height:1.1">${kgBob||'-'}<span style="font-size:13px"> kg</span></div>
+            ${(esCono3 && p.kgFinalCono3)?('<div style="font-size:11px;color:#b45309;margin-top:3px">final cono 3: '+p.kgFinalCono3+' kg</div>'):''}
+          </div>
+          <div style="background:#fffbeb;border-radius:8px;padding:10px 12px">
+            <div style="font-size:11px;color:#92400e;text-transform:uppercase;font-weight:700;letter-spacing:.3px">Bobinas estim.</div>
+            <div style="font-size:20px;font-weight:800;color:#78350f;line-height:1.1">${bobEst||'-'}</div>
+            ${bobReal?('<div style="font-size:11px;color:#b45309;margin-top:3px">cargadas: '+bobReal+'</div>'):''}
+          </div>
+          <div style="background:#fffbeb;border-radius:8px;padding:10px 12px">
+            <div style="font-size:11px;color:#92400e;text-transform:uppercase;font-weight:700;letter-spacing:.3px">Total a entregar</div>
+            <div style="font-size:20px;font-weight:800;color:#78350f;line-height:1.1">${fmtNum(p.kgPedidos)}<span style="font-size:13px"> kg</span></div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:#78350f;margin-top:10px;background:#fef3c7;border-radius:6px;padding:8px 10px;line-height:1.5">
+          <b>Destino:</b> ${destino ? destino.codigo+' — '+destino.nombre : (p.destinoCodigo||'-')} · <b>Color:</b> ${p.color||'Cristal'} · <b>Silicona:</b> ${p.silicona||'-'}${p.siliconaGramosM2?(' ('+p.siliconaGramosM2+' g/m²)'):''}${esCono3?'<br>🔁 Se produce en cono 6" en Chivilcoy y se rebobina a cono 3" en Lanús (avisar a Jonathan).':''}
+        </div>
+      </div>
+
       ${(() => {
-        const enLanus = estaProducido(p) && (p.estadoDespacho || 'Chivilcoy') === 'Despachado';
+        const enLanus = (p.estadoDespacho || 'Chivilcoy') === 'Despachado';
         if (p.entregadoCliente) {
           return `<div class="detail-section" style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
@@ -4701,17 +4808,7 @@ function renderDetailBody(p, bobinas) {
         }
         return '';
       })()}
-      <div class="detail-section">
-        <h3>Producto y especificaciones</h3>
-        <div class="detail-grid">
-          <div class="detail-field"><span class="lbl">Producto</span><span class="val">${p.producto||'-'}</span></div>
-          <div class="detail-field"><span class="lbl">Código</span><span class="val"><code>${p.codigoProducto||'-'}</code></span></div>
-          <div class="detail-field"><span class="lbl">Ancho</span><span class="val big">${p.ancho||0} mm</span></div>
-          <div class="detail-field"><span class="lbl">Espesor</span><span class="val big">${p.espesor||0} mic</span></div>
-          <div class="detail-field"><span class="lbl">Color</span><span class="val">${p.color||'-'}</span></div>
-          <div class="detail-field"><span class="lbl">Silicona</span><span class="val">${p.silicona||'-'} ${p.siliconaGramosM2 ? `(${p.siliconaGramosM2} g/m²)` : ''}</span></div>
-        </div>
-      </div>
+
       ${(p.productoTipo === 'PET L' || p.destinoCodigo === 'L') ? `
       <div class="detail-section" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px">
         <h3 style="color:#92400e">🔗 PET L — desglose por planta</h3>
@@ -4744,38 +4841,48 @@ function renderDetailBody(p, bobinas) {
         })()}
       </div>
       ` : ''}
-      <div class="detail-section">
-        <h3>Cantidades</h3>
-        <div class="detail-grid">
-          <div class="detail-field"><span class="lbl">Kg pedidos</span><span class="val big">${fmtNum(p.kgPedidos)}</span></div>
-          <div class="detail-field"><span class="lbl">Kg producidos</span><span class="val big" style="color:#059669">${fmtNum(p.kgReales)}</span></div>
-          <div class="detail-field"><span class="lbl">Kg pendientes</span><span class="val big" style="color:${pend > 0 ? '#d97706' : '#059669'}">${fmtNum(pend)}</span></div>
-          <div class="detail-field"><span class="lbl">Avance</span><span class="val big">${p.kgPedidos > 0 ? Math.round(p.kgReales/p.kgPedidos*100) : 0}%</span></div>
-          <div class="detail-field"><span class="lbl">Kg / bobina</span><span class="val">${p.kgPorBobina||0}</span></div>
-          <div class="detail-field"><span class="lbl">Bobinas estimadas</span><span class="val">${bobEst}</span></div>
-          <div class="detail-field"><span class="lbl">Metros / bobina</span><span class="val">${p.metrosBobina||0}</span></div>
-          <div class="detail-field"><span class="lbl">Diámetro</span><span class="val">${p.diametroBobina||0} mm</span></div>
+
+      <!-- DETALLE TÉCNICO — colapsable para no recargar la vista -->
+      <details style="margin-bottom:10px;border:1px solid #e5e7eb;border-radius:10px;background:white">
+        <summary style="cursor:pointer;font-weight:700;color:#374151;font-size:14px;padding:12px 14px;list-style:none">⚙️ Ver detalle técnico, identificación y producción</summary>
+        <div style="padding:0 14px 6px">
+          <div class="detail-section">
+            <h3>Identificación completa</h3>
+            <div class="detail-grid">
+              <div class="detail-field"><span class="lbl">Cliente</span><span class="val big">${p.cliente||'-'}</span></div>
+              <div class="detail-field"><span class="lbl">OC cliente</span><span class="val">${p.oc||'-'}</span></div>
+              <div class="detail-field"><span class="lbl">N° OP</span><span class="val big">${p.nroOP||'-'}</span></div>
+              <div class="detail-field"><span class="lbl">N° Solicitud</span><span class="val">${p.nroSolicitud||'-'}</span></div>
+              <div class="detail-field"><span class="lbl">OP (código partida)</span><span class="val"><code>${p.op||p.partida||'-'}</code></span></div>
+              <div class="detail-field"><span class="lbl">Producto</span><span class="val">${p.producto||'-'}</span></div>
+              <div class="detail-field"><span class="lbl">Código producto</span><span class="val"><code>${p.codigoProducto||'-'}</code></span></div>
+              <div class="detail-field"><span class="lbl">Fecha ingreso</span><span class="val">${fmtFecha(p.fechaIngreso)||'-'}</span></div>
+              <div class="detail-field"><span class="lbl">Metros / bobina</span><span class="val">${p.metrosBobina||0}</span></div>
+              <div class="detail-field"><span class="lbl">Diámetro</span><span class="val">${p.diametroBobina||0} mm</span></div>
+              ${p.ocAdjunto ? `<div class="detail-field"><span class="lbl">OC adjunta</span><span class="val"><a href="#" onclick="event.preventDefault();verOCAdjunto('${p.id}')" style="color:#16a34a;text-decoration:underline">📎 ${p.ocAdjunto.nombre||'archivo'}</a></span></div>` : ''}
+            </div>
+          </div>
+          <div class="detail-section">
+            <h3>Cronograma de producción</h3>
+            <div class="detail-grid">
+              <div class="detail-field"><span class="lbl">Kg / hora</span><span class="val">${p.kgPorHora||0}</span></div>
+              <div class="detail-field"><span class="lbl">Horas / día</span><span class="val">${p.horasPorDia||0}</span></div>
+              <div class="detail-field"><span class="lbl">Scrap teórico</span><span class="val">${((p.scrapTeorico||0)*100).toFixed(0)}%</span></div>
+              <div class="detail-field"><span class="lbl">Días estimados</span><span class="val">${dias}</span></div>
+              <div class="detail-field"><span class="lbl">Inicio</span><span class="val">${fmtFecha(p.fechaInicioProd)||'-'}</span></div>
+              <div class="detail-field"><span class="lbl">Fin estimado</span><span class="val">${fmtFecha(p.fechaFinProd)||'-'}</span></div>
+            </div>
+          </div>
+          <div class="detail-section">
+            <h3>Receta / Mezcla</h3>
+            ${rec ? `<p style="margin-bottom:8px"><b><code>${rec.codigo}</code></b> — ${rec.tipo}</p>` : ''}
+            <p style="font-size:14px;padding:10px 14px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb">${p.mezclaTeoricaTexto || '<span class="muted">No especificada</span>'}</p>
+            ${rec ? `<table style="margin-top:10px"><thead><tr><th>Componente</th><th class="num">%</th><th class="num">Kg (c/scrap ${((p.scrapTeorico||0)*100).toFixed(0)}%)</th></tr></thead><tbody>${
+              Object.entries(rec.componentes).map(([mp, pct]) => `<tr><td>${mp}</td><td class="num">${(pct*100).toFixed(1)}%</td><td class="num"><b>${fmtNum(p.kgPedidos*(1+(p.scrapTeorico||0))*pct)}</b></td></tr>`).join('')
+            }</tbody></table>` : ''}
+          </div>
         </div>
-      </div>
-      <div class="detail-section">
-        <h3>Cronograma</h3>
-        <div class="detail-grid">
-          <div class="detail-field"><span class="lbl">Kg / hora</span><span class="val">${p.kgPorHora||0}</span></div>
-          <div class="detail-field"><span class="lbl">Horas / día</span><span class="val">${p.horasPorDia||0}</span></div>
-          <div class="detail-field"><span class="lbl">Scrap teórico</span><span class="val">${((p.scrapTeorico||0)*100).toFixed(0)}%</span></div>
-          <div class="detail-field"><span class="lbl">Días estimados</span><span class="val">${dias}</span></div>
-          <div class="detail-field"><span class="lbl">Inicio</span><span class="val">${fmtFecha(p.fechaInicioProd)||'-'}</span></div>
-          <div class="detail-field"><span class="lbl">Fin estimado</span><span class="val">${fmtFecha(p.fechaFinProd)||'-'}</span></div>
-        </div>
-      </div>
-      <div class="detail-section">
-        <h3>Receta / Mezcla</h3>
-        ${rec ? `<p style="margin-bottom:8px"><b><code>${rec.codigo}</code></b> — ${rec.tipo}</p>` : ''}
-        <p style="font-size:14px;padding:10px 14px;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb">${p.mezclaTeoricaTexto || '<span class="muted">No especificada</span>'}</p>
-        ${rec ? `<table style="margin-top:10px"><thead><tr><th>Componente</th><th class="num">%</th><th class="num">Kg (c/scrap ${((p.scrapTeorico||0)*100).toFixed(0)}%)</th></tr></thead><tbody>${
-          Object.entries(rec.componentes).map(([mp, pct]) => `<tr><td>${mp}</td><td class="num">${(pct*100).toFixed(1)}%</td><td class="num"><b>${fmtNum(p.kgPedidos*(1+(p.scrapTeorico||0))*pct)}</b></td></tr>`).join('')
-        }</tbody></table>` : ''}
-      </div>
+      </details>
       ${p.confeccion ? `<div class="detail-section"><h3>Confección</h3><p>${p.confeccion}</p></div>` : ''}
       ${p.observaciones ? `<div class="detail-section"><h3>Observaciones</h3><p style="white-space:pre-wrap">${p.observaciones}</p></div>` : ''}
     `;
@@ -4891,6 +4998,7 @@ async function advanceWorkflow(id, nuevoEstado) {
   if (!p) return;
   if (!confirm(`Cambiar estado a "${nuevoEstado}"?`)) return;
   p.estadoWorkflow = nuevoEstado;
+  p.updatedAt = new Date().toISOString();
   await saveData();
   renderPedidoDetail();
   toast(`Estado actualizado a ${nuevoEstado}`, 'success');
@@ -5213,6 +5321,7 @@ async function saveOP(pedidoId) {
 
   delete p._nuevoNroOP;
   delete p._nuevoNroSolicitud;
+  p.updatedAt = new Date().toISOString();
 
   closeModal();
   await saveData();

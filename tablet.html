@@ -246,7 +246,7 @@ h3.card-title { font-size: 17px; margin-bottom: 8px; }
 <div id="screenLogin" class="screen">
   <div class="login-box">
     <h1>🏭 Winflex PET</h1>
-    <p class="sub">Tablet de operarios · Chivilcoy <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.4-PALLET-GLOBAL</span></p>
+    <p class="sub">Tablet de operarios · Chivilcoy <span style="background:#16a34a;color:white;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:6px;font-weight:600">v4.5-PALLET-FIX</span></p>
     <p class="sub" style="font-size:13px;color:#9ca3af">Ingresá tu PIN personal</p>
     <div class="pin-display" id="pinDisplay"></div>
     <div class="keypad">
@@ -1387,9 +1387,14 @@ function _openBobinaModalImpl(bobinaId) {
   if (!b) {
     const todas = (DATA.producciones || []).filter(x => x.pedidoId === p.id);
     const lastNro = todas.reduce((m, x) => Math.max(m, +x.nroBobina || 0), 0);
-    // Pallet: correlativo GLOBAL de planta (no se reinicia por OP). Toma el último
-    // nro de pallet usado en cualquier OP; el operario lo cambia a mano al empezar un pallet físico nuevo.
-    const lastPallet = (DATA.producciones || []).reduce((m, x) => Math.max(m, +x.nroPallet || 0), 0);
+    // Pallet: correlativo GLOBAL de planta (no se reinicia por OP, los números no se repiten).
+    // FIX numeración: antes el default tomaba el MÁXIMO global y se quedaba pegado ahí
+    // (todos los remitos salían "pallet 2"). Ahora:
+    //  - Si esta OP YA tiene bobinas → seguimos en el pallet abierto de esta OP (el mayor de la OP).
+    //  - Si es la PRIMERA bobina de la OP → arrancamos un pallet NUEVO = máximo global + 1.
+    const globalMax = (DATA.producciones || []).reduce((m, x) => Math.max(m, +x.nroPallet || 0), 0);
+    const palletsDeEstaOP = todas.map(x => +x.nroPallet || 0).filter(n => n > 0);
+    const palletDefault = palletsDeEstaOP.length ? Math.max(...palletsDeEstaOP) : (globalMax + 1);
     // Calcular metros sugeridos
     const densidad = (DATA.config && DATA.config.densidadPET) || 1330;
     const kgDefault = p.kgPorBobina || 0;
@@ -1404,7 +1409,7 @@ function _openBobinaModalImpl(bobinaId) {
       timestamp: new Date().toISOString(),
       hora: new Date().toTimeString().slice(0,5),
       nroBobina: lastNro + 1,
-      nroPallet: lastPallet || 1,
+      nroPallet: palletDefault,
       partida: p.op || '',
       ancho: p.ancho || 0,
       espesor: p.espesor || 0,
@@ -1422,7 +1427,9 @@ function _openBobinaModalImpl(bobinaId) {
   const palletActualNum = b.nroPallet || 1;
   const bobinasDelPalletActual = todasDelPedido.filter(x => +x.nroPallet === palletActualNum && (!isEdit || x.id !== b.id));
   const kgDelPalletActual = bobinasDelPalletActual.reduce((s,x) => s + (+x.kg||0), 0);
-  const proxPallet = palletActualNum + 1;
+  // "Pallet nuevo" = siguiente número GLOBAL de planta (único, nunca se repite ni se queda pegado).
+  const palletGlobalMax = (DATA.producciones || []).reduce((m, x) => Math.max(m, +x.nroPallet || 0), 0);
+  const proxPallet = Math.max(palletGlobalMax, palletActualNum) + 1;
 
   document.getElementById('modalContainer').innerHTML = `
     <div class="modal-bg" >
@@ -1448,7 +1455,7 @@ function _openBobinaModalImpl(bobinaId) {
         <div class="field-row-3">
           <div class="field"><label>Hora</label><input type="time" id="b_hora" value="${b.hora||new Date().toTimeString().slice(0,5)}"></div>
           <div class="field"><label>N° Bobina</label><input type="number" id="b_nro" value="${b.nroBobina}" min="1"></div>
-          <div class="field"><label>N° Pallet</label><input type="number" id="b_pallet" value="${b.nroPallet}" min="1" oninput="document.getElementById('palletDisplay').textContent=this.value"><div class="hint">Poné el N° del pallet físico (correlativo de planta). Si seguís en el mismo pallet, dejalo igual.</div></div>
+          <div class="field"><label>N° Pallet</label><input type="number" id="b_pallet" value="${b.nroPallet}" min="1" oninput="document.getElementById('palletDisplay').textContent=this.value"><div class="hint">Cada OP nueva arranca con un pallet nuevo automático. Si seguís en el mismo pallet físico, dejalo igual; si cerraste uno, tocá "Pallet nuevo".</div></div>
         </div>
         <div class="field">
           <label>Partida (auto-completa de la OP)</label>
@@ -2043,6 +2050,7 @@ async function saveData() {
         if (localP && localP.estadoWorkflow === 'En producción' &&
             (p.estadoWorkflow === 'OP' || p.estadoWorkflow === 'Confirmada')) {
           p.estadoWorkflow = 'En producción';
+          p.updatedAt = new Date().toISOString();
         }
       });
       merged.lastUpdate = new Date().toISOString();
