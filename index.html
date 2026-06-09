@@ -12467,28 +12467,32 @@ const SEED = {
 // ============================================================
 // MODULO REMITOS — armado y emisión
 // ============================================================
-let remitosSubTab = 'disponibles'; // 'disponibles' | 'historico'
+let remitosSubTab = 'disponibles'; // 'disponibles' | 'bajas' | 'historico'
 let remitosSeleccion = new Set();  // ids de bobinas seleccionadas para el remito en armado
 let remitosFiltros = { cliente: '', op: '', desde: '', hasta: '' };
 
 function renderRemitos() {
   const c = document.getElementById('remitosContent');
+  // Cantidad de pallets dados de baja a mano (para el badge de la sub-tab)
+  const _nBajas = new Set((DATA.producciones || []).filter(b => b.bajaManual && b.nroPallet).map(b => b.nroPallet + '__' + b.pedidoId)).size;
   // Sub-tabs
   let html = `
     <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid #e5e7eb">
       <button onclick="remitosSubTab='disponibles';renderRemitos()" style="padding:10px 18px;border:none;background:${remitosSubTab==='disponibles'?'#16a34a':'transparent'};color:${remitosSubTab==='disponibles'?'white':'#6b7280'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">📦 Pallets disponibles</button>
       <button onclick="remitosSubTab='historico';renderRemitos()" style="padding:10px 18px;border:none;background:${remitosSubTab==='historico'?'#16a34a':'transparent'};color:${remitosSubTab==='historico'?'white':'#6b7280'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">📋 Remitos emitidos</button>
+      <button onclick="remitosSubTab='bajas';renderRemitos()" style="padding:10px 18px;border:none;background:${remitosSubTab==='bajas'?'#dc2626':'transparent'};color:${remitosSubTab==='bajas'?'white':'#6b7280'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">🗑️ Bajas${_nBajas?' <span style="background:'+(remitosSubTab==='bajas'?'rgba(255,255,255,0.3)':'#fee2e2')+';color:'+(remitosSubTab==='bajas'?'white':'#b91c1c')+';padding:1px 7px;border-radius:10px;font-size:11px;margin-left:2px">'+_nBajas+'</span>':''}</button>
     </div>
   `;
   c.innerHTML = html;
   if (remitosSubTab === 'disponibles') renderRemitosDisponibles();
+  else if (remitosSubTab === 'bajas') renderRemitosBajas();
   else renderRemitosHistorico();
 }
 
 function renderRemitosDisponibles() {
   const c = document.getElementById('remitosContent');
-  // Bobinas SIN remitoId (todavía no despachadas)
-  const todas = (DATA.producciones || []).filter(b => !b.remitoId);
+  // Bobinas SIN remitoId (todavía no despachadas) y SIN baja manual
+  const todas = (DATA.producciones || []).filter(b => !b.remitoId && !b.bajaManual);
   if (todas.length === 0) {
     c.innerHTML += '<p class="muted" style="padding:30px;text-align:center">No hay bobinas cargadas pendientes de remitir. Cuando los operarios carguen bobinas en la tablet, van a aparecer acá agrupadas por pallet.</p>';
     return;
@@ -12600,6 +12604,7 @@ function renderRemitosDisponibles() {
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
           <button onclick="event.stopPropagation();abrirDetallePallet(${idx})" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer">👁️ Detalle / 🖨️ Imprimir</button>
           <button onclick="event.stopPropagation();abrirReasignarPallet(${idx})" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer">✏️ Reasignar pallets</button>
+          <button onclick="event.stopPropagation();abrirDarDeBajaPallet(${idx})" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer">🗑️ Dar de baja</button>
         </div>
       </div>
     `;
@@ -13057,9 +13062,165 @@ async function guardarReasignacionPallets() {
   renderRemitos();
 }
 
+// ============================================================
+// BAJA MANUAL DE PALLETS (sin remito)
+// Marca TODAS las bobinas de un pallet como dadas de baja a mano.
+// Salen de "Pallets disponibles" y aparecen en la sub-tab "Bajas",
+// desde donde se pueden revertir (vuelven a estar disponibles).
+// Mismo mecanismo de preservación en el merge que reasignar/remitos:
+// se tocan las bobinas locales y se agregan a _pcModifiedBobinas.
+// ============================================================
+const MOTIVOS_BAJA = ['Descarte / scrap', 'Reproceso', 'Muestra', 'Consumo interno', 'Salida sin remito', 'Ajuste de stock / error de carga', 'Otro'];
+
+function abrirDarDeBajaPallet(idx) {
+  const pl = (window._palletsActuales || [])[idx];
+  if (!pl) { toast('Pallet no encontrado', 'error'); return; }
+  const ped = DATA.pedidos.find(x => x.id === pl.pedidoId);
+  if (!ped) { toast('Pedido no encontrado', 'error'); return; }
+  const totalKg = pl.bobinas.reduce((s, b) => s + (+b.kg || 0), 0);
+  const bobNros = pl.bobinas.map(b => b.nroBobina).filter(Boolean).map(n => +n).sort((a,b) => a-b);
+  const rangoBob = bobNros.length === 0 ? '-' : (bobNros.length === 1 ? '#'+bobNros[0] : '#'+bobNros[0]+' a #'+bobNros[bobNros.length-1]);
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal" style="max-width:480px">
+        <div class="modal-h">
+          <h3>🗑️ Dar de baja pallet ${pl.nroPallet}</h3>
+          <button class="btn-ghost" onclick="closeModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="background:#fef2f2;border:1px solid #fca5a5;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:13px;color:#991b1b">
+            <b>${ped.cliente}</b> · OP ${ped.nroOP||'-'}<br>
+            ${pl.bobinas.length} bobinas (${rangoBob}) · <b>${fmtNum(totalKg)} kg</b><br>
+            <span style="font-size:12px">Estas bobinas salen de "Pallets disponibles" sin generar remito. Vas a poder revertir la baja desde la pestaña "Bajas".</span>
+          </div>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Motivo *</label>
+          <select id="baja_motivo" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:12px">
+            ${MOTIVOS_BAJA.map(m => `<option value="${m}">${m}</option>`).join('')}
+          </select>
+          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Nota (opcional)</label>
+          <textarea id="baja_nota" rows="2" placeholder="Detalle adicional..." style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;resize:vertical;box-sizing:border-box"></textarea>
+        </div>
+        <div class="modal-f">
+          <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
+          <button class="btn" style="background:#dc2626;color:white" onclick="confirmarDarDeBajaPallet(${idx})">🗑️ Confirmar baja</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function confirmarDarDeBajaPallet(idx) {
+  const pl = (window._palletsActuales || [])[idx];
+  if (!pl) { toast('Pallet no encontrado', 'error'); return; }
+  const motivoEl = document.getElementById('baja_motivo');
+  const notaEl = document.getElementById('baja_nota');
+  const motivo = (motivoEl && motivoEl.value) || 'Otro';
+  const nota = (notaEl && notaEl.value || '').trim();
+  const fecha = new Date().toISOString();
+  const usuario = (window.currentUser && window.currentUser.nombre) || '-';
+
+  if (!window._pcModifiedBobinas) window._pcModifiedBobinas = new Set();
+  let n = 0;
+  pl.bobinas.forEach(plb => {
+    const b = DATA.producciones.find(x => x.id === plb.id);
+    if (!b) return;
+    b.bajaManual = true;
+    b.bajaMotivo = motivo;
+    if (nota) b.bajaNota = nota;
+    b.bajaFecha = fecha;
+    b.bajaUsuario = usuario;
+    window._pcModifiedBobinas.add(b.id);
+    n++;
+  });
+
+  closeModal();
+  await saveData();
+  toast(`Pallet ${pl.nroPallet} dado de baja (${n} bobinas)`, 'success');
+  remitosSubTab = 'bajas';
+  renderRemitos();
+}
+
+function renderRemitosBajas() {
+  const c = document.getElementById('remitosContent');
+  const bajas = (DATA.producciones || []).filter(b => b.bajaManual && b.nroPallet);
+  if (bajas.length === 0) {
+    c.innerHTML += '<p class="muted" style="padding:30px;text-align:center">No hay pallets dados de baja. Cuando des de baja un pallet a mano desde "Pallets disponibles", va a aparecer acá y vas a poder revertirlo.</p>';
+    return;
+  }
+  // Agrupar por pallet (igual que disponibles: nroPallet + pedidoId)
+  const pallets = {};
+  bajas.forEach(b => {
+    const k = b.nroPallet + '__' + b.pedidoId;
+    if (!pallets[k]) pallets[k] = { nroPallet: b.nroPallet, pedidoId: b.pedidoId, bobinas: [], bajaFecha: b.bajaFecha, motivo: b.bajaMotivo, nota: b.bajaNota, usuario: b.bajaUsuario };
+    pallets[k].bobinas.push(b);
+    if ((b.bajaFecha || '') > (pallets[k].bajaFecha || '')) pallets[k].bajaFecha = b.bajaFecha;
+  });
+  const list = Object.values(pallets).sort((a, b) => (b.bajaFecha || '').localeCompare(a.bajaFecha || ''));
+  window._bajasActuales = list;
+
+  const totalKg = bajas.reduce((s, b) => s + (+b.kg || 0), 0);
+  c.innerHTML += `<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px">🗑️ <b>${list.length} pallets</b> dados de baja · ${bajas.length} bobinas · ${fmtNum(totalKg)} kg fuera de circulación.</div>`;
+
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(380px, 1fr));gap:12px">';
+  list.forEach((pl, idx) => {
+    const ped = DATA.pedidos.find(x => x.id === pl.pedidoId);
+    const kg = pl.bobinas.reduce((s, b) => s + (+b.kg || 0), 0);
+    const bobNros = pl.bobinas.map(b => b.nroBobina).filter(Boolean).map(n => +n).sort((a,b) => a-b);
+    const rangoBob = bobNros.length === 0 ? '' : (bobNros.length === 1 ? '#'+bobNros[0] : '#'+bobNros[0]+' a #'+bobNros[bobNros.length-1]);
+    html += `
+      <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #dc2626;border-radius:10px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:16px;font-weight:700;color:#b91c1c;margin-bottom:2px">Pallet ${pl.nroPallet}</div>
+            <div style="font-size:14px;font-weight:600;color:#1f2937">${ped ? ped.cliente : '(pedido no encontrado)'}</div>
+            <div style="font-size:12px;color:#6b7280">OP ${ped ? (ped.nroOP||'-') : '-'} · ${pl.bobinas.length} bob${rangoBob ? ' · '+rangoBob : ''}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:18px;font-weight:700;color:#6b7280">${fmtNum(kg)}</div>
+            <div style="font-size:11px;color:#9ca3af">kg</div>
+          </div>
+        </div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;font-size:12px;color:#374151">
+          <div><b>Motivo:</b> ${pl.motivo || '-'}</div>
+          ${pl.nota ? `<div style="color:#6b7280;margin-top:2px">${pl.nota}</div>` : ''}
+          <div style="color:#9ca3af;margin-top:4px">${pl.bajaFecha ? 'Baja: '+fmtFecha(pl.bajaFecha.slice(0,10)) : ''}${pl.usuario && pl.usuario !== '-' ? ' · '+pl.usuario : ''}</div>
+        </div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;display:flex;justify-content:flex-end">
+          <button onclick="revertirBajaPallet(${idx})" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer">↩️ Revertir (volver a disponibles)</button>
+        </div>
+      </div>
+    `;
+  });
+  html += '</div>';
+  c.innerHTML += html;
+}
+
+async function revertirBajaPallet(idx) {
+  const pl = (window._bajasActuales || [])[idx];
+  if (!pl) { toast('Pallet no encontrado', 'error'); return; }
+  if (!confirm(`¿Revertir la baja del pallet ${pl.nroPallet}?\n\nLas ${pl.bobinas.length} bobinas vuelven a estar disponibles para remitir.`)) return;
+  if (!window._pcModifiedBobinas) window._pcModifiedBobinas = new Set();
+  let n = 0;
+  pl.bobinas.forEach(plb => {
+    const b = DATA.producciones.find(x => x.id === plb.id);
+    if (!b) return;
+    delete b.bajaManual;
+    delete b.bajaMotivo;
+    delete b.bajaNota;
+    delete b.bajaFecha;
+    delete b.bajaUsuario;
+    window._pcModifiedBobinas.add(b.id);
+    n++;
+  });
+  await saveData();
+  toast(`Pallet ${pl.nroPallet} reactivado (${n} bobinas)`, 'success');
+  renderRemitos();
+}
+
 function togglePalletSeleccion(nroPallet, pedidoId) {
   const bobinas = (DATA.producciones || []).filter(b =>
-    b.nroPallet === nroPallet && b.pedidoId === pedidoId && !b.remitoId
+    b.nroPallet === nroPallet && b.pedidoId === pedidoId && !b.remitoId && !b.bajaManual
   );
   if (bobinas.length === 0) { console.warn('Sin bobinas para pallet:', nroPallet, pedidoId); return; }
   const allSelected = bobinas.every(b => remitosSeleccion.has(b.id));
@@ -13072,7 +13233,7 @@ function togglePalletSeleccion(nroPallet, pedidoId) {
 
 function seleccionarTodosPallets() {
   // Selecciona todos los pallets actualmente filtrados
-  const todas = (DATA.producciones || []).filter(b => !b.remitoId && b.nroPallet);
+  const todas = (DATA.producciones || []).filter(b => !b.remitoId && !b.bajaManual && b.nroPallet);
   const pallets = {};
   todas.forEach(b => {
     const k = b.nroPallet + '__' + b.pedidoId;
