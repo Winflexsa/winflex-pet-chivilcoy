@@ -261,6 +261,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
     <button class="tab" data-tab="cronograma">📅 Cronograma</button>
     <button class="tab" data-tab="producciones">⚙️ Producciones</button>
     <button class="tab" data-tab="remitos">📦 Remitos</button>
+    <button class="tab" data-tab="analisis">📈 Análisis</button>
     <button class="tab" data-tab="mp">📦 Materia Prima</button>
     <button class="tab" data-tab="catalogos">📚 Catálogos</button>
     <button class="tab" data-tab="config">⚙️ Configuración</button>
@@ -393,6 +394,14 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
       <div class="panel">
         <div class="panel-h"><h2>Remitos y despachos</h2></div>
         <div id="remitosContent"></div>
+      </div>
+    </div>
+
+    <!-- ANALISIS -->
+    <div id="tab-analisis" class="tab-content hidden">
+      <div class="panel">
+        <div class="panel-h"><h2>📈 Análisis de eficiencia y costos</h2></div>
+        <div id="analisisContent"></div>
       </div>
     </div>
 
@@ -1144,6 +1153,10 @@ function migrateLegacyData(d) {
     ];
   }
   if (!d.remitos) d.remitos = [];
+  // Output de la máquina (kg/h) para los cálculos de eficiencia/costos.
+  // Default 400 kg/h (dato real planta Chivilcoy). Se puede editar desde Análisis.
+  if (!d.config.capacidadKgxHora || +d.config.capacidadKgxHora === 300) d.config.capacidadKgxHora = 400;
+  if (!d.config.horasXDiaDefault) d.config.horasXDiaDefault = 17;
   if (!d.config.proximoNroRemito) d.config.proximoNroRemito = 1235; // siguiente al ejemplo 1234
   if (!d.config.puntoVentaRemito) d.config.puntoVentaRemito = '0001';
   // Destinatario por default (Lanús)
@@ -2618,6 +2631,7 @@ function render() {
   else if (currentTab === 'cronograma') renderCronograma();
   else if (currentTab === 'producciones') renderProducciones();
   else if (currentTab === 'remitos') renderRemitos();
+  else if (currentTab === 'analisis') renderAnalisis();
   else if (currentTab === 'catalogos') renderCatalogos();
   else if (currentTab === 'config') renderConfig();
 }
@@ -2789,9 +2803,9 @@ function renderDashboardOperativo() {
         <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:7px 9px">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
             <span onclick="openPedidoDetail('${p.id}')" style="cursor:pointer;font-size:12px;font-weight:700;color:#1f2937">${p.cliente}</span>
-            ${esAdmin ? `<button onclick="event.stopPropagation();marcarEntregadoCliente('${p.id}')" style="background:#16a34a;color:white;border:none;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">✓ Entregado</button>` : `<span style="font-size:11px;font-weight:700;color:#2563eb">${fmtNum(p.kgReales)} kg</span>`}
+            ${esAdmin ? `<button onclick="event.stopPropagation();marcarEntregadoCliente('${p.id}')" title="Marcar como entregado al cliente (todavía NO está entregado)" style="background:#eff6ff;color:#1d4ed8;border:1px dashed #93c5fd;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">☐ Marcar entregado</button>` : `<span style="font-size:11px;font-weight:700;color:#2563eb">${fmtNum(p.kgReales)} kg</span>`}
           </div>
-          <div style="font-size:11px;color:#6b7280;margin-top:2px">OP ${p.nroOP||'-'} · ${p.ancho||'-'}×${p.espesor||'-'} · ${fmtNum(p.kgReales)} kg</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">OP ${p.nroOP||'-'} · ${p.ancho||'-'}×${p.espesor||'-'} · ${fmtNum(p.kgReales)} kg · <span style="color:#1d4ed8">pendiente de entregar</span></div>
         </div>`;
     });
     cardLanus += `</div>`;
@@ -2875,6 +2889,7 @@ function renderDashboardOperativo() {
       ${cardLanus}
       ${cardProd}
       ${cardEf}
+      ${cardAnalisisDashboard()}
     </div>
   `;
 }
@@ -3342,7 +3357,7 @@ function openPedidoModal(id) {
       formula: { preforma: 0, scrap: 0, virgen: 0, master: 0 },
       mezclaTeoricaTexto: '',
       fechaInicioProd: '', fechaFinProd: '',
-      destinoCodigo: 'T',
+      destinoCodigo: '',
       confeccion: '', observaciones: '',
       estadoWorkflow: 'OC',
       estadoDespacho: 'Chivilcoy'
@@ -3373,7 +3388,8 @@ function openPedidoModal(id) {
             <div class="field"><label>OC cliente *</label><input type="text" id="m_oc" value="${p.oc||''}" placeholder="OC 2211"></div>
             <div class="field full"><label>🎯 Destino del pedido *</label>
               <select id="m_destino" onchange="toggleDestinoFields()">
-                <option value="T" ${(p.destinoCodigo||'T')==='T'?'selected':''}>🏭 Termoformado interno (Chivilcoy)</option>
+                <option value="" ${!p.destinoCodigo?'selected':''} disabled>— Elegí el destino —</option>
+                <option value="T" ${p.destinoCodigo==='T'?'selected':''}>🏭 Termoformado interno (Chivilcoy)</option>
                 <option value="L" ${p.destinoCodigo==='L'?'selected':''}>🔗 Laminado con PE (Lanús + Chivilcoy)</option>
                 <option value="V" ${p.destinoCodigo==='V'?'selected':''}>📦 Venta a cliente</option>
               </select>
@@ -3641,7 +3657,7 @@ async function savePedido(id) {
     estadoWorkflow: document.getElementById('m_estado').value,
     estadoDespacho: document.getElementById('m_despacho') ? document.getElementById('m_despacho').value : (existing?.estadoDespacho || 'Chivilcoy'),
     observaciones: document.getElementById('m_obs').value,
-    destinoCodigo: document.getElementById('m_destino') ? document.getElementById('m_destino').value : (existing?.destinoCodigo || 'T'),
+    destinoCodigo: document.getElementById('m_destino') ? document.getElementById('m_destino').value : (existing?.destinoCodigo || ''),
     productoTipo: document.getElementById('m_productoTipo') ? document.getElementById('m_productoTipo').value : (existing?.productoTipo || 'rPET'),
     codigoProducto: ''
   };
@@ -3681,6 +3697,7 @@ async function savePedido(id) {
   data.updatedAt = new Date().toISOString();
 
   if (!data.cliente || !data.kgPedidos) { alert('Cliente y kg pedidos son obligatorios'); return; }
+  if (!data.destinoCodigo) { alert('Elegí el destino del pedido (Termoformado interno, Laminado con PE o Venta a cliente).'); return; }
 
   if (existing) {
     // Preservar campos técnicos (OP) si ya existen.
@@ -3701,7 +3718,7 @@ async function savePedido(id) {
     data.metrosBobina = 0; data.diametroBobina = 0;
     data.mezclaTeoricaTexto = '';
     data.fechaInicioProd = ''; data.fechaFinProd = '';
-    data.destinoCodigo = 'T';
+    // destinoCodigo NO se pisa: respeta lo elegido en la OC (validado más arriba)
     data.confeccion = '';
     data.formula = { preforma: 0, scrap: 0, virgen: 0, master: 0 };
     data.op = '';
@@ -4036,6 +4053,11 @@ function openCostoModal(key) {
   const c = key ? DATA.costosMensuales[key] : { diasProduccion: 21, horasXDia: 17, energia: 0, manoDeObra: 0, tcProm: 1400 };
   const today = new Date();
   const defKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+  // Compatibilidad: si hay manoDeObra viejo sin desglose, lo mostramos como "por recibo"
+  const hayDesglose = (c.manoDeObraRecibo != null || c.manoDeObraHora != null);
+  const moRecibo = hayDesglose ? (+c.manoDeObraRecibo || 0) : (+c.manoDeObra || 0);
+  const moHora = hayDesglose ? (+c.manoDeObraHora || 0) : 0;
+  const capOut = +DATA.config.capacidadKgxHora || 400;
 
   document.getElementById('modalContainer').innerHTML = `
     <div class="modal-bg" >
@@ -4047,8 +4069,10 @@ function openCostoModal(key) {
             <div class="field"><label>TC Promedio (ARS/USD)</label><input type="number" id="c_tc" value="${c.tcProm||1400}"></div>
             <div class="field"><label>Días producción</label><input type="number" id="c_dias" value="${c.diasProduccion||21}"></div>
             <div class="field"><label>Horas / día</label><input type="number" id="c_horas" value="${c.horasXDia||17}"></div>
-            <div class="field"><label>Energía (ARS)</label><input type="number" id="c_energia" value="${c.energia||0}"></div>
-            <div class="field"><label>Mano de obra (ARS)</label><input type="number" id="c_mo" value="${c.manoDeObra||0}"></div>
+            <div class="field"><label>Output máquina (kg/h)</label><input type="number" id="c_cap" value="${capOut}"><div class="hint">Por defecto 400 kg/h. Sirve para el kg teórico.</div></div>
+            <div class="field"><label>Energía del mes (ARS)</label><input type="number" id="c_energia" value="${c.energia||0}"></div>
+            <div class="field"><label>Mano de obra — pago por recibo (ARS)</label><input type="number" id="c_mo_recibo" value="${moRecibo}"><div class="hint">Sueldos en blanco / recibo.</div></div>
+            <div class="field"><label>Mano de obra — pago por hora (ARS)</label><input type="number" id="c_mo_hora" value="${moHora}"><div class="hint">Jornales / horas.</div></div>
           </div>
         </div>
         <div class="modal-f">
@@ -4060,17 +4084,211 @@ function openCostoModal(key) {
 }
 async function saveCosto(key) {
   const k = document.getElementById('c_key').value || key;
+  const moRecibo = +document.getElementById('c_mo_recibo').value || 0;
+  const moHora = +document.getElementById('c_mo_hora').value || 0;
   DATA.costosMensuales[k] = {
     diasProduccion: +document.getElementById('c_dias').value || 0,
     horasXDia: +document.getElementById('c_horas').value || 0,
     energia: +document.getElementById('c_energia').value || 0,
-    manoDeObra: +document.getElementById('c_mo').value || 0,
+    manoDeObraRecibo: moRecibo,
+    manoDeObraHora: moHora,
+    manoDeObra: moRecibo + moHora, // total, para compatibilidad
     tcProm: +document.getElementById('c_tc').value || 0
   };
+  const cap = +document.getElementById('c_cap').value || 0;
+  if (cap > 0) DATA.config.capacidadKgxHora = cap;
   closeModal();
   await saveData();
   render();
   toast('Costos guardados', 'success');
+}
+
+// ============================================================
+// MODULO ANÁLISIS — eficiencia + costo energía/MO por kg
+// ============================================================
+let analisisMes = null; // 'YYYY-MM' seleccionado
+
+// Devuelve los meses con datos (producción o costos cargados), más recientes primero
+function mesesConDatos() {
+  const set = new Set();
+  (DATA.producciones || []).forEach(b => { const m = (b.fecha || '').slice(0, 7); if (m) set.add(m); });
+  Object.keys(DATA.costosMensuales || {}).forEach(m => set.add(m));
+  return [...set].sort().reverse();
+}
+
+// Núcleo de cálculo de un mes 'YYYY-MM'
+function computeAnalisisMes(key) {
+  const c = (DATA.costosMensuales && DATA.costosMensuales[key]) || {};
+  const dias = +c.diasProduccion || 0;
+  const horasDia = +c.horasXDia || +DATA.config.horasXDiaDefault || 17;
+  const capOut = +DATA.config.capacidadKgxHora || 400;
+  const tc = +c.tcProm || 0;
+  const energia = +c.energia || 0;
+  // MO: desglose nuevo (recibo + hora) con fallback al total viejo
+  const hayDesglose = (c.manoDeObraRecibo != null || c.manoDeObraHora != null);
+  const moRecibo = hayDesglose ? (+c.manoDeObraRecibo || 0) : (+c.manoDeObra || 0);
+  const moHora = hayDesglose ? (+c.manoDeObraHora || 0) : 0;
+  const moTotal = moRecibo + moHora;
+
+  // Kg reales producidos en el mes (suma de bobinas; igual criterio que eficienciaDelDia,
+  // cuenta todo lo que salió de la máquina aunque después fuera a Lanús o se diera de baja)
+  const kgReal = (DATA.producciones || [])
+    .filter(b => (b.fecha || '').slice(0, 7) === key)
+    .reduce((s, b) => s + (+b.kg || 0), 0);
+
+  const horasMes = dias * horasDia;
+  const kgTeo = horasMes * capOut;
+  const ef = kgTeo > 0 ? (kgReal / kgTeo * 100) : null;
+  const kgHReal = horasMes > 0 ? kgReal / horasMes : 0;
+
+  const base = kgReal > 0 ? kgReal : 0;
+  const energiaKg = base > 0 ? energia / base : 0;
+  const moReciboKg = base > 0 ? moRecibo / base : 0;
+  const moHoraKg = base > 0 ? moHora / base : 0;
+  const moKg = base > 0 ? moTotal / base : 0;
+  const totalKg = energiaKg + moKg;
+
+  const tieneCostos = (energia > 0 || moTotal > 0) && dias > 0;
+  return { key, dias, horasDia, horasMes, capOut, tc, energia, moRecibo, moHora, moTotal,
+           kgReal, kgTeo, ef, kgHReal, energiaKg, moReciboKg, moHoraKg, moKg, totalKg, tieneCostos };
+}
+
+function setAnalisisMes(m) { analisisMes = m; renderAnalisis(); }
+
+function colorEf(ef) {
+  if (ef == null) return '#6b7280';
+  return ef >= 100 ? '#16a34a' : ef >= 80 ? '#d97706' : '#dc2626';
+}
+function usdKg(arsKg, tc) { return tc > 0 ? (arsKg / tc) : 0; }
+
+function renderAnalisis() {
+  const cont = document.getElementById('analisisContent');
+  if (!cont) return;
+  const meses = mesesConDatos();
+  if (meses.length === 0) {
+    cont.innerHTML = `<p class="muted" style="padding:30px;text-align:center">Todavía no hay datos. Cargá producción y los costos del mes (energía y mano de obra) para ver el análisis.<br><br><button class="btn btn-pri" onclick="openCostoModal('')">+ Cargar costos del mes</button></p>`;
+    return;
+  }
+  if (!analisisMes || !meses.includes(analisisMes)) analisisMes = meses[0];
+  const a = computeAnalisisMes(analisisMes);
+  const [yy, mm] = analisisMes.split('-');
+  const mesNombre = MESES[+mm - 1] + ' ' + yy;
+  const efC = colorEf(a.ef);
+
+  const selMes = `
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:10px 14px;background:white;border-radius:10px;border:1px solid #e5e7eb">
+      <label style="font-size:13px;color:#6b7280;font-weight:600">Mes:</label>
+      <select onchange="setAnalisisMes(this.value)" style="padding:6px 12px;border:1px solid #16a34a;border-radius:6px;font-size:14px;font-weight:600;color:#16a34a;background:#f0fdf4">
+        ${meses.map(m => { const [y, n] = m.split('-'); return `<option value="${m}" ${m === analisisMes ? 'selected' : ''}>${MESES[+n - 1]} ${y}</option>`; }).join('')}
+      </select>
+      <button class="btn-ghost" onclick="openCostoModal('${analisisMes}')" style="font-size:13px;padding:6px 12px;border:1px solid #d1d5db;border-radius:6px">✏️ Cargar / editar costos del mes</button>
+      <span style="flex:1"></span>
+      <span style="font-size:12px;color:#9ca3af">Output máquina: <b style="color:#374151">${fmtNum(a.capOut)} kg/h</b> · ${a.horasDia} h/día</span>
+    </div>`;
+
+  if (!a.tieneCostos) {
+    cont.innerHTML = selMes + `
+      <div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;padding:14px 16px;border-radius:10px;font-size:13px">
+        ⚠️ Faltan datos para ${mesNombre}. Cargá <b>días de producción</b>, <b>energía</b> y <b>mano de obra</b> con el botón "Cargar / editar costos del mes".
+        ${a.kgReal > 0 ? `<br><br>Producción real cargada este mes: <b>${fmtNum(a.kgReal)} kg</b>.` : ''}
+      </div>`;
+    return;
+  }
+
+  const card = (titulo, accentColor, inner) => `
+    <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid ${accentColor};border-radius:10px;padding:16px;display:flex;flex-direction:column">
+      <h3 style="margin:0 0 12px;font-size:14px;color:#374151">${titulo}</h3>${inner}</div>`;
+  const big = (val, unidad, color) => `<div style="font-size:28px;font-weight:800;color:${color||'#1f2937'};line-height:1">${val}<span style="font-size:14px;font-weight:600;color:#9ca3af;margin-left:4px">${unidad||''}</span></div>`;
+  const linea = (lbl, val) => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-top:1px solid #f3f4f6"><span style="color:#6b7280">${lbl}</span><span style="font-weight:600;color:#374151">${val}</span></div>`;
+
+  const cardEf = card('⚙️ Eficiencia de producción', efC, `
+    ${big(a.ef == null ? '–' : Math.round(a.ef), '%', efC)}
+    <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">real ÷ teórico</div>
+    ${linea('Producción real', '<b>' + fmtNum(a.kgReal) + '</b> kg')}
+    ${linea('Producción teórica', fmtNum(a.kgTeo) + ' kg')}
+    ${linea('kg/h real', fmtNum(Math.round(a.kgHReal)) + ' kg/h')}
+    ${linea('Horas del mes', fmtNum(a.horasMes) + ' h (' + a.dias + ' días × ' + a.horasDia + ')')}
+  `);
+
+  const cardEnergia = card('⚡ Costo de energía', '#f59e0b', `
+    ${big('$' + a.energiaKg.toFixed(1), '/kg', '#b45309')}
+    <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">${a.tc > 0 ? 'USD ' + usdKg(a.energiaKg, a.tc).toFixed(4) + ' /kg' : 'cargá TC para USD'}</div>
+    ${linea('Energía total del mes', fmtMoney(a.energia))}
+    ${linea('Sobre kg producidos', fmtNum(a.kgReal) + ' kg')}
+  `);
+
+  const cardMO = card('👷 Costo de mano de obra', '#3b82f6', `
+    ${big('$' + a.moKg.toFixed(1), '/kg', '#1d4ed8')}
+    <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">${a.tc > 0 ? 'USD ' + usdKg(a.moKg, a.tc).toFixed(4) + ' /kg' : 'cargá TC para USD'}</div>
+    ${linea('Por recibo', fmtMoney(a.moRecibo) + ' · $' + a.moReciboKg.toFixed(1) + '/kg')}
+    ${linea('Por hora', fmtMoney(a.moHora) + ' · $' + a.moHoraKg.toFixed(1) + '/kg')}
+    ${linea('MO total', '<b>' + fmtMoney(a.moTotal) + '</b>')}
+  `);
+
+  const cardTotal = card('💰 Costo total (energía + MO)', '#16a34a', `
+    ${big('$' + a.totalKg.toFixed(1), '/kg', '#15803d')}
+    <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">${a.tc > 0 ? 'USD ' + usdKg(a.totalKg, a.tc).toFixed(4) + ' /kg' : 'cargá TC para USD'}</div>
+    ${linea('Energía /kg', '$' + a.energiaKg.toFixed(1))}
+    ${linea('Mano de obra /kg', '$' + a.moKg.toFixed(1))}
+    ${linea('Costo del mes', fmtMoney(a.energia + a.moTotal))}
+  `);
+
+  // Tabla comparativa de todos los meses con costos
+  const filas = meses.map(m => computeAnalisisMes(m)).filter(x => x.tieneCostos);
+  let tabla = '';
+  if (filas.length > 1) {
+    tabla = `
+      <div style="margin-top:20px;background:white;border:1px solid #e5e7eb;border-radius:10px;padding:16px;overflow-x:auto">
+        <h3 style="margin:0 0 12px;font-size:14px;color:#374151">📊 Comparativo mensual</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="text-align:right;color:#6b7280;border-bottom:2px solid #e5e7eb">
+            <th style="text-align:left;padding:6px 8px">Mes</th><th style="padding:6px 8px">Kg real</th><th style="padding:6px 8px">Efic.</th>
+            <th style="padding:6px 8px">Energía $/kg</th><th style="padding:6px 8px">MO $/kg</th><th style="padding:6px 8px">Total $/kg</th><th style="padding:6px 8px">Total USD/kg</th>
+          </tr></thead><tbody>
+          ${filas.map(f => { const [y, n] = f.key.split('-'); return `<tr style="text-align:right;border-bottom:1px solid #f3f4f6">
+            <td style="text-align:left;padding:6px 8px;font-weight:600">${MESES[+n - 1].slice(0,3)} ${y.slice(2)}</td>
+            <td style="padding:6px 8px">${fmtNum(f.kgReal)}</td>
+            <td style="padding:6px 8px;color:${colorEf(f.ef)};font-weight:700">${f.ef == null ? '–' : Math.round(f.ef) + '%'}</td>
+            <td style="padding:6px 8px">$${f.energiaKg.toFixed(1)}</td>
+            <td style="padding:6px 8px">$${f.moKg.toFixed(1)}</td>
+            <td style="padding:6px 8px;font-weight:700">$${f.totalKg.toFixed(1)}</td>
+            <td style="padding:6px 8px;color:#16a34a">${f.tc > 0 ? usdKg(f.totalKg, f.tc).toFixed(4) : '–'}</td>
+          </tr>`; }).join('')}
+        </tbody></table>
+      </div>`;
+  }
+
+  cont.innerHTML = selMes + `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+      ${cardEf}${cardEnergia}${cardMO}${cardTotal}
+    </div>` + tabla;
+}
+
+// Mini-tarjeta de análisis para el dashboard (mes más reciente con costos cargados)
+function cardAnalisisDashboard() {
+  const meses = mesesConDatos();
+  const conCostos = meses.map(m => computeAnalisisMes(m)).find(x => x.tieneCostos);
+  if (!conCostos) {
+    return `
+      <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #16a34a;border-radius:10px;padding:14px;display:flex;flex-direction:column">
+        <h3 style="margin:0 0 10px;font-size:14px;color:#15803d">📈 Análisis del mes</h3>
+        <p class="muted" style="text-align:center;padding:14px 0;font-size:13px">Cargá costos del mes en la pestaña <b>Análisis</b> para ver eficiencia y costo por kg.</p>
+      </div>`;
+  }
+  const a = conCostos;
+  const [y, n] = a.key.split('-');
+  const efC = colorEf(a.ef);
+  return `
+    <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #16a34a;border-radius:10px;padding:14px;display:flex;flex-direction:column;cursor:pointer" onclick="switchTab('analisis')" title="Ver análisis completo">
+      <h3 style="margin:0 0 10px;font-size:14px;color:#15803d">📈 Análisis · ${MESES[+n - 1]} ${y}</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:12px;color:#6b7280">Eficiencia</span>
+        <span style="font-size:22px;font-weight:800;color:${efC}">${a.ef == null ? '–' : Math.round(a.ef) + '%'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-top:1px solid #f3f4f6"><span style="color:#6b7280">Costo total</span><span style="font-weight:700;color:#15803d">$${a.totalKg.toFixed(1)}/kg${a.tc > 0 ? ' · USD ' + usdKg(a.totalKg, a.tc).toFixed(3) : ''}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-top:1px solid #f3f4f6"><span style="color:#6b7280">Energía / MO</span><span style="color:#374151">$${a.energiaKg.toFixed(1)} / $${a.moKg.toFixed(1)}</span></div>
+      <div style="font-size:10px;color:#9ca3af;margin-top:8px;font-style:italic">${fmtNum(a.kgReal)} kg producidos · tocá para ver detalle →</div>
+    </div>`;
 }
 
 // --- CATALOGOS (ABM editable) ---
@@ -5133,13 +5351,12 @@ function openOPModal(pedidoId) {
                 <select id="op_producto">${productos.map(pr => `<option value="${pr.nombre}" ${pr.nombre===p.producto?'selected':''}>${pr.nombre}</option>`).join('')}</select>
               </div>
               <div class="field"><label>Código producto (auto)</label><input type="text" id="op_codigoProducto" value="${p.codigoProducto||(p.ancho&&p.espesor?p.ancho+''+p.espesor:'')}" readonly style="background:#f9fafb"></div>
-              <div class="field"><label>Destino (definido en la OC)</label>
-                <input type="text" id="op_destinoCodigo_display" value="${(() => {
-                  const d = (DATA.catalogos.destinos || []).find(x => x.codigo === (p.destinoCodigo||'T'));
-                  return d ? `${d.codigo} — ${d.nombre}` : (p.destinoCodigo||'T');
-                })()}" readonly style="background:#f9fafb">
-                <input type="hidden" id="op_destinoCodigo" value="${p.destinoCodigo||'T'}">
-                <div class="hint">Para cambiarlo, editá la OC del pedido.</div>
+              <div class="field"><label>Destino (definido en la OC, editable)</label>
+                <select id="op_destinoCodigo" onchange="actualizarCodigoPartida()">
+                  <option value="" ${!p.destinoCodigo?'selected':''} disabled>— Sin destino, elegí —</option>
+                  ${(DATA.catalogos.destinos || []).map(d => `<option value="${d.codigo}" ${d.codigo===(p.destinoCodigo||'')?'selected':''}>${d.codigo} — ${d.nombre}</option>`).join('')}
+                </select>
+                <div class="hint">Viene de la OC. Si llegó con el destino equivocado, corregilo acá (recalcula la partida).</div>
               </div>
             </div>
           </div>
@@ -13100,7 +13317,14 @@ function abrirDarDeBajaPallet(idx) {
           </select>
           <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Nota (opcional)</label>
           <textarea id="baja_nota" rows="2" placeholder="Detalle adicional..." style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;resize:vertical;box-sizing:border-box"></textarea>
-        </div>
+          <div style="margin-top:14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px">
+            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:#1e3a8a">
+              <input type="checkbox" id="baja_lanus" style="margin-top:2px;width:16px;height:16px;cursor:pointer">
+              <span><b>🏭 Se envió a Lanús</b> (transferencia interna)<br>
+                <span style="font-size:12px;color:#3b82f6">Tildá esto si el pallet no es scrap sino que salió físicamente a Lanús. El despacho del pedido pasa solo a <b>Parcial</b> (o <b>Lanús</b> si era lo último que quedaba en Chivilcoy).</span>
+              </span>
+            </label>
+          </div>
         <div class="modal-f">
           <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
           <button class="btn" style="background:#dc2626;color:white" onclick="confirmarDarDeBajaPallet(${idx})">🗑️ Confirmar baja</button>
@@ -13117,6 +13341,8 @@ async function confirmarDarDeBajaPallet(idx) {
   const notaEl = document.getElementById('baja_nota');
   const motivo = (motivoEl && motivoEl.value) || 'Otro';
   const nota = (notaEl && notaEl.value || '').trim();
+  const enviadoLanusEl = document.getElementById('baja_lanus');
+  const enviadoLanus = !!(enviadoLanusEl && enviadoLanusEl.checked);
   const fecha = new Date().toISOString();
   const usuario = (window.currentUser && window.currentUser.nombre) || '-';
 
@@ -13126,17 +13352,34 @@ async function confirmarDarDeBajaPallet(idx) {
     const b = DATA.producciones.find(x => x.id === plb.id);
     if (!b) return;
     b.bajaManual = true;
-    b.bajaMotivo = motivo;
+    b.bajaMotivo = enviadoLanus ? 'Enviado a Lanús (transferencia interna)' : motivo;
     if (nota) b.bajaNota = nota;
     b.bajaFecha = fecha;
     b.bajaUsuario = usuario;
+    if (enviadoLanus) b.enviadoLanus = true; else delete b.enviadoLanus;
     window._pcModifiedBobinas.add(b.id);
     n++;
   });
 
+  // Si se envió a Lanús, mover el eje despacho del pedido automáticamente.
+  let despachoMsg = '';
+  if (enviadoLanus) {
+    const ped = DATA.pedidos.find(x => x.id === pl.pedidoId);
+    if (ped) {
+      const quedanEnChiv = (DATA.producciones || []).some(b =>
+        b.pedidoId === ped.id && b.nroPallet && !b.remitoId && !b.bajaManual);
+      const nuevoDesp = quedanEnChiv ? 'Parcial' : 'Despachado';
+      if (ped.estadoDespacho !== nuevoDesp) {
+        ped.estadoDespacho = nuevoDesp;
+        ped.updatedAt = new Date().toISOString();
+        despachoMsg = ` · despacho → ${nuevoDesp === 'Despachado' ? 'Lanús' : 'Parcial'}`;
+      }
+    }
+  }
+
   closeModal();
   await saveData();
-  toast(`Pallet ${pl.nroPallet} dado de baja (${n} bobinas)`, 'success');
+  toast(`Pallet ${pl.nroPallet} ${enviadoLanus ? 'enviado a Lanús' : 'dado de baja'} (${n} bobinas)${despachoMsg}`, 'success');
   remitosSubTab = 'bajas';
   renderRemitos();
 }
@@ -13152,7 +13395,7 @@ function renderRemitosBajas() {
   const pallets = {};
   bajas.forEach(b => {
     const k = b.nroPallet + '__' + b.pedidoId;
-    if (!pallets[k]) pallets[k] = { nroPallet: b.nroPallet, pedidoId: b.pedidoId, bobinas: [], bajaFecha: b.bajaFecha, motivo: b.bajaMotivo, nota: b.bajaNota, usuario: b.bajaUsuario };
+    if (!pallets[k]) pallets[k] = { nroPallet: b.nroPallet, pedidoId: b.pedidoId, bobinas: [], bajaFecha: b.bajaFecha, motivo: b.bajaMotivo, nota: b.bajaNota, usuario: b.bajaUsuario, enviadoLanus: b.enviadoLanus };
     pallets[k].bobinas.push(b);
     if ((b.bajaFecha || '') > (pallets[k].bajaFecha || '')) pallets[k].bajaFecha = b.bajaFecha;
   });
@@ -13169,10 +13412,10 @@ function renderRemitosBajas() {
     const bobNros = pl.bobinas.map(b => b.nroBobina).filter(Boolean).map(n => +n).sort((a,b) => a-b);
     const rangoBob = bobNros.length === 0 ? '' : (bobNros.length === 1 ? '#'+bobNros[0] : '#'+bobNros[0]+' a #'+bobNros[bobNros.length-1]);
     html += `
-      <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #dc2626;border-radius:10px;padding:14px">
+      <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid ${pl.enviadoLanus ? '#2563eb' : '#dc2626'};border-radius:10px;padding:14px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
           <div style="flex:1;min-width:0">
-            <div style="font-size:16px;font-weight:700;color:#b91c1c;margin-bottom:2px">Pallet ${pl.nroPallet}</div>
+            <div style="font-size:16px;font-weight:700;color:${pl.enviadoLanus ? '#1e40af' : '#b91c1c'};margin-bottom:2px">Pallet ${pl.nroPallet}${pl.enviadoLanus ? ' <span style="font-size:11px;font-weight:700;color:#1d4ed8;background:#dbeafe;border:1px solid #bfdbfe;padding:1px 7px;border-radius:10px;vertical-align:middle">🏭 → Lanús</span>' : ''}</div>
             <div style="font-size:14px;font-weight:600;color:#1f2937">${ped ? ped.cliente : '(pedido no encontrado)'}</div>
             <div style="font-size:12px;color:#6b7280">OP ${ped ? (ped.nroOP||'-') : '-'} · ${pl.bobinas.length} bob${rangoBob ? ' · '+rangoBob : ''}</div>
           </div>
@@ -13210,6 +13453,7 @@ async function revertirBajaPallet(idx) {
     delete b.bajaNota;
     delete b.bajaFecha;
     delete b.bajaUsuario;
+    delete b.enviadoLanus;
     window._pcModifiedBobinas.add(b.id);
     n++;
   });
