@@ -1157,6 +1157,20 @@ function migrateLegacyData(d) {
   // Default 400 kg/h (dato real planta Chivilcoy). Se puede editar desde Análisis.
   if (!d.config.capacidadKgxHora || +d.config.capacidadKgxHora === 300) d.config.capacidadKgxHora = 400;
   if (!d.config.horasXDiaDefault) d.config.horasXDiaDefault = 17;
+  // Importación única de costos históricos 2026 (Ene–May) desde el Excel de planta.
+  // MO viene como total mensual (sin desglose recibo/hora). kgRealesManual = kg reales del mes.
+  if (!d.costosMensuales) d.costosMensuales = {};
+  if (!d.config.costosHist2026Importado) {
+    const hist = {
+      '2026-01': { diasProduccion: 21, horasXDia: 12, energia: 8836149.18,  manoDeObra: 9603488.23,  kgRealesManual: 42993, tcProm: 1450 },
+      '2026-02': { diasProduccion: 18, horasXDia: 17, energia: 8497409.64,  manoDeObra: 9552078.10,  kgRealesManual: 57880, tcProm: 1420 },
+      '2026-03': { diasProduccion: 22, horasXDia: 17, energia: 10730130.53, manoDeObra: 11616512.06, kgRealesManual: 72319, tcProm: 1415 },
+      '2026-04': { diasProduccion: 20, horasXDia: 17, energia: 12294816.59, manoDeObra: 11582911.99, kgRealesManual: 66582, tcProm: 1400 },
+      '2026-05': { diasProduccion: 0,  horasXDia: 17, energia: 11787239.24, manoDeObra: 0,           kgRealesManual: 55041, tcProm: 0 }
+    };
+    Object.entries(hist).forEach(([k, v]) => { if (!d.costosMensuales[k]) d.costosMensuales[k] = v; });
+    d.config.costosHist2026Importado = true;
+  }
   if (!d.config.proximoNroRemito) d.config.proximoNroRemito = 1235; // siguiente al ejemplo 1234
   if (!d.config.puntoVentaRemito) d.config.puntoVentaRemito = '0001';
   // Destinatario por default (Lanús)
@@ -4050,7 +4064,7 @@ function renderCostos() {
   document.getElementById('costosTabla').innerHTML = html;
 }
 function openCostoModal(key) {
-  const c = key ? DATA.costosMensuales[key] : { diasProduccion: 21, horasXDia: 17, energia: 0, manoDeObra: 0, tcProm: 1400 };
+  const c = (key && DATA.costosMensuales[key]) ? DATA.costosMensuales[key] : { diasProduccion: 21, horasXDia: 17, energia: 0, manoDeObra: 0, tcProm: 1400 };
   const today = new Date();
   const defKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
   // Compatibilidad: si hay manoDeObra viejo sin desglose, lo mostramos como "por recibo"
@@ -4058,6 +4072,8 @@ function openCostoModal(key) {
   const moRecibo = hayDesglose ? (+c.manoDeObraRecibo || 0) : (+c.manoDeObra || 0);
   const moHora = hayDesglose ? (+c.manoDeObraHora || 0) : 0;
   const capOut = +DATA.config.capacidadKgxHora || 400;
+  const kgProdMes = key ? (DATA.producciones || []).filter(b => (b.fecha || '').slice(0, 7) === key).reduce((s, b) => s + (+b.kg || 0), 0) : 0;
+  const kgRealVal = (c.kgRealesManual != null && +c.kgRealesManual > 0) ? c.kgRealesManual : '';
 
   document.getElementById('modalContainer').innerHTML = `
     <div class="modal-bg" >
@@ -4066,6 +4082,7 @@ function openCostoModal(key) {
         <div class="modal-body">
           <div class="form-grid">
             <div class="field"><label>Mes (YYYY-MM)</label><input type="text" id="c_key" value="${key||defKey}" ${key?'readonly':''}></div>
+            <div class="field"><label>Kg producidos reales</label><input type="number" id="c_kgreal" value="${kgRealVal}" placeholder="${kgProdMes>0?fmtNum(kgProdMes)+' (auto)':'opcional'}"><div class="hint">${kgProdMes>0?'Si lo dejás vacío usa '+fmtNum(kgProdMes)+' kg de las bobinas cargadas.':'Cargalo a mano para meses sin bobinas individuales (históricos).'}</div></div>
             <div class="field"><label>TC Promedio (ARS/USD)</label><input type="number" id="c_tc" value="${c.tcProm||1400}"></div>
             <div class="field"><label>Días producción</label><input type="number" id="c_dias" value="${c.diasProduccion||21}"></div>
             <div class="field"><label>Horas / día</label><input type="number" id="c_horas" value="${c.horasXDia||17}"></div>
@@ -4086,6 +4103,7 @@ async function saveCosto(key) {
   const k = document.getElementById('c_key').value || key;
   const moRecibo = +document.getElementById('c_mo_recibo').value || 0;
   const moHora = +document.getElementById('c_mo_hora').value || 0;
+  const kgReal = +document.getElementById('c_kgreal').value || 0;
   DATA.costosMensuales[k] = {
     diasProduccion: +document.getElementById('c_dias').value || 0,
     horasXDia: +document.getElementById('c_horas').value || 0,
@@ -4093,6 +4111,7 @@ async function saveCosto(key) {
     manoDeObraRecibo: moRecibo,
     manoDeObraHora: moHora,
     manoDeObra: moRecibo + moHora, // total, para compatibilidad
+    kgRealesManual: kgReal > 0 ? kgReal : null,
     tcProm: +document.getElementById('c_tc').value || 0
   };
   const cap = +document.getElementById('c_cap').value || 0;
@@ -4137,11 +4156,17 @@ function computeAnalisisMes(key) {
   const moHora = hayDesglose ? (+c.manoDeObraHora || 0) : 0;
   const moTotal = moRecibo + moHora;
 
-  // Kg reales producidos en el mes (suma de bobinas; igual criterio que eficienciaDelDia,
-  // cuenta todo lo que salió de la máquina aunque después fuera a Lanús o se diera de baja)
-  const kgReal = (DATA.producciones || [])
+  // Kg reales producidos en el mes.
+  // 1) Si hay un valor manual cargado (kgRealesManual, típico de meses históricos
+  //    importados que no tienen las bobinas individuales en la app), se usa ese.
+  // 2) Si no, se suma de las bobinas (mismo criterio que eficienciaDelDia: cuenta todo
+  //    lo que salió de la máquina aunque después fuera a Lanús o se diera de baja).
+  const kgProd = (DATA.producciones || [])
     .filter(b => (b.fecha || '').slice(0, 7) === key)
     .reduce((s, b) => s + (+b.kg || 0), 0);
+  const kgManual = (c.kgRealesManual != null && +c.kgRealesManual > 0) ? +c.kgRealesManual : 0;
+  const kgReal = kgManual > 0 ? kgManual : kgProd;
+  const kgFuente = kgManual > 0 ? 'manual' : 'bobinas';
 
   const horasMes = dias * horasDia;
   const kgTeo = horasMes * capOut;
@@ -4157,7 +4182,7 @@ function computeAnalisisMes(key) {
 
   const tieneCostos = (energia > 0 || moTotal > 0) && dias > 0;
   return { key, dias, horasDia, horasMes, capOut, tc, energia, moRecibo, moHora, moTotal,
-           kgReal, kgTeo, ef, kgHReal, energiaKg, moReciboKg, moHoraKg, moKg, totalKg, tieneCostos };
+           kgReal, kgFuente, kgTeo, ef, kgHReal, energiaKg, moReciboKg, moHoraKg, moKg, totalKg, tieneCostos };
 }
 
 function setAnalisisMes(m) { analisisMes = m; renderAnalisis(); }
