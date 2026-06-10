@@ -4106,7 +4106,8 @@ async function saveCosto(key) {
 // ============================================================
 // MODULO ANÁLISIS — eficiencia + costo energía/MO por kg
 // ============================================================
-let analisisMes = null; // 'YYYY-MM' seleccionado
+let analisisMes = null; // 'YYYY-MM' seleccionado (detalle)
+let analisisAnio = null; // año seleccionado en la vista anual
 
 // Devuelve los meses con datos (producción o costos cargados), más recientes primero
 function mesesConDatos() {
@@ -4114,6 +4115,12 @@ function mesesConDatos() {
   (DATA.producciones || []).forEach(b => { const m = (b.fecha || '').slice(0, 7); if (m) set.add(m); });
   Object.keys(DATA.costosMensuales || {}).forEach(m => set.add(m));
   return [...set].sort().reverse();
+}
+
+// Años con datos, más recientes primero
+function aniosConDatos() {
+  const set = new Set(mesesConDatos().map(m => +m.slice(0, 4)));
+  return [...set].sort((a, b) => b - a);
 }
 
 // Núcleo de cálculo de un mes 'YYYY-MM'
@@ -4154,12 +4161,44 @@ function computeAnalisisMes(key) {
 }
 
 function setAnalisisMes(m) { analisisMes = m; renderAnalisis(); }
+function setAnalisisAnio(y) { analisisAnio = +y; analisisMes = null; renderAnalisis(); }
 
 function colorEf(ef) {
   if (ef == null) return '#6b7280';
   return ef >= 100 ? '#16a34a' : ef >= 80 ? '#d97706' : '#dc2626';
 }
 function usdKg(arsKg, tc) { return tc > 0 ? (arsKg / tc) : 0; }
+
+// Gráfico de barras SVG (vanilla, sin librerías). Soporta barras apiladas.
+// data: [{lbl, segs:[{v, c}], topColor?}]  ·  o: {h, fmtVal, refLine:{v,lbl}, max, unit}
+function svgBars(data, o) {
+  o = o || {};
+  const W = 360, H = o.h || 170;
+  const padL = 8, padR = 8, padT = 18, padB = 26;
+  const n = data.length || 1;
+  const plotH = H - padT - padB, plotW = W - padL - padR;
+  const totals = data.map(d => d.segs.reduce((s, x) => s + (x.v || 0), 0));
+  const max = Math.max(o.max || 0, ...totals, o.refLine ? o.refLine.v : 0, 1);
+  const slot = plotW / n, barW = Math.min(slot * 0.62, 30);
+  let bars = '', labels = '', refl = '';
+  data.forEach((d, i) => {
+    const x = padL + i * slot + (slot - barW) / 2;
+    let yc = padT + plotH;
+    d.segs.forEach(seg => {
+      const h = (seg.v / max) * plotH;
+      yc -= h;
+      if (h > 0) bars += `<rect x="${x.toFixed(1)}" y="${yc.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${seg.c}" rx="1.5"/>`;
+    });
+    const top = padT + plotH - (totals[i] / max) * plotH;
+    if (totals[i] > 0) bars += `<text x="${(x + barW / 2).toFixed(1)}" y="${(top - 3).toFixed(1)}" font-size="9" text-anchor="middle" fill="#374151" font-weight="700">${o.fmtVal ? o.fmtVal(totals[i]) : Math.round(totals[i])}</text>`;
+    labels += `<text x="${(x + barW / 2).toFixed(1)}" y="${(H - padB + 12).toFixed(1)}" font-size="9" text-anchor="middle" fill="#9ca3af">${d.lbl}</text>`;
+  });
+  if (o.refLine) {
+    const y = padT + plotH - (o.refLine.v / max) * plotH;
+    refl = `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4 3"/><text x="${W - padR}" y="${(y - 3).toFixed(1)}" font-size="8.5" text-anchor="end" fill="#94a3b8">${o.refLine.lbl || ''}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;display:block">${refl}${bars}${labels}</svg>`;
+}
 
 function renderAnalisis() {
   const cont = document.getElementById('analisisContent');
@@ -4169,99 +4208,158 @@ function renderAnalisis() {
     cont.innerHTML = `<p class="muted" style="padding:30px;text-align:center">Todavía no hay datos. Cargá producción y los costos del mes (energía y mano de obra) para ver el análisis.<br><br><button class="btn btn-pri" onclick="openCostoModal('')">+ Cargar costos del mes</button></p>`;
     return;
   }
-  if (!analisisMes || !meses.includes(analisisMes)) analisisMes = meses[0];
-  const a = computeAnalisisMes(analisisMes);
-  const [yy, mm] = analisisMes.split('-');
-  const mesNombre = MESES[+mm - 1] + ' ' + yy;
-  const efC = colorEf(a.ef);
+  const anios = aniosConDatos();
+  if (!analisisAnio || !anios.includes(analisisAnio)) analisisAnio = anios[0];
 
-  const selMes = `
+  // ---- Datos de los 12 meses del año seleccionado ----
+  const mm = [];
+  for (let i = 1; i <= 12; i++) {
+    mm.push(computeAnalisisMes(`${analisisAnio}-${String(i).padStart(2, '0')}`));
+  }
+
+  // ---- Agregados del año ----
+  const totKgReal = mm.reduce((s, m) => s + m.kgReal, 0);
+  const totKgTeo  = mm.reduce((s, m) => s + (m.tieneCostos ? m.kgTeo : 0), 0);
+  const totEnergia = mm.reduce((s, m) => s + m.energia, 0);
+  const totMO     = mm.reduce((s, m) => s + m.moTotal, 0);
+  const kgConCostos = mm.reduce((s, m) => s + (m.tieneCostos ? m.kgReal : 0), 0);
+  const efAnio = totKgTeo > 0 ? (kgConCostos / totKgTeo * 100) : null;
+  const energiaKgAnio = kgConCostos > 0 ? totEnergia / kgConCostos : 0;
+  const moKgAnio = kgConCostos > 0 ? totMO / kgConCostos : 0;
+  const totalKgAnio = energiaKgAnio + moKgAnio;
+  const usdAnioTot = mm.reduce((s, m) => s + (m.tc > 0 ? (m.energia + m.moTotal) / m.tc : 0), 0);
+  const totalKgAnioUsd = kgConCostos > 0 ? usdAnioTot / kgConCostos : 0;
+
+  // ---- Selector de año ----
+  const selAnio = `
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:10px 14px;background:white;border-radius:10px;border:1px solid #e5e7eb">
-      <label style="font-size:13px;color:#6b7280;font-weight:600">Mes:</label>
-      <select onchange="setAnalisisMes(this.value)" style="padding:6px 12px;border:1px solid #16a34a;border-radius:6px;font-size:14px;font-weight:600;color:#16a34a;background:#f0fdf4">
-        ${meses.map(m => { const [y, n] = m.split('-'); return `<option value="${m}" ${m === analisisMes ? 'selected' : ''}>${MESES[+n - 1]} ${y}</option>`; }).join('')}
+      <label style="font-size:13px;color:#6b7280;font-weight:600">Año:</label>
+      <select onchange="setAnalisisAnio(this.value)" style="padding:6px 12px;border:1px solid #16a34a;border-radius:6px;font-size:14px;font-weight:700;color:#16a34a;background:#f0fdf4">
+        ${anios.map(y => `<option value="${y}" ${y === analisisAnio ? 'selected' : ''}>${y}</option>`).join('')}
       </select>
-      <button class="btn-ghost" onclick="openCostoModal('${analisisMes}')" style="font-size:13px;padding:6px 12px;border:1px solid #d1d5db;border-radius:6px">✏️ Cargar / editar costos del mes</button>
       <span style="flex:1"></span>
-      <span style="font-size:12px;color:#9ca3af">Output máquina: <b style="color:#374151">${fmtNum(a.capOut)} kg/h</b> · ${a.horasDia} h/día</span>
+      <span style="font-size:12px;color:#9ca3af">Output máquina: <b style="color:#374151">${fmtNum(+DATA.config.capacidadKgxHora || 400)} kg/h</b> · ${+DATA.config.horasXDiaDefault || 17} h/día</span>
     </div>`;
 
+  // ---- KPIs del año ----
+  const efC = colorEf(efAnio);
+  const kpis = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px">
+      <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #16a34a;border-radius:10px;padding:14px">
+        <div style="font-size:12px;color:#6b7280">Producción ${analisisAnio}</div>
+        <div style="font-size:24px;font-weight:800;color:#15803d">${fmtNum(Math.round(totKgReal))}<span style="font-size:13px;color:#9ca3af"> kg</span></div>
+      </div>
+      <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid ${efC};border-radius:10px;padding:14px">
+        <div style="font-size:12px;color:#6b7280">Eficiencia promedio</div>
+        <div style="font-size:24px;font-weight:800;color:${efC}">${efAnio == null ? '–' : Math.round(efAnio) + '%'}</div>
+      </div>
+      <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #16a34a;border-radius:10px;padding:14px">
+        <div style="font-size:12px;color:#6b7280">Costo total / kg</div>
+        <div style="font-size:24px;font-weight:800;color:#15803d">$${totalKgAnio.toFixed(1)}</div>
+        <div style="font-size:11px;color:#9ca3af">${totalKgAnioUsd > 0 ? 'USD ' + totalKgAnioUsd.toFixed(3) + ' /kg' : 'cargá TC'}</div>
+      </div>
+      <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #f59e0b;border-radius:10px;padding:14px">
+        <div style="font-size:12px;color:#6b7280">Energía año</div>
+        <div style="font-size:20px;font-weight:800;color:#b45309">${fmtMoney(totEnergia)}</div>
+        <div style="font-size:11px;color:#9ca3af">$${energiaKgAnio.toFixed(1)}/kg</div>
+      </div>
+      <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid #3b82f6;border-radius:10px;padding:14px">
+        <div style="font-size:12px;color:#6b7280">Mano de obra año</div>
+        <div style="font-size:20px;font-weight:800;color:#1d4ed8">${fmtMoney(totMO)}</div>
+        <div style="font-size:11px;color:#9ca3af">$${moKgAnio.toFixed(1)}/kg</div>
+      </div>
+    </div>`;
+
+  // ---- Gráficos ----
+  const lblMes = i => MESES[i].slice(0, 3);
+  const fmtKg = v => v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v);
+
+  const chartProd = svgBars(mm.map((m, i) => ({ lbl: lblMes(i), segs: [{ v: m.kgReal, c: '#16a34a' }] })), { fmtVal: fmtKg });
+  const maxEf = Math.max(110, ...mm.map(m => m.ef || 0));
+  const chartEf = svgBars(mm.map((m, i) => ({ lbl: lblMes(i), segs: [{ v: m.tieneCostos ? (m.ef || 0) : 0, c: colorEf(m.ef) }] })), { fmtVal: v => Math.round(v) + '%', max: maxEf, refLine: { v: 100, lbl: '100% (teórico)' } });
+  const chartCosto = svgBars(mm.map((m, i) => ({ lbl: lblMes(i), segs: [{ v: m.energiaKg, c: '#f59e0b' }, { v: m.moKg, c: '#3b82f6' }] })), { fmtVal: v => '$' + Math.round(v) });
+
+  const chartCard = (titulo, subtit, svg, legend) => `
+    <div style="background:white;border:1px solid #e5e7eb;border-radius:10px;padding:16px">
+      <h3 style="margin:0 0 2px;font-size:14px;color:#374151">${titulo}</h3>
+      <div style="font-size:11px;color:#9ca3af;margin-bottom:10px">${subtit}</div>
+      ${svg}
+      ${legend || ''}
+    </div>`;
+
+  const legendCosto = `
+    <div style="display:flex;gap:16px;justify-content:center;margin-top:6px;font-size:12px;color:#6b7280">
+      <span><span style="display:inline-block;width:10px;height:10px;background:#f59e0b;border-radius:2px;margin-right:4px"></span>Energía</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:2px;margin-right:4px"></span>Mano de obra</span>
+    </div>`;
+
+  const graficos = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-bottom:8px">
+      ${chartCard('📦 Producción mensual', 'kg producidos por mes (' + analisisAnio + ')', chartProd)}
+      ${chartCard('⚙️ Eficiencia mensual', 'real ÷ teórico · meta 100%', chartEf)}
+      ${chartCard('💰 Costo por kg', 'ARS/kg · energía + mano de obra', chartCosto, legendCosto)}
+    </div>`;
+
+  // ---- DETALLE POR MES ----
+  // Selector de mes (default: último mes del año con datos)
+  const mesesAnioConDatos = mm.filter(m => m.kgReal > 0 || m.tieneCostos).map(m => m.key);
+  const enAnio = analisisMes && analisisMes.startsWith(String(analisisAnio));
+  if (!enAnio) analisisMes = mesesAnioConDatos.length ? mesesAnioConDatos[mesesAnioConDatos.length - 1] : `${analisisAnio}-${String((new Date()).getMonth() + 1).padStart(2, '0')}`;
+
+  const selMes = `
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:24px 0 14px;padding:10px 14px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0">
+      <span style="font-size:14px;font-weight:700;color:#15803d">🔎 Detalle por mes</span>
+      <select onchange="setAnalisisMes(this.value)" style="padding:6px 12px;border:1px solid #16a34a;border-radius:6px;font-size:14px;font-weight:600;color:#16a34a;background:white">
+        ${mm.map((m, i) => { const has = m.kgReal > 0 || m.tieneCostos; return `<option value="${m.key}" ${m.key === analisisMes ? 'selected' : ''}>${MESES[i]} ${analisisAnio}${has ? '' : ' (sin datos)'}</option>`; }).join('')}
+      </select>
+      <button class="btn-ghost" onclick="openCostoModal('${analisisMes}')" style="font-size:13px;padding:6px 12px;border:1px solid #16a34a;border-radius:6px;color:#15803d;font-weight:600">✏️ Cargar / editar costos del mes</button>
+    </div>`;
+
+  const a = computeAnalisisMes(analisisMes);
+  const [yy, mn] = analisisMes.split('-');
+  const mesNombre = MESES[+mn - 1] + ' ' + yy;
+  let detalle;
   if (!a.tieneCostos) {
-    cont.innerHTML = selMes + `
+    detalle = `
       <div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;padding:14px 16px;border-radius:10px;font-size:13px">
-        ⚠️ Faltan datos para ${mesNombre}. Cargá <b>días de producción</b>, <b>energía</b> y <b>mano de obra</b> con el botón "Cargar / editar costos del mes".
+        ⚠️ Faltan costos de ${mesNombre}. Cargá <b>días de producción</b>, <b>energía</b> y <b>mano de obra</b> con el botón de arriba.
         ${a.kgReal > 0 ? `<br><br>Producción real cargada este mes: <b>${fmtNum(a.kgReal)} kg</b>.` : ''}
       </div>`;
-    return;
+  } else {
+    const mefC = colorEf(a.ef);
+    const card = (titulo, accentColor, inner) => `
+      <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid ${accentColor};border-radius:10px;padding:16px;display:flex;flex-direction:column">
+        <h3 style="margin:0 0 12px;font-size:14px;color:#374151">${titulo}</h3>${inner}</div>`;
+    const big = (val, unidad, color) => `<div style="font-size:28px;font-weight:800;color:${color || '#1f2937'};line-height:1">${val}<span style="font-size:14px;font-weight:600;color:#9ca3af;margin-left:4px">${unidad || ''}</span></div>`;
+    const linea = (lbl, val) => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-top:1px solid #f3f4f6"><span style="color:#6b7280">${lbl}</span><span style="font-weight:600;color:#374151">${val}</span></div>`;
+    const cardEf = card('⚙️ Eficiencia', mefC, `
+      ${big(a.ef == null ? '–' : Math.round(a.ef), '%', mefC)}
+      <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">real ÷ teórico</div>
+      ${linea('Producción real', '<b>' + fmtNum(a.kgReal) + '</b> kg')}
+      ${linea('Producción teórica', fmtNum(a.kgTeo) + ' kg')}
+      ${linea('kg/h real', fmtNum(Math.round(a.kgHReal)) + ' kg/h')}
+      ${linea('Horas del mes', fmtNum(a.horasMes) + ' h (' + a.dias + '×' + a.horasDia + ')')}`);
+    const cardEnergia = card('⚡ Energía', '#f59e0b', `
+      ${big('$' + a.energiaKg.toFixed(1), '/kg', '#b45309')}
+      <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">${a.tc > 0 ? 'USD ' + usdKg(a.energiaKg, a.tc).toFixed(4) + ' /kg' : 'cargá TC para USD'}</div>
+      ${linea('Energía total', fmtMoney(a.energia))}
+      ${linea('Sobre producido', fmtNum(a.kgReal) + ' kg')}`);
+    const cardMO = card('👷 Mano de obra', '#3b82f6', `
+      ${big('$' + a.moKg.toFixed(1), '/kg', '#1d4ed8')}
+      <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">${a.tc > 0 ? 'USD ' + usdKg(a.moKg, a.tc).toFixed(4) + ' /kg' : 'cargá TC para USD'}</div>
+      ${linea('Por recibo', fmtMoney(a.moRecibo) + ' · $' + a.moReciboKg.toFixed(1) + '/kg')}
+      ${linea('Por hora', fmtMoney(a.moHora) + ' · $' + a.moHoraKg.toFixed(1) + '/kg')}
+      ${linea('MO total', '<b>' + fmtMoney(a.moTotal) + '</b>')}`);
+    const cardTotal = card('💰 Costo total', '#16a34a', `
+      ${big('$' + a.totalKg.toFixed(1), '/kg', '#15803d')}
+      <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">${a.tc > 0 ? 'USD ' + usdKg(a.totalKg, a.tc).toFixed(4) + ' /kg' : 'cargá TC para USD'}</div>
+      ${linea('Energía /kg', '$' + a.energiaKg.toFixed(1))}
+      ${linea('Mano de obra /kg', '$' + a.moKg.toFixed(1))}
+      ${linea('Costo del mes', fmtMoney(a.energia + a.moTotal))}`);
+    detalle = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">${cardEf}${cardEnergia}${cardMO}${cardTotal}</div>`;
   }
 
-  const card = (titulo, accentColor, inner) => `
-    <div style="background:white;border:1px solid #e5e7eb;border-left:4px solid ${accentColor};border-radius:10px;padding:16px;display:flex;flex-direction:column">
-      <h3 style="margin:0 0 12px;font-size:14px;color:#374151">${titulo}</h3>${inner}</div>`;
-  const big = (val, unidad, color) => `<div style="font-size:28px;font-weight:800;color:${color||'#1f2937'};line-height:1">${val}<span style="font-size:14px;font-weight:600;color:#9ca3af;margin-left:4px">${unidad||''}</span></div>`;
-  const linea = (lbl, val) => `<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-top:1px solid #f3f4f6"><span style="color:#6b7280">${lbl}</span><span style="font-weight:600;color:#374151">${val}</span></div>`;
-
-  const cardEf = card('⚙️ Eficiencia de producción', efC, `
-    ${big(a.ef == null ? '–' : Math.round(a.ef), '%', efC)}
-    <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">real ÷ teórico</div>
-    ${linea('Producción real', '<b>' + fmtNum(a.kgReal) + '</b> kg')}
-    ${linea('Producción teórica', fmtNum(a.kgTeo) + ' kg')}
-    ${linea('kg/h real', fmtNum(Math.round(a.kgHReal)) + ' kg/h')}
-    ${linea('Horas del mes', fmtNum(a.horasMes) + ' h (' + a.dias + ' días × ' + a.horasDia + ')')}
-  `);
-
-  const cardEnergia = card('⚡ Costo de energía', '#f59e0b', `
-    ${big('$' + a.energiaKg.toFixed(1), '/kg', '#b45309')}
-    <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">${a.tc > 0 ? 'USD ' + usdKg(a.energiaKg, a.tc).toFixed(4) + ' /kg' : 'cargá TC para USD'}</div>
-    ${linea('Energía total del mes', fmtMoney(a.energia))}
-    ${linea('Sobre kg producidos', fmtNum(a.kgReal) + ' kg')}
-  `);
-
-  const cardMO = card('👷 Costo de mano de obra', '#3b82f6', `
-    ${big('$' + a.moKg.toFixed(1), '/kg', '#1d4ed8')}
-    <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">${a.tc > 0 ? 'USD ' + usdKg(a.moKg, a.tc).toFixed(4) + ' /kg' : 'cargá TC para USD'}</div>
-    ${linea('Por recibo', fmtMoney(a.moRecibo) + ' · $' + a.moReciboKg.toFixed(1) + '/kg')}
-    ${linea('Por hora', fmtMoney(a.moHora) + ' · $' + a.moHoraKg.toFixed(1) + '/kg')}
-    ${linea('MO total', '<b>' + fmtMoney(a.moTotal) + '</b>')}
-  `);
-
-  const cardTotal = card('💰 Costo total (energía + MO)', '#16a34a', `
-    ${big('$' + a.totalKg.toFixed(1), '/kg', '#15803d')}
-    <div style="font-size:12px;color:#9ca3af;margin-top:4px;margin-bottom:8px">${a.tc > 0 ? 'USD ' + usdKg(a.totalKg, a.tc).toFixed(4) + ' /kg' : 'cargá TC para USD'}</div>
-    ${linea('Energía /kg', '$' + a.energiaKg.toFixed(1))}
-    ${linea('Mano de obra /kg', '$' + a.moKg.toFixed(1))}
-    ${linea('Costo del mes', fmtMoney(a.energia + a.moTotal))}
-  `);
-
-  // Tabla comparativa de todos los meses con costos
-  const filas = meses.map(m => computeAnalisisMes(m)).filter(x => x.tieneCostos);
-  let tabla = '';
-  if (filas.length > 1) {
-    tabla = `
-      <div style="margin-top:20px;background:white;border:1px solid #e5e7eb;border-radius:10px;padding:16px;overflow-x:auto">
-        <h3 style="margin:0 0 12px;font-size:14px;color:#374151">📊 Comparativo mensual</h3>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead><tr style="text-align:right;color:#6b7280;border-bottom:2px solid #e5e7eb">
-            <th style="text-align:left;padding:6px 8px">Mes</th><th style="padding:6px 8px">Kg real</th><th style="padding:6px 8px">Efic.</th>
-            <th style="padding:6px 8px">Energía $/kg</th><th style="padding:6px 8px">MO $/kg</th><th style="padding:6px 8px">Total $/kg</th><th style="padding:6px 8px">Total USD/kg</th>
-          </tr></thead><tbody>
-          ${filas.map(f => { const [y, n] = f.key.split('-'); return `<tr style="text-align:right;border-bottom:1px solid #f3f4f6">
-            <td style="text-align:left;padding:6px 8px;font-weight:600">${MESES[+n - 1].slice(0,3)} ${y.slice(2)}</td>
-            <td style="padding:6px 8px">${fmtNum(f.kgReal)}</td>
-            <td style="padding:6px 8px;color:${colorEf(f.ef)};font-weight:700">${f.ef == null ? '–' : Math.round(f.ef) + '%'}</td>
-            <td style="padding:6px 8px">$${f.energiaKg.toFixed(1)}</td>
-            <td style="padding:6px 8px">$${f.moKg.toFixed(1)}</td>
-            <td style="padding:6px 8px;font-weight:700">$${f.totalKg.toFixed(1)}</td>
-            <td style="padding:6px 8px;color:#16a34a">${f.tc > 0 ? usdKg(f.totalKg, f.tc).toFixed(4) : '–'}</td>
-          </tr>`; }).join('')}
-        </tbody></table>
-      </div>`;
-  }
-
-  cont.innerHTML = selMes + `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
-      ${cardEf}${cardEnergia}${cardMO}${cardTotal}
-    </div>` + tabla;
+  cont.innerHTML = selAnio + kpis + graficos + selMes + detalle;
 }
 
 // Mini-tarjeta de análisis para el dashboard (mes más reciente con costos cargados)
@@ -12697,7 +12795,7 @@ function renderRemitos() {
     <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid #e5e7eb">
       <button onclick="remitosSubTab='disponibles';renderRemitos()" style="padding:10px 18px;border:none;background:${remitosSubTab==='disponibles'?'#16a34a':'transparent'};color:${remitosSubTab==='disponibles'?'white':'#6b7280'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">📦 Pallets disponibles</button>
       <button onclick="remitosSubTab='historico';renderRemitos()" style="padding:10px 18px;border:none;background:${remitosSubTab==='historico'?'#16a34a':'transparent'};color:${remitosSubTab==='historico'?'white':'#6b7280'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">📋 Remitos emitidos</button>
-      <button onclick="remitosSubTab='bajas';renderRemitos()" style="padding:10px 18px;border:none;background:${remitosSubTab==='bajas'?'#dc2626':'transparent'};color:${remitosSubTab==='bajas'?'white':'#6b7280'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">🗑️ Bajas${_nBajas?' <span style="background:'+(remitosSubTab==='bajas'?'rgba(255,255,255,0.3)':'#fee2e2')+';color:'+(remitosSubTab==='bajas'?'white':'#b91c1c')+';padding:1px 7px;border-radius:10px;font-size:11px;margin-left:2px">'+_nBajas+'</span>':''}</button>
+      <button onclick="remitosSubTab='bajas';renderRemitos()" style="padding:10px 18px;border:none;background:${remitosSubTab==='bajas'?'#2563eb':'transparent'};color:${remitosSubTab==='bajas'?'white':'#6b7280'};font-weight:600;border-radius:6px 6px 0 0;cursor:pointer;font-size:13px">🏭 Salidas a Lanús${_nBajas?' <span style="background:'+(remitosSubTab==='bajas'?'rgba(255,255,255,0.3)':'#dbeafe')+';color:'+(remitosSubTab==='bajas'?'white':'#1e40af')+';padding:1px 7px;border-radius:10px;font-size:11px;margin-left:2px">'+_nBajas+'</span>':''}</button>
     </div>
   `;
   c.innerHTML = html;
@@ -12821,7 +12919,7 @@ function renderRemitosDisponibles() {
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
           <button onclick="event.stopPropagation();abrirDetallePallet(${idx})" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer">👁️ Detalle / 🖨️ Imprimir</button>
           <button onclick="event.stopPropagation();abrirReasignarPallet(${idx})" style="background:#fef3c7;color:#92400e;border:1px solid #fbbf24;padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer">✏️ Reasignar pallets</button>
-          <button onclick="event.stopPropagation();abrirDarDeBajaPallet(${idx})" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer">🗑️ Dar de baja</button>
+          <button onclick="event.stopPropagation();abrirDarDeBajaPallet(${idx})" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:6px 12px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer">🏭 Enviar a Lanús</button>
         </div>
       </div>
     `;
@@ -13302,32 +13400,35 @@ function abrirDarDeBajaPallet(idx) {
     <div class="modal-bg" onclick="if(event.target===this)closeModal()">
       <div class="modal" style="max-width:480px">
         <div class="modal-h">
-          <h3>🗑️ Dar de baja pallet ${pl.nroPallet}</h3>
+          <h3>🏭 Enviar pallet ${pl.nroPallet} a Lanús</h3>
           <button class="btn-ghost" onclick="closeModal()">✕</button>
         </div>
         <div class="modal-body">
-          <div style="background:#fef2f2;border:1px solid #fca5a5;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:13px;color:#991b1b">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;padding:10px 12px;border-radius:6px;margin-bottom:14px;font-size:13px;color:#1e3a8a">
             <b>${ped.cliente}</b> · OP ${ped.nroOP||'-'}<br>
             ${pl.bobinas.length} bobinas (${rangoBob}) · <b>${fmtNum(totalKg)} kg</b><br>
-            <span style="font-size:12px">Estas bobinas salen de "Pallets disponibles" sin generar remito. Vas a poder revertir la baja desde la pestaña "Bajas".</span>
+            <span style="font-size:12px">El pallet sale de "Pallets disponibles" y se transfiere a Lanús (sin remito al cliente). El <b>despacho del pedido</b> pasa solo a <b>Parcial</b>, o a <b>Lanús</b> si es lo último que queda en Chivilcoy. Reversible desde la pestaña "Salidas a Lanús".</span>
           </div>
-          <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Motivo *</label>
-          <select id="baja_motivo" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:12px">
-            ${MOTIVOS_BAJA.map(m => `<option value="${m}">${m}</option>`).join('')}
-          </select>
           <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:4px">Nota (opcional)</label>
-          <textarea id="baja_nota" rows="2" placeholder="Detalle adicional..." style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;resize:vertical;box-sizing:border-box"></textarea>
-          <div style="margin-top:14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px">
-            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:#1e3a8a">
-              <input type="checkbox" id="baja_lanus" style="margin-top:2px;width:16px;height:16px;cursor:pointer">
-              <span><b>🏭 Se envió a Lanús</b> (transferencia interna)<br>
-                <span style="font-size:12px;color:#3b82f6">Tildá esto si el pallet no es scrap sino que salió físicamente a Lanús. El despacho del pedido pasa solo a <b>Parcial</b> (o <b>Lanús</b> si era lo último que quedaba en Chivilcoy).</span>
+          <textarea id="baja_nota" rows="2" placeholder="Detalle adicional (remito interno, transporte, etc.)..." style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;resize:vertical;box-sizing:border-box"></textarea>
+          <div style="margin-top:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 12px">
+            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:#991b1b">
+              <input type="checkbox" id="baja_scrap" onchange="document.getElementById('baja_motivo_wrap').style.display=this.checked?'block':'none';document.getElementById('btn_confirmar_salida').textContent=this.checked?'🗑️ Confirmar baja':'🏭 Confirmar envío a Lanús'" style="margin-top:2px;width:16px;height:16px;cursor:pointer">
+              <span><b>🗑️ No va a Lanús — es baja / scrap</b><br>
+                <span style="font-size:12px;color:#dc2626">Tildá esto si el pallet es descarte, reproceso, muestra, etc. En ese caso <b>no se toca</b> el despacho del pedido.</span>
               </span>
             </label>
+            <div id="baja_motivo_wrap" style="display:none;margin-top:10px">
+              <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Motivo de la baja</label>
+              <select id="baja_motivo" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px">
+                ${MOTIVOS_BAJA.map(m => `<option value="${m}">${m}</option>`).join('')}
+              </select>
+            </div>
           </div>
+        </div>
         <div class="modal-f">
           <button class="btn btn-sec" onclick="closeModal()">Cancelar</button>
-          <button class="btn" style="background:#dc2626;color:white" onclick="confirmarDarDeBajaPallet(${idx})">🗑️ Confirmar baja</button>
+          <button class="btn" id="btn_confirmar_salida" style="background:#2563eb;color:white" onclick="confirmarDarDeBajaPallet(${idx})">🏭 Confirmar envío a Lanús</button>
         </div>
       </div>
     </div>
@@ -13339,10 +13440,11 @@ async function confirmarDarDeBajaPallet(idx) {
   if (!pl) { toast('Pallet no encontrado', 'error'); return; }
   const motivoEl = document.getElementById('baja_motivo');
   const notaEl = document.getElementById('baja_nota');
-  const motivo = (motivoEl && motivoEl.value) || 'Otro';
+  const scrapEl = document.getElementById('baja_scrap');
+  const esScrap = !!(scrapEl && scrapEl.checked);
+  const enviadoLanus = !esScrap; // por defecto es envío a Lanús
+  const motivo = esScrap ? ((motivoEl && motivoEl.value) || 'Otro') : 'Enviado a Lanús (transferencia interna)';
   const nota = (notaEl && notaEl.value || '').trim();
-  const enviadoLanusEl = document.getElementById('baja_lanus');
-  const enviadoLanus = !!(enviadoLanusEl && enviadoLanusEl.checked);
   const fecha = new Date().toISOString();
   const usuario = (window.currentUser && window.currentUser.nombre) || '-';
 
@@ -13352,7 +13454,7 @@ async function confirmarDarDeBajaPallet(idx) {
     const b = DATA.producciones.find(x => x.id === plb.id);
     if (!b) return;
     b.bajaManual = true;
-    b.bajaMotivo = enviadoLanus ? 'Enviado a Lanús (transferencia interna)' : motivo;
+    b.bajaMotivo = motivo;
     if (nota) b.bajaNota = nota;
     b.bajaFecha = fecha;
     b.bajaUsuario = usuario;
@@ -13388,7 +13490,7 @@ function renderRemitosBajas() {
   const c = document.getElementById('remitosContent');
   const bajas = (DATA.producciones || []).filter(b => b.bajaManual && b.nroPallet);
   if (bajas.length === 0) {
-    c.innerHTML += '<p class="muted" style="padding:30px;text-align:center">No hay pallets dados de baja. Cuando des de baja un pallet a mano desde "Pallets disponibles", va a aparecer acá y vas a poder revertirlo.</p>';
+    c.innerHTML += '<p class="muted" style="padding:30px;text-align:center">No hay pallets enviados a Lanús ni dados de baja todavía. Cuando uses "🏭 Enviar a Lanús" desde "Pallets disponibles", van a aparecer acá y vas a poder revertirlos.</p>';
     return;
   }
   // Agrupar por pallet (igual que disponibles: nroPallet + pedidoId)
@@ -13403,7 +13505,9 @@ function renderRemitosBajas() {
   window._bajasActuales = list;
 
   const totalKg = bajas.reduce((s, b) => s + (+b.kg || 0), 0);
-  c.innerHTML += `<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px">🗑️ <b>${list.length} pallets</b> dados de baja · ${bajas.length} bobinas · ${fmtNum(totalKg)} kg fuera de circulación.</div>`;
+  const nLanusPallets = list.filter(p => p.enviadoLanus).length;
+  const nScrapPallets = list.length - nLanusPallets;
+  c.innerHTML += `<div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px">🏭 <b>${nLanusPallets} pallet${nLanusPallets===1?'':'s'}</b> enviado${nLanusPallets===1?'':'s'} a Lanús${nScrapPallets?` · 🗑️ ${nScrapPallets} de baja/scrap`:''} · ${bajas.length} bobinas · ${fmtNum(totalKg)} kg.</div>`;
 
   let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(380px, 1fr));gap:12px">';
   list.forEach((pl, idx) => {
