@@ -1168,13 +1168,21 @@ function migrateLegacyData(d) {
   // Default 400 kg/h (dato real planta Chivilcoy). Se puede editar desde Análisis.
   if (!d.config.capacidadKgxHora || +d.config.capacidadKgxHora === 300) d.config.capacidadKgxHora = 400;
   if (!d.config.horasXDiaDefault) d.config.horasXDiaDefault = 17;
-  // Importación única de costos históricos 2026 (Ene–May) desde el Excel de planta.
+  // Costos históricos 2026 (Ene–May) desde el Excel de planta.
+  // Completa campos FALTANTES sin pisar lo ya cargado (idempotente). Esto repara
+  // instancias donde habían quedado energía/MO pero sin kg reales ni TC.
   // MO viene como total mensual (sin desglose recibo/hora). kgRealesManual = kg reales del mes.
   if (!d.costosMensuales) d.costosMensuales = {};
-  if (!d.config.costosHist2026Importado) {
-    Object.entries(COSTOS_HIST_2026).forEach(([k, v]) => { if (!d.costosMensuales[k]) d.costosMensuales[k] = { ...v }; });
-    d.config.costosHist2026Importado = true;
-  }
+  Object.entries(COSTOS_HIST_2026).forEach(([k, v]) => {
+    const ex = d.costosMensuales[k] || (d.costosMensuales[k] = {});
+    const tieneBobinas = (d.producciones || []).some(b => (b.fecha || '').slice(0, 7) === k);
+    ['diasProduccion', 'horasXDia', 'energia', 'manoDeObra', 'tcProm'].forEach(f => {
+      if ((+v[f] || 0) > 0 && (+ex[f] || 0) === 0) ex[f] = v[f];
+    });
+    // kg manual solo si NO hay bobinas reales ese mes (no pisar producción real cargada)
+    if ((+v.kgRealesManual || 0) > 0 && (+ex.kgRealesManual || 0) === 0 && !tieneBobinas) ex.kgRealesManual = v.kgRealesManual;
+  });
+  d.config.costosHist2026Importado = true;
   if (!d.config.proximoNroRemito) d.config.proximoNroRemito = 1235; // siguiente al ejemplo 1234
   if (!d.config.puntoVentaRemito) d.config.puntoVentaRemito = '0001';
   // Destinatario por default (Lanús)
@@ -4146,28 +4154,45 @@ function aniosConDatos() {
   return [...set].sort((a, b) => b - a);
 }
 
-// ¿Falta cargar alguno de los meses históricos (vacío o inexistente)?
-function faltanCostosHistoricos() {
-  const cm = DATA.costosMensuales || {};
-  return Object.keys(COSTOS_HIST_2026).filter(k => {
-    const ex = cm[k];
-    return !ex || ((+ex.energia || 0) === 0 && (+ex.manoDeObra || 0) === 0 && (+ex.manoDeObraRecibo || 0) === 0 && (+ex.manoDeObraHora || 0) === 0);
-  });
+// kg de bobinas reales cargadas para un mes 'YYYY-MM'
+function kgBobinasMes(k) {
+  return (DATA.producciones || []).filter(b => (b.fecha || '').slice(0, 7) === k).reduce((s, b) => s + (+b.kg || 0), 0);
 }
 
-// Importación explícita (botón): mete los meses faltantes/vacíos y guarda en el Gist al toque.
-// No pisa meses que ya tengan datos cargados.
+// Campos del Excel histórico que faltan completar en un mes (no pisa lo cargado)
+function camposFaltantesHist(k) {
+  const v = COSTOS_HIST_2026[k];
+  const ex = DATA.costosMensuales[k];
+  const campos = [];
+  if (!ex) return Object.keys(v).filter(f => (+v[f] || 0) > 0);
+  ['diasProduccion', 'horasXDia', 'energia', 'manoDeObra', 'tcProm'].forEach(f => {
+    if ((+v[f] || 0) > 0 && (+ex[f] || 0) === 0) campos.push(f);
+  });
+  if ((+v.kgRealesManual || 0) > 0 && (+ex.kgRealesManual || 0) === 0 && kgBobinasMes(k) === 0) campos.push('kgRealesManual');
+  return campos;
+}
+
+// Meses históricos que necesitan completar algún dato (kg, TC, etc.)
+function faltanCostosHistoricos() {
+  return Object.keys(COSTOS_HIST_2026).filter(k => camposFaltantesHist(k).length > 0);
+}
+
+// Importación explícita (botón): completa los campos faltantes y guarda en el Gist al toque.
+// No pisa nada que ya tengas cargado.
 async function importarCostosHistoricos() {
   if (!DATA.costosMensuales) DATA.costosMensuales = {};
   const faltan = faltanCostosHistoricos();
-  if (faltan.length === 0) { toast('Los meses históricos ya estaban cargados', 'success'); return; }
-  faltan.forEach(k => { DATA.costosMensuales[k] = { ...COSTOS_HIST_2026[k] }; });
+  if (faltan.length === 0) { toast('Los meses históricos ya están completos', 'success'); return; }
+  faltan.forEach(k => {
+    if (!DATA.costosMensuales[k]) DATA.costosMensuales[k] = {};
+    camposFaltantesHist(k).forEach(f => { DATA.costosMensuales[k][f] = COSTOS_HIST_2026[k][f]; });
+  });
   DATA.config.costosHist2026Importado = true;
   try {
     await saveData();
-    toast(`Importados ${faltan.length} meses históricos (${faltan.map(k => MESES[+k.slice(5) - 1].slice(0, 3)).join(', ')})`, 'success');
+    toast(`Completados ${faltan.length} mes${faltan.length === 1 ? '' : 'es'} (${faltan.map(k => MESES[+k.slice(5) - 1].slice(0, 3)).join(', ')})`, 'success');
   } catch (e) {
-    toast('Importado en pantalla, pero falló el guardado: ' + (e.message || e), 'error');
+    toast('Completado en pantalla, pero falló el guardado: ' + (e.message || e), 'error');
   }
   if (currentTab === 'analisis') renderAnalisis(); else render();
 }
@@ -4301,8 +4326,8 @@ function renderAnalisis() {
   const faltan = faltanCostosHistoricos();
   const bannerHist = faltan.length ? `
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px">
-      <span style="font-size:13px;color:#1e3a8a;flex:1;min-width:200px">📥 Hay <b>${faltan.length} mes${faltan.length===1?'':'es'}</b> de 2026 con datos del Excel sin cargar (${faltan.map(k => MESES[+k.slice(5)-1].slice(0,3)).join(', ')}). Importalos y se guardan en la nube.</span>
-      <button class="btn" style="background:#2563eb;color:white;white-space:nowrap" onclick="importarCostosHistoricos()">Importar ahora</button>
+      <span style="font-size:13px;color:#1e3a8a;flex:1;min-width:200px">📥 Hay <b>${faltan.length} mes${faltan.length===1?'':'es'}</b> de 2026 con datos del Excel <b>incompletos</b> (faltan kg producidos y/o TC en ${faltan.map(k => MESES[+k.slice(5)-1].slice(0,3)).join(', ')}). Completalos y se guardan en la nube.</span>
+      <button class="btn" style="background:#2563eb;color:white;white-space:nowrap" onclick="importarCostosHistoricos()">Completar ahora</button>
     </div>` : '';
 
   // ---- KPIs del año ----
