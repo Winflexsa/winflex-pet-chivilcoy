@@ -4243,6 +4243,32 @@ function computeAnalisisMes(key) {
 function setAnalisisMes(m) { analisisMes = m; renderAnalisis(); }
 function setAnalisisAnio(y) { analisisAnio = +y; analisisMes = null; renderAnalisis(); }
 
+// Output (kg/h) y horas/día editables desde Análisis (config global)
+async function setOutputGlobal(v) {
+  const n = +v || 0;
+  if (n <= 0) { toast('Output inválido', 'error'); renderAnalisis(); return; }
+  DATA.config.capacidadKgxHora = n;
+  await saveData();
+  renderAnalisis();
+  toast(`Output: ${fmtNum(n)} kg/h`, 'success');
+}
+async function setHorasDiaGlobal(v) {
+  const n = +v || 0;
+  if (n <= 0) { toast('Horas/día inválido', 'error'); renderAnalisis(); return; }
+  DATA.config.horasXDiaDefault = n;
+  await saveData();
+  renderAnalisis();
+  toast(`Horas/día por defecto: ${n}`, 'success');
+}
+async function aplicarHorasDiaTodos() {
+  const h = +DATA.config.horasXDiaDefault || 17;
+  if (!confirm(`¿Poner ${h} horas/día en TODOS los meses cargados?\n\nEsto pisa las horas/día propias de cada mes (ej. los históricos importados).`)) return;
+  Object.keys(DATA.costosMensuales || {}).forEach(k => { DATA.costosMensuales[k].horasXDia = h; });
+  await saveData();
+  renderAnalisis();
+  toast(`Aplicadas ${h} h/día a todos los meses`, 'success');
+}
+
 function colorEf(ef) {
   if (ef == null) return '#6b7280';
   return ef >= 100 ? '#16a34a' : ef >= 80 ? '#d97706' : '#dc2626';
@@ -4319,7 +4345,15 @@ function renderAnalisis() {
         ${anios.map(y => `<option value="${y}" ${y === analisisAnio ? 'selected' : ''}>${y}</option>`).join('')}
       </select>
       <span style="flex:1"></span>
-      <span style="font-size:12px;color:#9ca3af">Output máquina: <b style="color:#374151">${fmtNum(+DATA.config.capacidadKgxHora || 400)} kg/h</b> · ${+DATA.config.horasXDiaDefault || 17} h/día</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:#6b7280">
+        <label style="display:flex;align-items:center;gap:5px">Output máquina:
+          <input type="number" min="1" value="${+DATA.config.capacidadKgxHora || 400}" onchange="setOutputGlobal(this.value)" title="kg/h teóricos de la máquina (afecta todas las eficiencias)" style="width:66px;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-weight:700;text-align:center;color:#374151"> kg/h
+        </label>
+        <label style="display:flex;align-items:center;gap:5px">Horas/día:
+          <input type="number" min="1" value="${+DATA.config.horasXDiaDefault || 17}" onchange="setHorasDiaGlobal(this.value)" title="Horas por día por defecto (para meses sin valor propio)" style="width:54px;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;font-weight:700;text-align:center;color:#374151">
+        </label>
+        <button onclick="aplicarHorasDiaTodos()" title="Pone estas horas/día en todos los meses cargados" style="font-size:11px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;background:white;color:#6b7280;cursor:pointer;white-space:nowrap">aplicar a todos los meses</button>
+      </div>
     </div>`;
 
   // ---- Banner de importación de históricos (si faltan meses) ----
