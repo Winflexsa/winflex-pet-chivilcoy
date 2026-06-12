@@ -1031,6 +1031,113 @@ const COSTOS_HIST_2026 = {
   '2026-05': { diasProduccion: 0,  horasXDia: 17, energia: 11787239.24, manoDeObra: 0,           kgRealesManual: 55041, tcProm: 0 }
 };
 
+// ============================================================
+// LIBRO MAYOR DE ESTADO PC DE BOBINAS (remito / baja / envío a Lanús)
+// ------------------------------------------------------------
+// PROBLEMA QUE RESUELVE: remitoId / bajaManual / enviadoLanus son decisiones
+// que SOLO toma la PC (la tablet nunca las setea). Vivían pegados a la bobina
+// dentro de DATA.producciones, PERO la tablet es dueña de ese array: cuando un
+// operario edita una bobina (o el merge por timestamp gana del lado tablet),
+// la bobina se reescribe SIN esos campos → se borran silenciosamente. Resultado
+// reportado por Agustín: pallets ya enviados a Lanús reaparecían en "Pallets
+// disponibles". Lo mismo podía pasar con remitos ya emitidos.
+// SOLUCIÓN: un libro mayor propio de la PC (DATA.estadoBobinasPC) que se UNE
+// (nunca se pisa con el remoto) y se SUPERPONE sobre producciones en cada carga,
+// reescribiendo los flags. Mismo patrón que los tombstones de pedidos.
+// Estructura: { [bobinaId]: { remitoId, fechaDespacho, bajaManual, bajaMotivo,
+//   bajaNota, bajaFecha, bajaUsuario, enviadoLanus, ts } }
+// Una entrada "limpia" ({ ts }) representa un remito anulado / baja revertida:
+// fuerza el BORRADO del flag en la bobina (así la reversión se impone sobre una
+// copia remota vieja que todavía traiga el flag).
+// ============================================================
+function pcSetEstadoBobina(id, patch) {
+  if (!id) return;
+  if (!DATA.estadoBobinasPC) DATA.estadoBobinasPC = {};
+  const prev = DATA.estadoBobinasPC[id] || {};
+  DATA.estadoBobinasPC[id] = Object.assign({}, prev, patch, { ts: new Date().toISOString() });
+}
+function pcClearEstadoBobina(id) {
+  if (!id) return;
+  if (!DATA.estadoBobinasPC) DATA.estadoBobinasPC = {};
+  // Entrada limpia: sin remito ni baja, con ts nuevo para ganarle al remoto viejo.
+  DATA.estadoBobinasPC[id] = { ts: new Date().toISOString() };
+}
+function mergeEstadoBobinasPC(a, b) {
+  const out = {};
+  [a, b].forEach(obj => {
+    if (!obj || typeof obj !== 'object') return;
+    Object.entries(obj).forEach(([id, st]) => {
+      if (!st || typeof st !== 'object') return;
+      const ex = out[id];
+      if (!ex || (st.ts || '') >= (ex.ts || '')) out[id] = st;
+    });
+  });
+  // Podar entradas INACTIVAS (sin remito ni baja) de más de 180 días, para que
+  // el libro no crezca infinito. Las activas se conservan siempre.
+  const limite = new Date(Date.now() - 180 * 86400000).toISOString();
+  Object.keys(out).forEach(id => {
+    const st = out[id];
+    const activo = !!st.remitoId || st.bajaManual === true;
+    if (!activo && (st.ts || '') < limite) delete out[id];
+  });
+  return out;
+}
+// Superpone el libro mayor sobre data.producciones (idempotente).
+function pcAplicarEstadoBobinas(data) {
+  if (!data || !Array.isArray(data.producciones)) return;
+  const led = data.estadoBobinasPC;
+  if (!led || typeof led !== 'object') return;
+  const idx = {};
+  data.producciones.forEach(b => { if (b && b.id) idx[b.id] = b; });
+  Object.keys(led).forEach(id => {
+    const st = led[id]; const b = idx[id];
+    if (!b || !st) return;
+    // REMITO
+    if (st.remitoId) {
+      b.remitoId = st.remitoId;
+      if (st.fechaDespacho) b.fechaDespacho = st.fechaDespacho;
+    } else {
+      delete b.remitoId;
+    }
+    // BAJA / ENVÍO A LANÚS
+    if (st.bajaManual === true) {
+      b.bajaManual = true;
+      if (st.bajaMotivo) b.bajaMotivo = st.bajaMotivo; else delete b.bajaMotivo;
+      if (st.bajaNota) b.bajaNota = st.bajaNota; else delete b.bajaNota;
+      if (st.bajaFecha) b.bajaFecha = st.bajaFecha; else delete b.bajaFecha;
+      if (st.bajaUsuario) b.bajaUsuario = st.bajaUsuario; else delete b.bajaUsuario;
+      if (st.enviadoLanus) b.enviadoLanus = true; else delete b.enviadoLanus;
+    } else {
+      delete b.bajaManual; delete b.bajaMotivo; delete b.bajaNota;
+      delete b.bajaFecha; delete b.bajaUsuario; delete b.enviadoLanus;
+    }
+  });
+}
+// Backfill: captura en el libro los flags que YA viven en las bobinas (remitos /
+// bajas hechos antes de esta versión) que todavía no tienen entrada. Así quedan
+// protegidos de acá en adelante. Solo agrega lo que falta (idempotente).
+function pcBackfillEstadoBobinas(data) {
+  if (!data || !Array.isArray(data.producciones)) return;
+  if (!data.estadoBobinasPC || typeof data.estadoBobinasPC !== 'object') data.estadoBobinasPC = {};
+  const led = data.estadoBobinasPC;
+  data.producciones.forEach(b => {
+    if (!b || !b.id) return;
+    const tieneFlag = !!b.remitoId || b.bajaManual === true;
+    if (!tieneFlag || led[b.id]) return;
+    const st = { ts: b.bajaFecha || b.fechaDespacho || new Date().toISOString() };
+    if (b.remitoId) { st.remitoId = b.remitoId; if (b.fechaDespacho) st.fechaDespacho = b.fechaDespacho; }
+    if (b.bajaManual === true) {
+      st.bajaManual = true;
+      if (b.bajaMotivo) st.bajaMotivo = b.bajaMotivo;
+      if (b.bajaNota) st.bajaNota = b.bajaNota;
+      if (b.bajaFecha) st.bajaFecha = b.bajaFecha;
+      if (b.bajaUsuario) st.bajaUsuario = b.bajaUsuario;
+      if (b.enviadoLanus) st.enviadoLanus = true;
+    }
+    led[b.id] = st;
+  });
+}
+
 function migrateLegacyData(d) {
   if (!d || !d.pedidos) return d;
   // Tombstones de pedidos borrados (para el merge anti-pérdida). Si venía como array u otra cosa, normalizar a objeto.
@@ -1279,6 +1386,12 @@ function migrateLegacyData(d) {
   }
 
   if (migrated > 0) console.log(`Migrated ${migrated} legacy fields`);
+  // Estado PC de bobinas (remito / baja / Lanús): capturar flags existentes en el
+  // libro mayor y re-aplicarlo sobre producciones. Esto se ejecuta en TODA carga/
+  // refresco (loadData en todas sus ramas + silentReloadPC), por eso protege contra
+  // que la tablet borre los flags al reescribir el array de producciones.
+  pcBackfillEstadoBobinas(d);
+  pcAplicarEstadoBobinas(d);
   return d;
 }
 
@@ -2256,6 +2369,12 @@ async function saveData() {
       merged.pedidosEliminados = mergeTombstones(remote.pedidosEliminados, DATA.pedidosEliminados);
       merged.pedidos = aplicarTombstones(mergePedidosUnion(remote.pedidos, DATA.pedidos), merged.pedidosEliminados);
 
+      // Estado PC de bobinas (remito / baja / Lanús): unir libro mayor remoto+local
+      // y superponerlo sobre las producciones (que vienen del REMOTO). Así, aunque la
+      // tablet haya reescrito una bobina sin sus flags, acá se restauran antes de subir.
+      merged.estadoBobinasPC = mergeEstadoBobinasPC(remote.estadoBobinasPC, DATA.estadoBobinasPC);
+      pcAplicarEstadoBobinas(merged);
+
       const pedConBobinasSV = new Set((merged.producciones || []).map(b => b.pedidoId).filter(Boolean));
       (merged.pedidos || []).forEach(p => {
         if (p && p.id && (+p.kgReales || 0) > 0 && !pedConBobinasSV.has(p.id)) {
@@ -2342,6 +2461,11 @@ async function saveData() {
     const merged = JSON.parse(JSON.stringify(DATA));  // base local
     merged.producciones = remote.producciones || [];
     merged.registrosProduccion = remote.registrosProduccion || [];
+
+    // Estado PC de bobinas (remito / baja / Lanús): unir libro mayor y superponerlo
+    // sobre las producciones para que esos flags no se pierdan al tomar el remoto.
+    merged.estadoBobinasPC = mergeEstadoBobinasPC(remote.estadoBobinasPC, DATA.estadoBobinasPC);
+    pcAplicarEstadoBobinas(merged);
 
     // 3) Recalcular kgReales de TODOS los pedidos a partir del array remoto.
     // Solo afecta a pedidos con bobinas en remoto; los históricos (sin producciones) quedan intactos.
@@ -2438,6 +2562,9 @@ async function silentReloadPC() {
     const merged = JSON.parse(JSON.stringify(DATA));
     merged.producciones = remote.producciones || [];
     merged.registrosProduccion = remote.registrosProduccion || [];
+    // Estado PC de bobinas: unir libro mayor remoto+local. El overlay sobre
+    // producciones lo hace migrateLegacyData(merged) más abajo.
+    merged.estadoBobinasPC = mergeEstadoBobinasPC(remote.estadoBobinasPC, DATA.estadoBobinasPC);
     // Si la PC no estaba editando pedidos, traer también lo que cambió remoto en pedidos.
     // Se UNE por id (no se pisa) para que un pedido cargado en este equipo y todavía no
     // sincronizado no se pierda en el auto-refresh, y se respetan los borrados.
@@ -13583,6 +13710,12 @@ async function confirmarDarDeBajaPallet(idx) {
     b.bajaUsuario = usuario;
     if (enviadoLanus) b.enviadoLanus = true; else delete b.enviadoLanus;
     window._pcModifiedBobinas.add(b.id);
+    // Registrar en el libro mayor PC para que la tablet no pueda borrar el flag.
+    pcSetEstadoBobina(b.id, {
+      bajaManual: true, bajaMotivo: motivo, bajaNota: nota || undefined,
+      bajaFecha: fecha, bajaUsuario: usuario,
+      enviadoLanus: enviadoLanus ? true : undefined
+    });
     n++;
   });
 
@@ -13603,6 +13736,9 @@ async function confirmarDarDeBajaPallet(idx) {
   }
 
   closeModal();
+  // Limpiar la selección: si no, los pallets recién enviados quedaban tildados
+  // y, al reaparecer en "disponibles", se veían como seleccionados.
+  pl.bobinas.forEach(plb => remitosSeleccion.delete(plb.id));
   await saveData();
   toast(`Pallet ${pl.nroPallet} ${enviadoLanus ? 'enviado a Lanús' : 'dado de baja'} (${n} bobinas)${despachoMsg}`, 'success');
   remitosSubTab = 'bajas';
@@ -13682,6 +13818,9 @@ async function revertirBajaPallet(idx) {
     delete b.bajaUsuario;
     delete b.enviadoLanus;
     window._pcModifiedBobinas.add(b.id);
+    // Dejar entrada "limpia" en el libro mayor: fuerza el borrado del flag aunque
+    // una copia remota vieja todavía traiga la baja.
+    pcClearEstadoBobina(b.id);
     n++;
   });
   await saveData();
@@ -13941,6 +14080,11 @@ async function confirmarYGenerarRemito() {
       orig.remitoId = remitoId;
       orig.fechaDespacho = remito.fecha;
     }
+    // Registrar en el libro mayor PC + en _pcModifiedBobinas para que el remito NO
+    // se pierda cuando la tablet reescriba el array de producciones.
+    if (!window._pcModifiedBobinas) window._pcModifiedBobinas = new Set();
+    window._pcModifiedBobinas.add(b.id);
+    pcSetEstadoBobina(b.id, { remitoId: remitoId, fechaDespacho: remito.fecha });
   });
 
   // Guardar el remito
@@ -13973,11 +14117,14 @@ async function confirmarYGenerarRemito() {
 
 async function anularRemito(remitoId) {
   if (!confirm('¿Anular este remito?\n\nLas bobinas vuelven a estar disponibles para emitir un nuevo remito. El número del remito anulado NO se reutiliza.')) return;
+  if (!window._pcModifiedBobinas) window._pcModifiedBobinas = new Set();
   // Liberar las bobinas
   (DATA.producciones || []).forEach(b => {
     if (b.remitoId === remitoId) {
       delete b.remitoId;
       delete b.fechaDespacho;
+      window._pcModifiedBobinas.add(b.id);
+      pcClearEstadoBobina(b.id);
     }
   });
   // Marcar el remito como anulado (no eliminar para mantener trazabilidad)
@@ -14002,10 +14149,13 @@ async function eliminarRemito(remitoId) {
     if (respuesta !== 'ELIMINAR') { toast('Eliminación cancelada', 'success'); return; }
   }
   // Liberar bobinas si estaba vigente
+  if (!window._pcModifiedBobinas) window._pcModifiedBobinas = new Set();
   (DATA.producciones || []).forEach(b => {
     if (b.remitoId === remitoId) {
       delete b.remitoId;
       delete b.fechaDespacho;
+      window._pcModifiedBobinas.add(b.id);
+      pcClearEstadoBobina(b.id);
     }
   });
   // Eliminar el remito
