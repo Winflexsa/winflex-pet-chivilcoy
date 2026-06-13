@@ -45,6 +45,21 @@ nav.tabs { background: white; border-bottom: 1px solid #e5e7eb; padding: 0 24px;
 .tab { padding: 12px 18px; cursor: pointer; border: none; background: none; font-size: 14px; color: #6b7280; font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap; }
 .tab:hover { color: #1f2937; }
 .tab.active { color: #16a34a; border-bottom-color: #16a34a; }
+/* Barra de pestañas internas (respaldo cuando no se pueden abrir ventanas: tablets en kiosko) */
+.tabbar-abiertas { display: flex; gap: 4px; align-items: flex-end; background: #f3f4f6; border-bottom: 1px solid #e5e7eb; padding: 6px 12px 0; overflow-x: auto; }
+.tabbar-abiertas:empty { display: none; }
+.pest { display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 7px 8px 7px 14px; border: 1px solid #e5e7eb; border-bottom: none; border-radius: 8px 8px 0 0; background: #e9ebef; color: #6b7280; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.pest:hover { color: #1f2937; background: #fff; }
+.pest.active { color: #16a34a; font-weight: 600; border-color: #16a34a; border-bottom: 1px solid #fff; background: #fff; }
+.pest .pest-nombre { overflow: hidden; text-overflow: ellipsis; }
+.pest .pest-x { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; font-size: 14px; line-height: 1; color: #9ca3af; flex-shrink: 0; }
+.pest .pest-x:hover { background: #fee2e2; color: #991b1b; }
+.pest.fija { padding-right: 14px; }
+.pest.fija .pest-x { display: none; }
+@media (max-width: 640px) { .tabbar-abiertas { padding: 5px 6px 0; } .pest { max-width: 150px; font-size: 11px; padding: 6px 6px 6px 10px; } }
+/* Ventana dedicada a un módulo (abierta con ?tab=): sin menú ni barra de pestañas */
+body.modo-modulo nav.tabs { display: none; }
+body.modo-modulo #barraPestanias { display: none; }
 
 /* Content */
 main { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
@@ -266,6 +281,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #16a34a
     <button class="tab" data-tab="catalogos">📚 Catálogos</button>
     <button class="tab" data-tab="config">⚙️ Configuración</button>
   </nav>
+  <div id="barraPestanias" class="tabbar-abiertas" role="tablist" aria-label="Pestañas abiertas"></div>
 
   <main>
     <!-- DASHBOARD -->
@@ -992,6 +1008,7 @@ async function doLogin() {
   const usuario = resolvePcUser(pin);
   if (usuario) {
     window.currentUser = usuario;
+    try { sessionStorage.setItem('winflex-pet-unlocked', '1'); sessionStorage.setItem('winflex-pet-pin', pin); } catch (_) {}
     console.log('[doLogin] Ingresó:', usuario.nombre, '· rol:', usuario.rol);
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
@@ -2751,8 +2768,18 @@ function initApp() {
     ub.textContent = '👤 ' + window.currentUser.nombre + (window.currentUser.rol === 'admin' ? '' : ' · ' + window.currentUser.rol);
   }
   document.querySelectorAll('.tab').forEach(t => {
-    t.addEventListener('click', () => switchTab(t.dataset.tab));
+    t.addEventListener('click', () => abrirModulo(t.dataset.tab));
   });
+  const barra = document.getElementById('barraPestanias');
+  if (barra && !barra._wired) {
+    barra._wired = true;
+    barra.addEventListener('click', (e) => {
+      const x = e.target.closest('[data-cerrar]');
+      if (x) { e.stopPropagation(); cerrarPestania(x.dataset.cerrar); return; }
+      const p = e.target.closest('[data-pest]');
+      if (p) { activarInterno(p.dataset.pest); }
+    });
+  }
   populateFilters();
   render();
   // Auto-limpieza: si en loadData detectamos adjuntos/logo, subir el bin limpio ahora
@@ -2771,12 +2798,110 @@ function initApp() {
     }, 1200);
   }
 }
-function switchTab(name) {
+// ============================================================
+// NAVEGACIÓN POR VENTANAS (mismo sistema que la app de Sueldos/Horas)
+// Cada módulo se abre en su propia ventana del navegador (?tab=xxx).
+// Si el navegador la bloquea (tablets en kiosko), cae a pestañas internas.
+// ============================================================
+const MODULOS = {
+  dashboard: '📊 Dashboard', pedidos: '📋 Pedidos', cronograma: '📅 Cronograma',
+  producciones: '⚙️ Producciones', remitos: '📦 Remitos', analisis: '📈 Análisis',
+  mp: '📦 Materia Prima', catalogos: '📚 Catálogos', config: '⚙️ Configuración'
+};
+const _paramTab = (function () { try { return new URLSearchParams(location.search).get('tab'); } catch (_) { return null; } })();
+const MODULO_VENTANA = (_paramTab && MODULOS[_paramTab]) ? _paramTab : null;
+const ES_HIJA = !!MODULO_VENTANA;
+
+let abiertas = ES_HIJA ? [MODULO_VENTANA] : ['dashboard']; // módulos abiertos, en orden
+let activo = ES_HIJA ? MODULO_VENTANA : 'dashboard';        // módulo a la vista
+
+// Dibuja la barra de pestañas internas (solo visible en modo respaldo).
+function pintarBarra() {
+  const barra = document.getElementById('barraPestanias');
+  if (!barra) return;
+  const mostrar = abiertas.length > 1;
+  barra.innerHTML = !mostrar ? '' : abiertas.map(name => {
+    const fija = (name === 'dashboard') ? ' fija' : '';
+    const act = (name === activo) ? ' active' : '';
+    const label = MODULOS[name] || name;
+    const x = (name === 'dashboard') ? '' : `<span class="pest-x" data-cerrar="${name}" title="Cerrar pestaña">×</span>`;
+    return `<div class="pest${act}${fija}" data-pest="${name}" role="tab" title="${label}"><span class="pest-nombre">${label}</span>${x}</div>`;
+  }).join('');
+}
+
+// Activa un módulo DENTRO de esta ventana (sistema de pestañas internas / respaldo).
+function activarInterno(name) {
+  if (!MODULOS[name]) return;
+  // Si esta ventana estaba dedicada a un módulo y se pide otro, salir del modo dedicado.
+  if (document.body.classList.contains('modo-modulo') && name !== MODULO_VENTANA) {
+    document.body.classList.remove('modo-modulo');
+  }
+  if (!abiertas.includes(name)) abiertas.push(name);
   currentTab = name;
+  activo = name;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
-  document.getElementById('tab-' + name).classList.remove('hidden');
+  const sec = document.getElementById('tab-' + name);
+  if (sec) sec.classList.remove('hidden');
+  pintarBarra();
   render();
+}
+
+// Cierra una pestaña interna (Dashboard no se cierra).
+function cerrarPestania(name) {
+  if (name === 'dashboard') return;
+  const idx = abiertas.indexOf(name);
+  if (idx === -1) return;
+  abiertas.splice(idx, 1);
+  if (activo === name) {
+    activarInterno(abiertas[idx - 1] || abiertas[idx] || 'dashboard');
+  } else {
+    pintarBarra();
+  }
+}
+
+// Abre un módulo en su PROPIA VENTANA del navegador. Reusa la ventana por módulo.
+// Si el navegador la bloquea (kiosko), cae a pestaña interna como respaldo.
+function abrirModulo(name) {
+  if (!MODULOS[name]) return;
+  if (ES_HIJA && name === MODULO_VENTANA) return; // ya estás en esta ventana
+  try {
+    const aw = (window.screen && screen.availWidth) || 1280;
+    const ah = (window.screen && screen.availHeight) || 800;
+    const ww = Math.min(1280, Math.round(aw * 0.88));
+    const wh = Math.min(900, Math.round(ah * 0.92));
+    const idx = Object.keys(MODULOS).indexOf(name);
+    const off = (idx % 6) * 28;
+    const left = Math.max(0, Math.round((aw - ww) / 2) + off - 70);
+    const top = Math.max(0, Math.round((ah - wh) / 2) + off - 40);
+    const feats = `popup=yes,toolbar=no,location=no,menubar=no,status=no,resizable=yes,scrollbars=yes,width=${ww},height=${wh},left=${left},top=${top}`;
+    const w = window.open('./index.html?tab=' + encodeURIComponent(name), 'winflexpet_' + name, feats);
+    if (w) { try { w.focus(); } catch (_) {} return; }
+  } catch (_) {}
+  activarInterno(name); // respaldo: pestaña interna dentro de esta misma ventana
+}
+
+// Compatibilidad: todas las llamadas existentes a switchTab(...) abren ahora una ventana.
+window.switchTab = abrirModulo;
+window.cerrarPestania = cerrarPestania;
+
+// Auto-desbloqueo de ventanas de módulo (heredan la sesión del login vía sessionStorage).
+function intentarAutoUnlock() {
+  let unlocked = false, pin = '';
+  try {
+    unlocked = sessionStorage.getItem('winflex-pet-unlocked') === '1';
+    pin = sessionStorage.getItem('winflex-pet-pin') || '';
+  } catch (_) {}
+  if (!unlocked) return false;
+  const usuario = resolvePcUser(pin);
+  if (!usuario) return false;
+  window.currentUser = usuario;
+  const lg = document.getElementById('login');
+  const ap = document.getElementById('app');
+  if (lg) lg.classList.add('hidden');
+  if (ap) ap.classList.remove('hidden');
+  initApp();
+  return true;
 }
 function render() {
   if (currentTab === 'dashboard') renderDashboard();
@@ -7728,6 +7853,15 @@ loadData().then(() => {
     // Caso especial: tiene JSONBin viejo pero no Gist. Forzar migración.
     abrirSetupGistInicial();
   } else {
+    // Ventana de módulo (?tab=) o recarga dentro de la misma sesión: saltar el PIN.
+    if (intentarAutoUnlock()) {
+      if (ES_HIJA) {
+        document.body.classList.add('modo-modulo');
+        try { document.title = (MODULOS[MODULO_VENTANA] || '') + ' · PET Chivilcoy'; } catch (_) {}
+        activarInterno(MODULO_VENTANA);
+      }
+      return;
+    }
     setTimeout(() => document.getElementById('pinInput').focus(), 100);
   }
 });
