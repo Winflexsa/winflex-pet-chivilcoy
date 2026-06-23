@@ -13248,10 +13248,13 @@ function renderRemitosDisponibles() {
     c.innerHTML += `
       <div style="background:linear-gradient(135deg,#16a34a,#15803d);color:white;padding:14px 18px;border-radius:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
         <div>
-          <div style="font-size:13px;opacity:0.9">SELECCIONADO PARA REMITIR</div>
+          <div style="font-size:13px;opacity:0.9">SELECCIONADO</div>
           <div style="font-size:18px;font-weight:700;margin-top:4px">${palletsSel} pallets · ${seleccionadas.length} bobinas · ${fmtNum(totalKgSel)} kg</div>
         </div>
-        <button onclick="openCrearRemitoModal()" style="background:white;color:#15803d;border:none;padding:12px 24px;font-size:15px;font-weight:700;border-radius:8px;cursor:pointer">📄 Generar remito</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="enviarSeleccionadosALanus()" style="background:rgba(255,255,255,0.18);color:white;border:1px solid rgba(255,255,255,0.55);padding:12px 20px;font-size:15px;font-weight:700;border-radius:8px;cursor:pointer">🏭 Enviar a Lanús</button>
+          <button onclick="openCrearRemitoModal()" style="background:white;color:#15803d;border:none;padding:12px 24px;font-size:15px;font-weight:700;border-radius:8px;cursor:pointer">📄 Generar remito</button>
+        </div>
       </div>
     `;
   }
@@ -13875,6 +13878,58 @@ async function confirmarDarDeBajaPallet(idx) {
   pl.bobinas.forEach(plb => remitosSeleccion.delete(plb.id));
   await saveData();
   toast(`Pallet ${pl.nroPallet} ${enviadoLanus ? 'enviado a Lanús' : 'dado de baja'} (${n} bobinas)${despachoMsg}`, 'success');
+  remitosSubTab = 'bajas';
+  renderRemitos();
+}
+
+// Baja masiva a Lanús de TODOS los pallets tildados (checkboxes de "Pallets
+// disponibles"). Mismo efecto que "Enviar a Lanús" por pallet, pero en lote.
+// Pensado para regularizar de una vez los pallets viejos cuyas bajas se habían
+// perdido antes de existir el libro mayor. Cada bobina queda registrada en
+// estadoBobinasPC, así la tablet ya no las puede hacer reaparecer.
+async function enviarSeleccionadosALanus() {
+  const bobs = (DATA.producciones || []).filter(b => remitosSeleccion.has(b.id) && !b.remitoId && !b.bajaManual);
+  if (bobs.length === 0) { toast('No hay pallets seleccionados', 'error'); return; }
+  const palletsSet = new Set(bobs.map(b => b.nroPallet + '__' + b.pedidoId));
+  const pedidosTocados = new Set(bobs.map(b => b.pedidoId).filter(Boolean));
+  const kgTot = bobs.reduce((s, b) => s + (+b.kg || 0), 0);
+  if (!confirm(`🏭 Enviar a Lanús ${palletsSet.size} pallets (${bobs.length} bobinas · ${fmtNum(kgTot)} kg).\n\nSalen de "Pallets disponibles" y quedan registrados en el libro mayor (la tablet ya no los va a hacer reaparecer). Reversible uno por uno desde "Salidas a Lanús".\n\n¿Continuar?`)) return;
+
+  const motivo = 'Enviado a Lanús (transferencia interna)';
+  const fecha = new Date().toISOString();
+  const usuario = (window.currentUser && window.currentUser.nombre) || '-';
+  if (!window._pcModifiedBobinas) window._pcModifiedBobinas = new Set();
+
+  bobs.forEach(b => {
+    b.bajaManual = true;
+    b.bajaMotivo = motivo;
+    b.bajaFecha = fecha;
+    b.bajaUsuario = usuario;
+    b.enviadoLanus = true;
+    window._pcModifiedBobinas.add(b.id);
+    // Registrar en el libro mayor PC para que la tablet no pueda borrar el flag.
+    pcSetEstadoBobina(b.id, {
+      bajaManual: true, bajaMotivo: motivo,
+      bajaFecha: fecha, bajaUsuario: usuario, enviadoLanus: true
+    });
+    remitosSeleccion.delete(b.id);
+  });
+
+  // Mover el eje despacho de cada pedido afectado (Parcial si queda algo en Chivilcoy, Despachado si no).
+  pedidosTocados.forEach(pid => {
+    const ped = DATA.pedidos.find(x => x.id === pid);
+    if (!ped) return;
+    const quedanEnChiv = (DATA.producciones || []).some(b =>
+      b.pedidoId === pid && b.nroPallet && !b.remitoId && !b.bajaManual);
+    const nuevoDesp = quedanEnChiv ? 'Parcial' : 'Despachado';
+    if (ped.estadoDespacho !== nuevoDesp) {
+      ped.estadoDespacho = nuevoDesp;
+      ped.updatedAt = new Date().toISOString();
+    }
+  });
+
+  await saveData();
+  toast(`${palletsSet.size} pallets enviados a Lanús (${bobs.length} bobinas)`, 'success');
   remitosSubTab = 'bajas';
   renderRemitos();
 }
