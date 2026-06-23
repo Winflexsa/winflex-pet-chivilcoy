@@ -1470,12 +1470,39 @@ function renderOpDetail() {
   let silTxt = p.silicona || '-';
   if (p.silicona === 'CON') silTxt = `CON ${p.siliconaPct||0}%${p.siliconaCaras?' · '+p.siliconaCaras+(p.siliconaCaras==2?' caras':' cara'):''}`;
 
+  // Datos técnicos para el operario
+  const kgBob   = +p.kgPorBobina6 || +p.kgPorBobina || 0;
+  const metrosBob = +p.metrosBobina || 0;
+  const diametroBob = +p.diametroBobina || 0;
+  const bobEstimadas = kgBob > 0 && kgPed > 0 ? Math.ceil(kgPed / kgBob) : 0;
+
   document.getElementById('opDetailHeader').innerHTML = `
     <div class="op-detail-header">
       <h2>OP ${p.nroOP} · ${p.cliente}</h2>
       <div class="sub">${p.ancho||'-'}mm × ${p.espesor||'-'} mic · ${p.color||'-'} · Sil. ${silTxt}</div>
       ${p.conoTipo === '3' ? '<div class="sub" style="margin-top:4px;background:rgba(217,119,6,0.3);padding:4px 8px;border-radius:4px;display:inline-block">⚠️ Cono 3" (rebobinar en Lanús)</div>' : ''}
       ${rec ? `<div class="sub" style="margin-top:6px">Receta <b>${rec.codigo}</b> — ${Object.entries(rec.componentes).map(([k,v]) => `${(v*100).toFixed(0)}% ${k}`).join(' / ')}</div>` : ''}
+
+      <!-- DATOS TÉCNICOS PARA PRODUCCIÓN -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;margin-bottom:4px">
+        <div style="background:rgba(255,255,255,0.18);border-radius:8px;padding:10px 6px;text-align:center">
+          <div style="font-size:22px;font-weight:800;line-height:1">${bobEstimadas > 0 ? bobEstimadas : '-'}</div>
+          <div style="font-size:11px;opacity:0.85;margin-top:3px;text-transform:uppercase;letter-spacing:0.3px">Bobinas</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.18);border-radius:8px;padding:10px 6px;text-align:center">
+          <div style="font-size:22px;font-weight:800;line-height:1">${kgBob > 0 ? kgBob : '-'}</div>
+          <div style="font-size:11px;opacity:0.85;margin-top:3px;text-transform:uppercase;letter-spacing:0.3px">kg/bobina</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.18);border-radius:8px;padding:10px 6px;text-align:center">
+          <div style="font-size:22px;font-weight:800;line-height:1">${metrosBob > 0 ? Math.round(metrosBob) : '-'}</div>
+          <div style="font-size:11px;opacity:0.85;margin-top:3px;text-transform:uppercase;letter-spacing:0.3px">m/bobina</div>
+        </div>
+        <div style="background:rgba(255,255,255,0.18);border-radius:8px;padding:10px 6px;text-align:center">
+          <div style="font-size:22px;font-weight:800;line-height:1">${diametroBob > 0 ? Math.round(diametroBob) : '-'}</div>
+          <div style="font-size:11px;opacity:0.85;margin-top:3px;text-transform:uppercase;letter-spacing:0.3px">Ø mm</div>
+        </div>
+      </div>
+
       <div class="op-detail-stats">
         <div class="op-stat"><div class="val">${fmt(kgReal)}</div><div class="lbl">de ${fmt(kgPed)} kg (${pct}%)</div></div>
         <div class="op-stat"><div class="val">${todasBobinas.length}</div><div class="lbl">bobinas totales</div></div>
