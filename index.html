@@ -15151,8 +15151,29 @@ async function cronoGuardarEditOp(fechaKey, opIdx) {
   toast('Cambios guardados', 'success');
 }
 
+// Confirmación propia: NO usa el confirm() nativo, que en la tablet / app
+// instalada como PWA muchas veces no aparece y devuelve false directo. Ese era
+// el motivo por el que "Quitar del día" no quitaba nada (se cortaba acá).
+function uiConfirm(msg, okLabel) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:380px;width:100%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.25)">
+      <div style="font-size:14px;color:#1f2937;white-space:pre-line;margin-bottom:18px">${msg}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="_uc_no" style="padding:9px 16px;border:1px solid #d1d5db;background:#fff;border-radius:8px;cursor:pointer;font-size:13px">Cancelar</button>
+        <button id="_uc_yes" style="padding:9px 16px;border:none;background:#dc2626;color:#fff;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">${okLabel || 'Quitar'}</button>
+      </div></div>`;
+    document.body.appendChild(ov);
+    const done = v => { ov.remove(); resolve(v); };
+    ov.querySelector('#_uc_yes').onclick = () => done(true);
+    ov.querySelector('#_uc_no').onclick = () => done(false);
+    ov.onclick = e => { if (e.target === ov) done(false); };
+  });
+}
+
 async function cronoQuitarOp(fechaKey, opIdx) {
-  if (!confirm('¿Quitar esta OP del cronograma del día?')) return;
+  if (!(await uiConfirm('¿Quitar esta OP del cronograma del día?'))) return;
   const plan = DATA.planificacion[fechaKey];
   if (!plan || !plan.ops) return;
   plan.ops.splice(opIdx, 1);
