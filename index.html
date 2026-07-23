@@ -6122,19 +6122,22 @@ function buildOCBody(p) {
       peso:    p.lamPe?.peso    || lam?.pe?.peso    || 0,
       metros:  p.lamPe?.metros  || lam?.pe?.metros  || 0
     };
-    // Kg de PE necesarios = kg PET pedidos × (peso_PE_por_bobina / peso_PET_por_bobina).
-    // Esa relación sale de la base de laminados y representa cuántos kg de PE consume cada kg de PET.
+    // Kg de PE necesarios: relación por METRO lineal (kg/m PE ÷ kg/m PET) usando la base.
+    // NO usar pe.peso/pet.peso directo: las bobinas de PE y PET tienen metrajes distintos
+    // (ej. PE 1800 m vs PET 430 m) y la relación de pesos por bobina sobreestimaba el PE ~3-4×.
     let kgPENecesarios = 0;
     let proporcion = 0;
-    if (pet.peso > 0 && pe.peso > 0) {
-      proporcion = pe.peso / pet.peso;
-      kgPENecesarios = Math.round((+p.kgPedidos || 0) * proporcion);
+    const petBase = lam?.pet || {}, peBase = lam?.pe || {};
+    if (petBase.peso > 0 && petBase.metros > 0 && peBase.peso > 0 && peBase.metros > 0) {
+      proporcion = (peBase.peso / peBase.metros) / (petBase.peso / petBase.metros);
+    } else if (pet.peso > 0 && pet.metros > 0 && pe.peso > 0 && pe.metros > 0) {
+      proporcion = (pe.peso / pe.metros) / (pet.peso / pet.metros);
     }
-    // Kg estimados de PRODUCTO FINAL (info contextual), usando peso del producto final si está
+    if (proporcion > 0) kgPENecesarios = Math.round((+p.kgPedidos || 0) * proporcion);
+    // Kg estimados de PRODUCTO FINAL = balance de masa: PET pedido + PE aportado.
+    // (Antes usaba pf.peso/pet.peso: bobinas de metraje distinto → valor absurdo, ej. 25% del PET.)
     let kgProductoFinal = 0;
-    if (pet.peso > 0 && pf.peso > 0) {
-      kgProductoFinal = Math.round((+p.kgPedidos || 0) * (pf.peso / pet.peso));
-    }
+    if (kgPENecesarios > 0) kgProductoFinal = Math.round((+p.kgPedidos || 0) + kgPENecesarios);
     return `Hola Agustín y Jonathan,
 
 Entró un pedido de PET L (PET para laminar con PE). Abajo el detalle.
@@ -6150,7 +6153,7 @@ ${p.ocAdjunto ? 'Adjunto OC:      si (ver detalle del pedido en sistema)' : ''}
 Ancho:           ${pf.ancho || '-'} mm
 Espesor:         ${pf.espesor || '-'} um
 Peso por bobina: ${pf.peso || '-'} kg
-${kgProductoFinal > 0 ? 'Kg estimados:    ' + fmtNum(kgProductoFinal) + ' kg' : ''}
+${kgProductoFinal > 0 ? 'Kg estimados:    ' + fmtNum(kgProductoFinal) + ' kg  (PET + PE, sin descontar recortes)' : ''}
 
 --- 2) PET NECESARIO (para Agustin - Chivilcoy) ---
 Ancho:           ${pet.ancho || '-'} mm
