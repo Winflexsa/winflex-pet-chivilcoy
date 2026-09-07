@@ -429,11 +429,19 @@ async function gistFullContent(f, token) {
   if (!f) return null;
   if (!f.truncated) return f.content;
   console.warn('[gist] archivo truncado por GitHub (' + f.size + ' bytes), bajando raw_url');
-  const h = { 'Accept': 'text/plain' };
-  if (token) h['Authorization'] = 'token ' + token;
-  const r = await fetch(f.raw_url, { headers: h, cache: 'no-store' });
+  // raw_url va SIN Authorization: gist.githubusercontent.com no acepta esa cabecera por CORS,
+  // y los gists secretos se bajan igual con la URL (que incluye el hash de la versión).
+  let r;
+  try {
+    r = await fetch(f.raw_url, { cache: 'no-store' });
+  } catch (e) {
+    console.error('[gist] fetch raw_url falló:', e.message || e);
+    throw new Error('raw_url fetch: ' + (e.message || e));
+  }
   if (!r.ok) throw new Error('raw_url HTTP ' + r.status);
-  return await r.text();
+  const txt = await r.text();
+  console.log('[gist] raw_url OK,', txt.length, 'chars');
+  return txt;
 }
 function getGistCredentials() {
   try {
