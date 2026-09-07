@@ -423,6 +423,18 @@ function saveCredentialsLS(binId, masterKey) {
 // GITHUB GIST — backend principal (sin límite de tamaño)
 // Si hay creds Gist, se usa Gist en vez de JSONBin
 // ============================================================
+// FIX v4.25: GitHub trunca el contenido de archivos grandes en la respuesta de la API
+// (marca truncated:true). Si pasa, bajamos el archivo completo desde raw_url.
+async function gistFullContent(f, token) {
+  if (!f) return null;
+  if (!f.truncated) return f.content;
+  console.warn('[gist] archivo truncado por GitHub (' + f.size + ' bytes), bajando raw_url');
+  const h = { 'Accept': 'text/plain' };
+  if (token) h['Authorization'] = 'token ' + token;
+  const r = await fetch(f.raw_url, { headers: h, cache: 'no-store' });
+  if (!r.ok) throw new Error('raw_url HTTP ' + r.status);
+  return await r.text();
+}
 function getGistCredentials() {
   try {
     const raw = localStorage.getItem('winflex_gist_credentials');
@@ -795,7 +807,7 @@ async function guardarOperarios() {
       const fj = await freshR.json();
       const ff = fj.files && fj.files['winflex.json'];
       if (!ff) { setS('Error: gist sin winflex.json', 'err'); return; }
-      const remote = decompressDataFromBin(JSON.parse(ff.content));
+      const remote = decompressDataFromBin(JSON.parse(await gistFullContent(ff, gistCreds.token)));
       if (!remote.catalogos) remote.catalogos = {};
       remote.catalogos.operarios = JSON.parse(JSON.stringify(DATA.catalogos.operarios || []));
       remote.lastUpdate = new Date().toISOString();
@@ -2024,7 +2036,7 @@ async function loadData() {
         const j = await r.json();
         const f = j.files && j.files['winflex.json'];
         if (f && f.content) {
-          const remote = decompressDataFromBin(JSON.parse(f.content));
+          const remote = decompressDataFromBin(JSON.parse(await gistFullContent(f, gistCreds.token)));
           // Merge inteligente: combinar remote + local
           if (localData && (localData.producciones || localData.registrosProduccion)) {
             console.log('[loadData Gist] Mergeando. Local prod:', (localData.producciones||[]).length, 'reg:', (localData.registrosProduccion||[]).length);
@@ -2265,7 +2277,7 @@ async function saveData() {
         setSync('Error: gist sin winflex.json', 'err');
         return;
       }
-      const remote = decompressDataFromBin(JSON.parse(ff.content));
+      const remote = decompressDataFromBin(JSON.parse(await gistFullContent(ff, gistCreds.token)));
       console.log('[saveData Gist] GET ok. Remote prod:', (remote.producciones||[]).length, 'reg:', (remote.registrosProduccion||[]).length);
 
       // 2) MERGE INTELIGENTE
@@ -2597,7 +2609,7 @@ async function silentReload() {
       const j = await r.json();
       const f = j.files && j.files['winflex.json'];
       if (!f || !f.content) return;
-      remote = decompressDataFromBin(JSON.parse(f.content));
+      remote = decompressDataFromBin(JSON.parse(await gistFullContent(f, gistCreds.token)));
     } else {
       // Fallback: JSONBin
       const creds = getCredentials();
