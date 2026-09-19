@@ -676,6 +676,49 @@ function setGistCredentials(gistId, token) {
   }
 }
 
+// LINK DE CONEXION: abrir index.html#wfc=... carga las credenciales en este equipo y limpia la direccion.
+// (lo que va despues del # no viaja a ningun servidor ni queda en el repo)
+(function importarCredsDesdeLink(){
+  try {
+    const m = (location.hash || '').match(/[#&]wfc=([^&]+)/);
+    if (!m) return;
+    const j = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1]).replace(/-/g,'+').replace(/_/g,'/')))));
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) { location.hash = ''; }
+    if (j && j.g && j.t) { setGistCredentials(j.g, j.t); window._credsImportadas = true; }
+  } catch (e) { console.warn('[link conexion] invalido', e); }
+})();
+function linkDeConexion() {
+  const c = getGistCredentials(); if (!c) return '';
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify({ g: c.gistId, t: c.token })))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  return location.origin + location.pathname + '#wfc=' + b64;
+}
+function abrirConectarEquipo() {
+  const link = linkDeConexion(); if (!link) { alert('Este equipo no tiene credenciales de Gist cargadas.'); return; }
+  let ov = document.getElementById('wfcOv'); if (ov) ov.remove();
+  ov = document.createElement('div'); ov.id = 'wfcOv';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:420px;width:100%;padding:22px;text-align:center;max-height:94vh;overflow:auto">
+    <div style="font-size:18px;font-weight:700;margin-bottom:6px">📲 Conectar otro equipo</div>
+    <div style="font-size:13px;color:#4b5563;line-height:1.5;margin-bottom:14px">Escaneá este código con la cámara del celular (o abrí el link en ese equipo). Entra ya conectado, sin tipear nada.</div>
+    <div id="wfcQR" style="display:flex;justify-content:center;min-height:40px;margin-bottom:14px;font-size:12px;color:#9ca3af">Generando código…</div>
+    <button id="wfcCopy" style="width:100%;padding:13px;border-radius:10px;border:1px solid #d1d5db;background:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:8px">📋 Copiar link</button>
+    <a id="wfcWa" target="_blank" rel="noopener" style="display:block;width:100%;padding:13px;border-radius:10px;background:#16a34a;color:#fff;font-size:14px;font-weight:700;text-decoration:none;margin-bottom:8px">Enviármelo por WhatsApp</a>
+    <div style="font-size:11.5px;color:#92400e;background:#fef3c7;border-radius:8px;padding:9px;line-height:1.45;margin-bottom:10px">⚠ El link lleva las credenciales: mandalo solo a vos o a gente del equipo, y no lo publiques.</div>
+    <button id="wfcClose" style="padding:10px 18px;border:none;background:none;color:#6b7280;font-size:14px;cursor:pointer">Cerrar</button></div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  ov.querySelector('#wfcClose').onclick = () => ov.remove();
+  ov.querySelector('#wfcCopy').onclick = function () { copiarAlPortapapeles(link, this); };
+  ov.querySelector('#wfcWa').href = 'https://wa.me/?text=' + encodeURIComponent('Winflex PET Chivilcoy - link de conexión (abrilo en el equipo que querés conectar): ' + link);
+  const pintar = () => { const box = document.getElementById('wfcQR'); if (!box) return;
+    try { box.innerHTML = ''; new QRCode(box, { text: link, width: 232, height: 232, correctLevel: QRCode.CorrectLevel.L }); }
+    catch (e) { box.textContent = 'No se pudo generar el código. Usá "Copiar link" o WhatsApp.'; } };
+  if (window.QRCode) pintar();
+  else { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    sc.onload = pintar; sc.onerror = () => { const box = document.getElementById('wfcQR'); if (box) box.textContent = 'Sin conexión para generar el código. Usá "Copiar link" o WhatsApp.'; };
+    document.head.appendChild(sc); }
+}
+
 // Crea un Gist nuevo en GitHub con los datos pasados, retorna { gistId, url, sizeKB }
 async function crearGistInicial(token, data) {
   const compressed = compactDeep(compressDataForBin(data));
@@ -728,6 +771,7 @@ function renderGistSection() {
           <b>Ver el Gist en GitHub:</b> <a href="https://gist.github.com/${gistCreds.gistId}" target="_blank" style="color:#0891b2">abrir →</a>
         </div>
         <div style="margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb">
+          <button class="btn-ghost" onclick="abrirConectarEquipo()" style="font-size:12px;background:#16a34a;color:white;font-weight:700;padding:8px 14px;margin:0 8px 8px 0">📲 Conectar mi celular u otro equipo</button>
           <button class="btn-ghost" onclick="copiarCredsCompletas()" style="font-size:12px;background:#dbeafe;color:#1e40af;font-weight:600">📋 Copiar credenciales completas (para mandar al equipo)</button>
           <button class="btn-ghost" onclick="desconectarGist()" style="font-size:12px;color:#dc2626;margin-left:8px">🔌 Desconectar</button>
         </div>
