@@ -443,6 +443,60 @@ async function gistFullContent(f, token) {
   console.log('[gist] raw_url OK,', txt.length, 'chars');
   return txt;
 }
+
+// ============================================================
+// FIX v4.29-RACE: detección de escrituras pisadas en el Gist.
+// El save hace GET → merge → PATCH. Con el Gist en ~1.2 MB ese ciclo tarda varios
+// segundos, y si OTRO equipo (PC o tablet) hace PATCH en el medio, nuestro PATCH lo
+// pisa entero. Así se perdieron pedidos nuevos (02/10/2026: Huertas del Pilar y Colgate,
+// borrados por un save de la tablet 3 segundos después de cargarlos en la PC).
+// Después de cada PATCH miramos el historial del Gist: si entre la versión que leímos
+// (baseVersion) y la nuestra hay otras, las bajamos para re-mergearlas y volver a subir.
+// ============================================================
+async function gistVersionesPisadas(gistCreds, baseVersion, patchJson) {
+  if (!baseVersion || !patchJson) return [];
+  const h = { 'Authorization': 'token ' + gistCreds.token, 'Accept': 'application/vnd.github+json' };
+  let hist = (patchJson.history || []).map(x => x.version);
+  let idx = hist.indexOf(baseVersion);
+  if (idx < 0) {
+    try {
+      const cr = await fetch('https://api.github.com/gists/' + gistCreds.gistId + '/commits?per_page=30', { headers: h, cache: 'no-store' });
+      if (cr.ok) { hist = (await cr.json()).map(x => x.version); idx = hist.indexOf(baseVersion); }
+    } catch (e) {}
+  }
+  if (idx < 0) { console.warn('[gist race] no encuentro la versión base en el historial; no se puede verificar'); return []; }
+  if (idx <= 1) return []; // [0]=nuestra, [1]=la base → nadie escribió en el medio
+  const intermedias = hist.slice(1, idx).reverse(); // de la más vieja a la más nueva
+  console.warn('[gist race] ' + intermedias.length + ' escritura(s) de otro equipo quedaron pisadas por este save → re-mergeando');
+  const out = [];
+  for (const v of intermedias) {
+    const gr = await fetch('https://api.github.com/gists/' + gistCreds.gistId + '/' + v, { headers: h, cache: 'no-store' });
+    if (!gr.ok) throw new Error('gist race: no pude bajar versión ' + v + ' (HTTP ' + gr.status + ')');
+    const gj = await gr.json();
+    const f = gj.files && gj.files['winflex.json'];
+    if (f) out.push(decompressDataFromBin(JSON.parse(await gistFullContent(f, gistCreds.token))));
+  }
+  return out;
+}
+function racePedidosUnion(a, b) {
+  const byId = new Map();
+  (a || []).forEach(p => { if (p && p.id) byId.set(p.id, p); });
+  (b || []).forEach(p => {
+    if (!p || !p.id) return;
+    const r = byId.get(p.id);
+    if (!r || (p.updatedAt || '') >= (r.updatedAt || '')) byId.set(p.id, p);
+  });
+  return [...byId.values()];
+}
+function raceTombstones(a, b) {
+  const out = {};
+  [a, b].forEach(o => { if (o && typeof o === 'object') Object.entries(o).forEach(([k, v]) => { if (!out[k] || v > out[k]) out[k] = v; }); });
+  return out;
+}
+function raceAplicarTombstones(pedidos, t) {
+  if (!t) return pedidos || [];
+  return (pedidos || []).filter(p => { const ts = t[p.id]; return !ts || (p.updatedAt || '') > ts; });
+}
 function getGistCredentials() {
   try {
     const raw = localStorage.getItem('winflex_gist_credentials');
@@ -2285,11 +2339,12 @@ async function saveData() {
         setSync('Error: gist sin winflex.json', 'err');
         return;
       }
+      let baseVersion = fj.history && fj.history[0] && fj.history[0].version;
       const remote = decompressDataFromBin(JSON.parse(await gistFullContent(ff, gistCreds.token)));
       console.log('[saveData Gist] GET ok. Remote prod:', (remote.producciones||[]).length, 'reg:', (remote.registrosProduccion||[]).length);
 
       // 2) MERGE INTELIGENTE
-      const merged = JSON.parse(JSON.stringify(remote));
+      let merged = JSON.parse(JSON.stringify(remote));
       merged.producciones = mergeArrayPorId(remote.producciones || [], DATA.producciones || [], DELETED.bobinas);
       merged.registrosProduccion = mergeArrayPorId(remote.registrosProduccion || [], DATA.registrosProduccion || [], DELETED.registros);
 
@@ -2343,15 +2398,39 @@ async function saveData() {
       const compressed = compactDeep(compressDataForBin(merged));
       const content = JSON.stringify(compressed);
       const sizeKB = Math.round(content.length / 1024 * 10) / 10;
-      const r = await fetch('https://api.github.com/gists/' + gistCreds.gistId, {
+      const doPatch = (body) => fetch('https://api.github.com/gists/' + gistCreds.gistId, {
         method: 'PATCH',
         headers: {
           'Authorization': 'token ' + gistCreds.token,
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ files: { 'winflex.json': { content } } })
+        body: JSON.stringify({ files: { 'winflex.json': { content: body } } })
       });
+      let r = await doPatch(content);
+      // FIX v4.29-RACE: la tablet sube TODO el remoto que leyó (pedidos, remitos, config...).
+      // Si la PC guardó entre nuestro GET y nuestro PATCH (ej. un pedido nuevo), lo pisábamos.
+      // Ahora: tomar lo pisado como base, volver a poner nuestras bobinas/registros encima y re-subir.
+      for (let intento = 0; r.ok && intento < 3; intento++) {
+        const pj = await r.clone().json().catch(() => null);
+        const pisadas = await gistVersionesPisadas(gistCreds, baseVersion, pj);
+        if (!pisadas.length) break;
+        baseVersion = pj.history[0].version;
+        pisadas.forEach(L => {
+          const nuestro = merged;
+          const nuevo = JSON.parse(JSON.stringify(L));
+          nuevo.producciones = mergeArrayPorId(L.producciones || [], nuestro.producciones || [], DELETED.bobinas);
+          nuevo.registrosProduccion = mergeArrayPorId(L.registrosProduccion || [], nuestro.registrosProduccion || [], DELETED.registros);
+          nuevo.pedidosEliminados = raceTombstones(L.pedidosEliminados, nuestro.pedidosEliminados);
+          nuevo.pedidos = raceAplicarTombstones(racePedidosUnion(L.pedidos, nuestro.pedidos), nuevo.pedidosEliminados);
+          merged = nuevo;
+        });
+        recalcularTodosKgReales(merged, pedidosAfectados);
+        merged.lastUpdate = new Date().toISOString();
+        const content2 = JSON.stringify(compactDeep(compressDataForBin(merged)));
+        console.warn('[saveData Gist] re-subiendo tras escritura concurrente (intento ' + (intento + 1) + ')');
+        r = await doPatch(content2);
+      }
       if (!r.ok) {
         console.error('[saveData Gist] PATCH falló:', r.status);
         setSync('Error PUT Gist (HTTP ' + r.status + ')', 'err');
