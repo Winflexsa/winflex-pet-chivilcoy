@@ -686,6 +686,47 @@ function applyTabletMigrations(d) {
 
 const LS_KEY = 'winflex_pet_tablet_v1';
 
+// v4.41-CACHE: el cache grande de la app va a IndexedDB y NO al localStorage.
+// El localStorage tiene 5 MB y lo comparten TODAS las apps de winflexsa.github.io
+// (cheques, termoformado, refilado, horas...). El 27/10 se llenó y un remito emitido
+// quedó sólo en la memoria de la pestaña. IndexedDB tiene cientos de MB por sitio.
+const WF_IDB = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    try {
+      const rq = indexedDB.open('winflex_pet_tablet', 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => { dbp = null; rej(rq.error); };
+    } catch (e) { dbp = null; rej(e); }
+  }));
+  const tx = async (mode, fn) => {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('kv', mode); const rq = fn(t.objectStore('kv'));
+      t.oncomplete = () => res(rq ? rq.result : undefined);
+      t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  };
+  let cola = Promise.resolve();
+  return {
+    get: k => { const p = cola.then(() => tx('readonly', s => s.get(k))); cola = p.catch(() => {}); return p.catch(e => { console.warn('[idb] get', k, e); return null; }); },
+    set: (k, v) => (cola = cola.then(() => tx('readwrite', s => s.put(v, k)).then(() => true)).catch(e => { console.error('[idb] set', k, e); return false; })),
+    del: k => (cola = cola.then(() => tx('readwrite', s => s.delete(k))).catch(() => {}))
+  };
+})();
+// Lee el cache (migra solo lo que quedó en localStorage a IndexedDB y libera ese espacio).
+async function leerCacheLocal() {
+  let c = null; try { c = localStorage.getItem(LS_KEY); } catch (_) {}
+  if (c) { await WF_IDB.set(LS_KEY, c); try { localStorage.removeItem(LS_KEY); } catch (_) {} return c; }
+  return (await WF_IDB.get(LS_KEY)) || null;
+}
+function borrarCacheLocal() { try { localStorage.removeItem(LS_KEY); } catch (_) {} WF_IDB.del(LS_KEY); }
+function guardarCacheLocal(value) {
+  WF_IDB.set(LS_KEY, value);
+  try { localStorage.removeItem(LS_KEY); } catch (_) {}
+}
+
 // ============================================================
 // STATE
 // ============================================================
@@ -920,7 +961,7 @@ async function eliminarOperario(i) {
 async function guardarOperarios() {
   const setS = (t, c) => { const el = document.getElementById('syncStatusOperarios'); if (el) { el.textContent = t; el.className = 'sync' + (c ? ' ' + c : ''); } setSync(t, c); };
   // persistir local primero
-  localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+  guardarCacheLocal(JSON.stringify(DATA));
   setS('Guardando...', 'warn');
 
   const gistCreds = getGistCredentials();
@@ -947,7 +988,7 @@ async function guardarOperarios() {
       // sincronizar local con el remoto fresco (preserva todo lo demás)
       remote.catalogos.operarios = DATA.catalogos.operarios;
       DATA = remote;
-      localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+      guardarCacheLocal(JSON.stringify(DATA));
       setS('Operarios guardados ✓', 'ok');
       toast('Operarios sincronizados', 'success');
     } catch (e) {
@@ -978,7 +1019,7 @@ async function guardarOperarios() {
     if (!r.ok) { setS('Error guardando (HTTP ' + r.status + ')', 'err'); return; }
     remote.catalogos.operarios = DATA.catalogos.operarios;
     DATA = remote;
-    localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+    guardarCacheLocal(JSON.stringify(DATA));
     setS('Operarios guardados ✓', 'ok');
     toast('Operarios sincronizados', 'success');
   } catch (e) {
@@ -2145,8 +2186,8 @@ async function deleteRegistro(id) {
 async function loadData() {
   setSync('Cargando...', 'warn');
   // 1. Leer local primero (puede tener items pendientes de sincronizar)
-  const cached = localStorage.getItem(LS_KEY);
-  const localData = cached ? JSON.parse(cached) : null;
+  const cached = await leerCacheLocal();
+  let localData = null; try { localData = cached ? JSON.parse(cached) : null; } catch (e) { console.warn('[loadData] cache local corrupto', e); }
 
   // PRIORIDAD 1: GitHub Gist
   const gistCreds = getGistCredentials();
@@ -2198,7 +2239,7 @@ async function loadData() {
           });
           recalcularTodosKgReales(DATA, pedidosConBobinasAntes);
           applyTabletMigrations(DATA);
-          localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+          guardarCacheLocal(JSON.stringify(DATA));
           setSync('Sincronizado (Gist)', 'ok');
           console.log('[loadData Gist] OK, pedidos:', (DATA.pedidos||[]).length);
           return DATA;
@@ -2213,7 +2254,7 @@ async function loadData() {
     if (localData) {
       DATA = localData;
       applyTabletMigrations(DATA);
-      localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+      guardarCacheLocal(JSON.stringify(DATA));
       setSync('Offline (cache)', 'err');
       return DATA;
     }
@@ -2296,7 +2337,7 @@ async function loadData() {
         });
         recalcularTodosKgReales(DATA, pedidosConBobinasAntes);
         applyTabletMigrations(DATA);
-        localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+        guardarCacheLocal(JSON.stringify(DATA));
         setSync('Sincronizado', 'ok');
         return DATA;
       } else if (r.status === 401 || r.status === 403) {
@@ -2310,7 +2351,7 @@ async function loadData() {
   if (localData) {
     DATA = localData;
     applyTabletMigrations(DATA);
-    localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+    guardarCacheLocal(JSON.stringify(DATA));
     setSync('Offline (cache)', 'err');
     return DATA;
   }
@@ -2378,7 +2419,7 @@ function mergeArrayPorId(remoteArr, localArr, deletedSet) {
 async function saveData() {
   // Garantizar que el local SIEMPRE tenga lo más reciente antes de tocar nada
   DATA.lastUpdate = new Date().toISOString();
-  localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+  guardarCacheLocal(JSON.stringify(DATA));
   setSync('Guardando...', 'warn');
 
   const localProdCount = (DATA.producciones || []).length;
@@ -2514,7 +2555,7 @@ async function saveData() {
 
       // 4) Actualizar local con el merged
       DATA = merged;
-      localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+      guardarCacheLocal(JSON.stringify(DATA));
       window._remoteIds = new Set([
         ...(merged.producciones || []).map(b => b.id),
         ...(merged.registrosProduccion || []).map(r => r.id)
@@ -2626,7 +2667,7 @@ async function saveData() {
 
     // 4) Actualizar local con el merged
     DATA = merged;
-    localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+    guardarCacheLocal(JSON.stringify(DATA));
     // Actualizar set de IDs remotos (todo lo que está en merged ya está en remoto)
     window._remoteIds = new Set([
       ...(merged.producciones || []).map(b => b.id),
@@ -2805,7 +2846,7 @@ async function silentReload() {
     }
 
     DATA = merged;
-    localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+    guardarCacheLocal(JSON.stringify(DATA));
     window._remoteIds = new Set([
       ...(remote.producciones || []).map(b => b.id),
       ...(remote.registrosProduccion || []).map(r => r.id)

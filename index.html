@@ -1577,7 +1577,7 @@ async function recuperarGistDesdeCache() {
   if (!st) return;
   const gistCreds = getGistCredentials();
   if (!gistCreds) { st.innerHTML = '<span style="color:#dc2626">Sin credenciales Gist</span>'; return; }
-  const cached = localStorage.getItem(LS_KEY);
+  const cached = await leerCacheLocal();
   if (!cached) { st.innerHTML = '<span style="color:#dc2626">No hay cache local</span>'; return; }
 
   let cachedData;
@@ -1674,6 +1674,130 @@ function clearCredentials() {
 const CONFIG = { JSONBIN_BIN_ID: '', MASTER_KEY: '' };
 
 const LS_KEY = 'winflex_pet_chivilcoy_v37';
+
+// v4.41-CACHE: el cache grande de la app va a IndexedDB y NO al localStorage.
+// El localStorage tiene 5 MB y lo comparten TODAS las apps de winflexsa.github.io
+// (cheques, termoformado, refilado, horas...). El 27/10 se llenó y un remito emitido
+// quedó sólo en la memoria de la pestaña. IndexedDB tiene cientos de MB por sitio.
+const WF_IDB = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    try {
+      const rq = indexedDB.open('winflex_pet_chivilcoy', 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => { dbp = null; rej(rq.error); };
+    } catch (e) { dbp = null; rej(e); }
+  }));
+  const tx = async (mode, fn) => {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('kv', mode); const rq = fn(t.objectStore('kv'));
+      t.oncomplete = () => res(rq ? rq.result : undefined);
+      t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  };
+  let cola = Promise.resolve();
+  return {
+    get: k => { const p = cola.then(() => tx('readonly', s => s.get(k))); cola = p.catch(() => {}); return p.catch(e => { console.warn('[idb] get', k, e); return null; }); },
+    set: (k, v) => (cola = cola.then(() => tx('readwrite', s => s.put(v, k)).then(() => true)).catch(e => { console.error('[idb] set', k, e); return false; })),
+    del: k => (cola = cola.then(() => tx('readwrite', s => s.delete(k))).catch(() => {}))
+  };
+})();
+// Lee el cache (migra solo lo que quedó en localStorage a IndexedDB y libera ese espacio).
+async function leerCacheLocal() {
+  let c = null; try { c = localStorage.getItem(LS_KEY); } catch (_) {}
+  if (c) { await WF_IDB.set(LS_KEY, c); try { localStorage.removeItem(LS_KEY); } catch (_) {} return c; }
+  return (await WF_IDB.get(LS_KEY)) || null;
+}
+function borrarCacheLocal() { try { localStorage.removeItem(LS_KEY); } catch (_) {} WF_IDB.del(LS_KEY); }
+function guardarCacheLocal(value) {
+  WF_IDB.set(LS_KEY, value);
+  try { localStorage.removeItem(LS_KEY); } catch (_) {}
+}
+
+// v4.41: DIARIO DE REMITOS SIN SUBIR. Antes de intentar subir un remito (emisión o
+// anulación) se anota acá (IndexedDB + copia chica en localStorage). Se borra recién
+// cuando la nube lo tiene. Si la pestaña se recarga/cierra antes, al volver a abrir la
+// app se re-aplica y se sube solo. Reintento automático cada 60 s mientras quede algo.
+const REM_PEND_KEY = 'winflex_pet_remitos_pendientes';
+async function remPendLeer() {
+  let a = []; try { a = JSON.parse(localStorage.getItem(REM_PEND_KEY) || '[]'); } catch (_) {}
+  let b = []; try { b = (await WF_IDB.get(REM_PEND_KEY)) || []; } catch (_) {}
+  const m = new Map();
+  [...b, ...a].forEach(x => {
+    if (!x || !x.remito || !x.remito.id) return;
+    const y = m.get(x.remito.id);
+    if (!y || remitoMod(x.remito) > remitoMod(y.remito)) m.set(x.remito.id, x);
+  });
+  return [...m.values()];
+}
+async function remPendGuardar(list) {
+  await WF_IDB.set(REM_PEND_KEY, list);
+  try { if (list.length) localStorage.setItem(REM_PEND_KEY, JSON.stringify(list)); else localStorage.removeItem(REM_PEND_KEY); } catch (_) {}
+}
+async function remPendAgregar(remito) {
+  const l = (await remPendLeer()).filter(x => x.remito.id !== remito.id);
+  l.push({ remito: JSON.parse(JSON.stringify(remito)), anotado: new Date().toISOString() });
+  await remPendGuardar(l);
+}
+function remPendFaltan(l) {
+  const nube = new Map(((DATA && DATA.remitos) || []).map(r => [r.id, r]));
+  return l.filter(x => { const r = nube.get(x.remito.id); return !r || remitoMod(r) < remitoMod(x.remito); });
+}
+async function remPendLimpiar() {
+  const l = await remPendLeer(); if (!l.length) return;
+  const q = remPendFaltan(l);
+  if (q.length !== l.length) await remPendGuardar(q);
+}
+let _remPendCorriendo = false;
+async function remPendRecuperar(avisar) {
+  if (_remPendCorriendo || !DATA || _emitiendoRemito) return; // no pisarse con una emisión en curso
+  _remPendCorriendo = true;
+  try {
+    const l = await remPendLeer(); if (!l.length) return;
+    const faltan = remPendFaltan(l);
+    // Ya están en memoria (se aplicaron pero el save falló): sólo reintentar subir.
+    // El diario se limpia ÚNICAMENTE después de un save OK (remPendLimpiar), nunca acá.
+    if (!faltan.length) { if (isDirty) await saveData(); return; }
+    if (!window._pcModifiedBobinas) window._pcModifiedBobinas = new Set();
+    const pids = new Set(); const conflictos = [];
+    faltan.forEach(({ remito }) => {
+      DATA.remitos = (DATA.remitos || []).filter(r => r.id !== remito.id);
+      DATA.remitos.push(remito);
+      (remito.bobinaIds || []).forEach(id => {
+        const b = (DATA.producciones || []).find(x => x.id === id); if (!b) return;
+        if (remito.anulado) {
+          if (b.remitoId !== remito.id) return;
+          delete b.remitoId; delete b.fechaDespacho; pcClearEstadoBobina(id);
+        } else if (!b.remitoId || b.remitoId === remito.id) {
+          b.remitoId = remito.id; b.fechaDespacho = remito.fecha;
+          pcSetEstadoBobina(id, { remitoId: remito.id, fechaDespacho: remito.fecha });
+        } else { conflictos.push(remito.nroRemito + ': bobina ' + id + ' ya está en otro remito'); return; }
+        window._pcModifiedBobinas.add(id); pids.add(b.pedidoId);
+      });
+    });
+    DATA.config = DATA.config || {};
+    const maxNro = Math.max(0, ...DATA.remitos.map(r => +r.nroRemito || 0));
+    DATA.config.proximoNroRemito = Math.max(+DATA.config.proximoNroRemito || 0, maxNro + 1);
+    recalcDespachoPedidos([...pids]);
+    await saveData();
+    const nums = faltan.map(x => (x.remito.puntoVenta || '0001') + '-' + String(x.remito.nroRemito).padStart(8, '0') + (x.remito.anulado ? ' (anulación)' : '')).join(', ');
+    console.warn('[remitos pendientes] re-aplicados:', nums, isDirty ? '— todavía sin subir' : '— subidos');
+    if (avisar || !isDirty) {
+      alert((isDirty ? '⚠️ Hay remitos emitidos en este equipo que TODAVÍA NO llegaron a la nube: ' : '✓ Se recuperaron y subieron a la nube remitos que habían quedado sólo en este equipo: ') +
+        nums + (isDirty ? '\n\nSe reintenta solo cada minuto. No cierres esta pestaña sin conexión.' : '') +
+        (conflictos.length ? '\n\nOJO, bobinas que ya estaban en otro remito (no se movieron):\n' + conflictos.join('\n') : ''));
+    }
+    try { render(); } catch (_) {}
+  } catch (e) {
+    console.error('[remitos pendientes]', e);
+  } finally { _remPendCorriendo = false; }
+}
+setInterval(() => { if (!document.hidden) remPendRecuperar(false); }, 60000);
+window.addEventListener('beforeunload', e => {
+  if (typeof isDirty !== 'undefined' && isDirty) { e.preventDefault(); e.returnValue = 'Hay cambios que todavía no se subieron a la nube.'; return e.returnValue; }
+});
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 // ============================================================
@@ -1705,7 +1829,7 @@ async function resetCredsLogin() {
 function diagnosticarLogin() {
   const creds = getCredentials();
   const cacheKey = LS_KEY;
-  const cached = localStorage.getItem(cacheKey);
+  const cached = localStorage.getItem(cacheKey) || (DATA ? JSON.stringify(DATA) : null); // v4.41: el cache vive en IndexedDB
   let info = '=== DIAGNÓSTICO ===\n\n';
   info += 'URL: ' + location.href + '\n';
   info += 'Navegador: ' + navigator.userAgent.substring(0, 60) + '...\n\n';
@@ -1984,6 +2108,7 @@ function lsSet(key, value) {
     if (key === LS_KEY && ARCHIVO && ARCHIVO.producciones.length) {
       try { value = JSON.stringify(quitarArchivo(JSON.parse(value))); } catch (_) {}
     }
+    if (key === LS_KEY) { guardarCacheLocal(value); window._lsFallo = false; return true; } // v4.41: IndexedDB
     localStorage.setItem(key, value);
     window._lsFallo = false;
     return true;
@@ -2511,7 +2636,7 @@ function normLam(x) {
 
 async function loadData() {
   setSyncStatus('Cargando...', 'syncing');
-  const cached = localStorage.getItem(LS_KEY);
+  const cached = await leerCacheLocal();
 
   // PRIORITY 1: si hay credenciales Gist, usar GitHub Gist
   const gistCreds = getGistCredentials();
@@ -2566,7 +2691,7 @@ async function loadData() {
         // autoLimpiarAdjuntos eliminada — con Gist ya no hay limite de tamaño
         setSyncStatus('Offline (cache)', 'error');
         return DATA;
-      } catch (e) { localStorage.removeItem(LS_KEY); }
+      } catch (e) { borrarCacheLocal(); }
     }
   }
 
@@ -2625,7 +2750,7 @@ async function loadData() {
       return DATA;
     } catch (e) {
       console.error('[loadData] Cache corrupto, ignorando:', e);
-      localStorage.removeItem(LS_KEY);
+      borrarCacheLocal();
     }
   }
 
@@ -3989,6 +4114,7 @@ async function saveData() {
         lsSet(LS_KEY, JSON.stringify(DATA));
         isDirty = false;
         window._pcModifiedBobinas = new Set();
+        remPendLimpiar().catch(() => {});
         setSyncStatus('Sincronizado · ' + sizeKB + ' KB (Gist)', 'ok');
         console.log('[PC saveData Gist] OK, ' + sizeKB + ' KB');
         try { if (DATA.enviosLanus && DATA.enviosLanus.gistId) localStorage.setItem('winflex_envios_lanus', JSON.stringify(DATA.enviosLanus)); programarEnviosLanus(); } catch (e) {}
@@ -11170,6 +11296,7 @@ function exportPedidosCSV() {
 // JSONBin queda como fallback inactivo (las apps ya migraron a Gist).
 // ============================================================
 loadData().then(() => {
+  setTimeout(() => remPendRecuperar(true), 1500); // v4.41: remitos que quedaron sin subir
   if (!getGistCredentials() && !getCredentials()) {
     // Primera vez en este dispositivo (ni Gist ni JSONBin): abrir setup de Gist
     abrirSetupGistInicial();
@@ -13163,6 +13290,7 @@ async function _confirmarYGenerarRemito() {
   // Guardar el remito
   if (!DATA.remitos) DATA.remitos = [];
   DATA.remitos.push(remito);
+  await remPendAgregar(remito); // v4.41: si no llega a la nube, sobrevive a recargas y se re-sube solo
 
   // Incrementar contador (sugerencia para el próximo)
   DATA.config.proximoNroRemito = remito.nroRemito + 1;
@@ -13176,7 +13304,7 @@ async function _confirmarYGenerarRemito() {
   // fiscal que nunca había llegado a la nube. Ahora se frena y se avisa.
   if (isDirty) {
     alert('⚠️ EL REMITO NO SE SINCRONIZÓ CON LA NUBE.\n\n' +
-          'Quedó guardado sólo en este equipo. NO se generaron los PDFs ni el mail.\n\n' +
+          'Quedó anotado en este equipo (aunque se recargue la página) y se reintenta subir solo cada minuto. NO se generaron los PDFs ni el mail.\n\n' +
           'Revisá la conexión, esperá a que el indicador de arriba diga "Sincronizado" y ' +
           'volvé a generar los PDFs desde el Histórico de remitos.');
     remitosSeleccion = new Set();
@@ -13221,7 +13349,7 @@ async function anularRemito(remitoId) {
   });
   // Marcar el remito como anulado (no eliminar para mantener trazabilidad)
   const r = (DATA.remitos || []).find(x => x.id === remitoId);
-  if (r) { r.anulado = true; r.anuladoFecha = new Date().toISOString(); r.mod = r.anuladoFecha; }
+  if (r) { r.anulado = true; r.anuladoFecha = new Date().toISOString(); r.mod = r.anuladoFecha; await remPendAgregar(r); }
   recalcDespachoPedidos([..._pidsAn]);
   await saveData();
   toast('Remito anulado', 'success');

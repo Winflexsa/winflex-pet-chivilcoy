@@ -1,4 +1,4 @@
-const CACHE='winflex-pet-v441';
+const CACHE='winflex-pet-v442';
 self.addEventListener('install',function(e){self.skipWaiting();});
 self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim());});
 self.addEventListener('fetch',function(e){
