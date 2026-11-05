@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cronograma General · Winflex</title>
+<meta name="theme-color" content="#0e7a49">
+<link rel="manifest" href="manifest-cronograma.json">
+<link rel="icon" type="image/png" href="icon-cronograma-192.png">
+<link rel="apple-touch-icon" href="icon-cronograma-192.png">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef1ee;--surf:#fff;--surf2:#f1f5f1;--surf3:#e5ebe5;
+  --border:#dde4dd;--border2:#cbd5cb;
+  --text:#19211b;--text2:#5c665e;--text3:#94a096;
+  --green:#15a463;--green-d:#0e7a49;--green-dd:#0a5e38;--green-l:#e4f6ec;
+  --bad:#a33b3b;--bad-l:#f7e6e6;--mid:#b07d13;--mid-l:#fbf1da;
+  /* áreas */
+  --via:#6a4fb0;--via-l:#f1edfb;
+  --pet:#2f6fb5;--pet-l:#e9f1fb;
+  --ter:#0e7a49;--ter-l:#e4f6ec;
+  --lam:#b0651a;--lam-l:#fbf0e3;
+  --ref:#2b8a8a;--ref-l:#e3f4f3;
+  --r:14px;--r-sm:9px;
+  --sh:0 1px 2px rgba(20,40,30,.04),0 4px 14px rgba(20,40,30,.05);
+}
+*{box-sizing:border-box}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:14px;margin:0}
+button,input,select,textarea{font-family:inherit;font-size:14px}
+.mono{font-family:'DM Mono',monospace}
+.hidden{display:none!important}
+
+/* barra superior */
+.top{background:var(--surf);border-bottom:1px solid var(--border);padding:10px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+.top img{height:30px}
+.top h1{font-size:18px;margin:0;font-weight:700;color:var(--green-dd)}
+.top .sub{font-size:12px;color:var(--text3)}
+.top .sp{flex:1}
+.sync{display:flex;gap:6px;flex-wrap:wrap}
+.sb{font-size:11px;padding:3px 8px;border-radius:20px;background:var(--surf2);color:var(--text2);border:1px solid var(--border);white-space:nowrap}
+.sb.ok::before{content:'●';color:var(--green);margin-right:4px}
+.sb.err{background:var(--bad-l);color:var(--bad);border-color:#e9c9c9}
+.sb.err::before{content:'●';margin-right:4px}
+.sb.load::before{content:'◌';margin-right:4px}
+
+.bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 18px 0}
+.btn{background:var(--surf);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 12px;cursor:pointer;color:var(--text);font-weight:600;white-space:nowrap}
+.btn:hover{background:var(--surf2)}
+.btn.pri{background:var(--green);border-color:var(--green);color:#fff}
+.btn.pri:hover{background:var(--green-d)}
+.btn.via{background:var(--via);border-color:var(--via);color:#fff}
+.btn.bad{color:var(--bad);border-color:#e3c4c4}
+.btn.sm{padding:4px 9px;font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--border2);border-radius:var(--r-sm);overflow:hidden;background:var(--surf)}
+.seg button{border:none;background:none;padding:7px 12px;cursor:pointer;font-weight:600;color:var(--text2)}
+.seg button.on{background:var(--green-l);color:var(--green-dd)}
+.wk{font-weight:700;font-size:16px;color:var(--green-dd);margin:0 6px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.fchip{border:1px solid var(--border2);background:var(--surf);border-radius:20px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:5px}
+.fchip i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.fchip.off{opacity:.45;text-decoration:line-through}
+
+/* próximo viaje */
+.next{margin:12px 18px 0;background:var(--via-l);border:1px solid #ddd3f3;border-radius:var(--r);padding:10px 14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:13px}
+.next b{color:var(--via)}
+
+/* grilla semanal */
+.wrap{padding:12px 18px 30px}
+.grid{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow-x:auto}
+table.g{border-collapse:separate;border-spacing:0;width:100%;min-width:1180px;table-layout:fixed}
+table.g th{position:sticky;top:0;background:var(--surf2);font-size:12px;font-weight:700;color:var(--text2);padding:8px 6px;border-bottom:1px solid var(--border);text-align:left}
+table.g th.hoy{background:var(--green-l);color:var(--green-dd)}
+table.g th.dom,table.g td.dom{background:#fafbfa}
+table.g th small{display:block;font-weight:500;color:var(--text3);font-size:11px}
+table.g td{vertical-align:top;border-bottom:1px solid var(--border);border-left:1px solid var(--border);padding:5px;min-height:70px}
+table.g td.hoy{background:#f6fbf8}
+table.g td.area{border-left:none;padding:10px 10px;font-weight:700;font-size:13px;position:sticky;left:0;background:var(--surf);z-index:2}
+td.area small{display:block;font-weight:500;color:var(--text3);font-size:11px;margin-top:2px}
+td.area .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.cell{min-height:64px;display:flex;flex-direction:column;gap:5px;height:100%}
+.add{opacity:0;border:1px dashed var(--border2);border-radius:8px;text-align:center;color:var(--text3);font-size:12px;padding:3px;cursor:pointer;margin-top:auto}
+td:hover .add,.add.touch{opacity:1}
+.add:hover{background:var(--surf2);color:var(--text)}
+
+.it{border-radius:9px;padding:6px 8px 6px 10px;font-size:12px;line-height:1.3;cursor:pointer;border:1px solid transparent;position:relative;background:var(--surf2)}
+.it::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:3px;background:currentColor;opacity:.8}
+.it:hover{box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.it b{display:block;font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis}
+.it .m{color:var(--text2);font-size:11px}
+.it .k{font-family:'DM Mono',monospace;font-size:11px;font-weight:500}
+.it.via{background:var(--via-l);color:var(--via);border-color:#e0d7f5}
+.it.pet{background:var(--pet-l);color:var(--pet);border-color:#d6e4f5}
+.it.ter{background:var(--ter-l);color:var(--ter);border-color:#cfe9da}
+.it.lam{background:var(--lam-l);color:var(--lam);border-color:#f0dcc2}
+.it.ref{background:var(--ref-l);color:var(--ref);border-color:#c8e6e4}
+.it.proy{background:#fff;border:1.5px dashed currentColor}
+.it.evt{background:#f4f4f2;color:#7a7a72;border-color:#e4e4df}
+.it.canc{opacity:.5;text-decoration:line-through}
+.tag{display:inline-block;font-size:9.5px;font-weight:700;padding:0 5px;border-radius:4px;background:currentColor;margin-left:3px;vertical-align:1px}
+.tag span{color:#fff}
+.vrow{display:flex;gap:4px;font-size:11px;color:var(--text2);margin-top:2px}
+.vrow em{font-style:normal;font-weight:700;color:var(--via);min-width:34px}
+
+/* agenda (celular) */
+.ag-day{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px;box-shadow:var(--sh);overflow:hidden}
+.ag-day.hoy{border-color:var(--green);box-shadow:0 0 0 3px var(--green-l)}
+.ag-h{padding:10px 14px;background:var(--surf2);font-weight:700;display:flex;justify-content:space-between;align-items:center}
+.ag-h small{color:var(--text3);font-weight:500}
+.ag-a{padding:8px 14px;border-top:1px solid var(--border)}
+.ag-a .t{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center}
+.ag-a .its{display:flex;flex-direction:column;gap:5px}
+.empty{color:var(--text3);font-size:12px;font-style:italic;padding:6px 14px 10px}
+
+/* modal */
+.mbg{position:fixed;inset:0;background:rgba(15,25,20,.45);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:30px 14px;overflow:auto}
+.modal{background:var(--surf);border-radius:18px;width:100%;max-width:560px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.mh{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.mh h3{margin:0;font-size:17px;flex:1}
+.mh .x{border:none;background:none;font-size:20px;cursor:pointer;color:var(--text3)}
+.mb{padding:16px 20px;display:flex;flex-wrap:wrap;gap:12px}
+.f{flex:1 1 220px;display:flex;flex-direction:column;gap:4px}
+.f.w{flex-basis:100%}
+.f label{font-size:12px;font-weight:700;color:var(--text2)}
+.f input,.f select,.f textarea{border:1px solid var(--border2);border-radius:var(--r-sm);padding:9px 10px;background:var(--surf);width:100%}
+.f input:focus,.f select:focus,.f textarea:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px var(--green-l)}
+.f .h{font-size:11px;color:var(--text3)}
+.mf{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap}
+.opsel{display:flex;flex-wrap:wrap;gap:6px}
+.opsel label{font-weight:500;font-size:12px;border:1px solid var(--border2);border-radius:20px;padding:4px 10px;cursor:pointer;display:flex;gap:5px;align-items:center;color:var(--text)}
+.opsel input{width:auto}
+.area-pick{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
+.area-pick button{border:1px solid var(--border2);background:var(--surf);border-radius:12px;padding:12px;text-align:left;cursor:pointer;font-weight:700}
+.area-pick button small{display:block;font-weight:500;color:var(--text3);font-size:11px}
+.info{background:var(--surf2);border-radius:var(--r-sm);padding:9px 12px;font-size:12px;color:var(--text2);width:100%}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d2b22;color:#fff;padding:10px 18px;border-radius:12px;font-size:13px;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:90vw}
+.toast.err{background:var(--bad)}
+.busy{position:fixed;inset:0;background:rgba(255,255,255,.55);z-index:150;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--green-dd)}
+
+/* conexión */
+.cfg{max-width:520px;margin:40px auto;background:var(--surf);border-radius:18px;padding:24px;box-shadow:var(--sh)}
+
+@media (max-width:700px){
+  .top{padding:8px 12px}.top img{height:24px}.top h1{font-size:16px}
+  .bar,.wrap{padding-left:12px;padding-right:12px}.next{margin-left:12px;margin-right:12px}
+  .add{opacity:1}
+}
+@media print{
+  @page{size:A4 landscape;margin:8mm}
+  body{background:#fff;font-size:11px}
+  .top .sync,.bar,.next,.add,.noprint{display:none!important}
+  .top{position:static;border:none;padding:0 0 6px}
+  .wrap{padding:0}.grid{box-shadow:none;border:1px solid #ccc;overflow:visible}
+  table.g{min-width:0}
+  .it{break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  table.g th,table.g td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div class="top">
+  <img src="logo-winflex.png" alt="Winflex">
+  <div>
+    <h1>Cronograma General</h1>
+    <div class="sub">Termoformado · PET Chivilcoy · Laminado y Refilado · Viajes <span class="mono" id="ver"></span></div>
+  </div>
+  <div class="sp"></div>
+  <div class="sync" id="sync"></div>
+</div>
+
+<div id="app"></div>
+<div id="modal"></div>
+
+<script>
+'use strict';
+const VERSION = 'v1.0';
+document.getElementById('ver').textContent = '· ' + VERSION;
+
+/* ═════════ CONEXIONES (mismas que usan las apps) ═════════ */
+const JB_KEY_DEF = '$2a$10$8p4t41BnTv.9Ls.4kFLhouDMqJGQEd5LQlBYEz8n1y6nH/3dFq27G';
+function lsGet(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
+function termoCfg() { return { bin: lsGet('wf_termo_binid') || '6a243e42da38895dfe915231', key: lsGet('wf_termo_apikey') || JB_KEY_DEF, type: 'master' }; }
+function lamCfg() {
+  let c = { bin: '6aa94df9ffd5d160530a1a0b', key: JB_KEY_DEF, keyType: 'master' };
+  try { const x = JSON.parse(lsGet('wr_cfg') || 'null'); if (x && x.bin && x.key) c = Object.assign(c, x); } catch (_) {}
+  return { bin: c.bin, key: c.key, type: c.keyType || 'master' };
+}
+function jbHeaders(c, extra) { return Object.assign({ [c.type === 'access' ? 'X-Access-Key' : 'X-Master-Key']: c.key }, extra || {}); }
+function gistCreds() { try { return JSON.parse(lsGet('winflex_gist_credentials') || 'null'); } catch (_) { return null; } }
+(function importarCredsDesdeLink() { // mismo link de conexión que usa PET Chivilcoy (#wfc=...)
+  try {
+    const m = (location.hash || '').match(/[#&]wfc=([^&]+)/); if (!m) return;
+    const j = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1]).replace(/-/g, '+').replace(/_/g, '/')))));
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) { location.hash = ''; }
+    if (j && j.g && j.t) lsSet('winflex_gist_credentials', JSON.stringify({ gistId: j.g, token: j.t }));
+  } catch (e) { console.warn('link de conexión inválido', e); }
+})();
+
+/* ═════════ UTILIDADES ═════════ */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const nowISO = () => new Date().toISOString();
+const fmt = n => (Math.round(+n || 0)).toLocaleString('es-AR');
+const pad2 = n => String(n).padStart(2, '0');
+const ymd = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+const hoyISO = () => ymd(new Date());
+function addD(s, n) { const d = new Date(s + 'T12:00'); d.setDate(d.getDate() + n); return ymd(d); }
+function lunesDe(s) { const d = new Date(s + 'T12:00'); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return ymd(d); }
+const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const DIASL = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const dow = s => new Date(s + 'T12:00').getDay();
+const dm = s => s.slice(8, 10) + '/' + s.slice(5, 7);
+const uid = p => p + '-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+let toastT;
+function toast(msg, err) { const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg; document.querySelectorAll('.toast').forEach(x => x.remove()); document.body.appendChild(t); clearTimeout(toastT); toastT = setTimeout(() => t.remove(), err ? 6000 : 3000); }
+function busy(on, txt) { let b = document.querySelector('.busy'); if (on) { if (!b) { b = document.createElement('div'); b.className = 'busy'; document.body.appendChild(b); } b.textContent = txt || 'Guardando…'; } else if (b) b.remove(); }
+function confirmar(msg, ok) {
+  return new Promise(res => {
+    const d = document.createElement('div'); d.className = 'mbg'; d.style.zIndex = 160;
+    d.innerHTML = `<div class="modal" style="max-width:400px;margin-top:80px"><div class="mb" style="font-size:14px;white-space:pre-line">${msg}</div><div class="mf"><button class="btn" data-v="0">Cancelar</button><button class="btn pri" data-v="1">${ok || 'Aceptar'}</button></div></div>`;
+    d.onclick = e => { const v = e.target.getAttribute('data-v'); if (v != null || e.target === d) { d.remove(); res(v === '1'); } };
+    document.body.appendChild(d);
+  });
+}
+
+/* ═════════ ÁREAS ═════════ */
+const AREAS = [
+  { id: 'via', nom: 'Viajes', sub: 'Chivilcoy ↔ Lanús', cls: 'via', col: 'var(--via)' },
+  { id: 'pet', nom: 'Extrusión PET', sub: 'Chivilcoy', cls: 'pet', col: 'var(--pet)' },
+  { id: 'ter', nom: 'Termoformado', sub: 'Lanús', cls: 'ter', col: 'var(--ter)' },
+  { id: 'lam', nom: 'Laminadora', sub: 'Lanús', cls: 'lam', col: 'var(--lam)', maq: 'Laminadora' },
+  { id: 'rv', nom: 'Refiladora Verde', sub: 'Lanús', cls: 'ref', col: 'var(--ref)', maq: 'Refiladora Verde' },
+  { id: 'rg', nom: 'Refiladora Gris', sub: 'Lanús', cls: 'ref', col: 'var(--ref)', maq: 'Refiladora Gris' },
+];
+const AREA = Object.fromEntries(AREAS.map(a => [a.id, a]));
+const MAQ2AREA = { 'Laminadora': 'lam', 'Refiladora Verde': 'rv', 'Refiladora Gris': 'rg' };
+
+/* ═════════ ESTADO ═════════ */
+const S = {
+  ter: null, lam: null, pet: null, via: null,
+  petPedidos: [], petProd: {},
+  err: { ter: '', lam: '', pet: '', via: '' }, load: { ter: false, lam: false, pet: false, via: false },
+  ini: lunesDe(hoyISO()),
+  vista: lsGet('cg_vista') || (window.innerWidth < 800 ? 'agenda' : 'semana'),
+  ocultas: (() => { try { return JSON.parse(lsGet('cg_ocultas') || '[]'); } catch (_) { return []; } })(),
+};
+const TRANSP_DEF = ['Eugenio', 'Camión de Monti'];
+
+/* ═════════ LECTURA ═════════ */
+async function jbGet(c) {
+  const r = await fetch(`https://api.jsonbin.io/v3/b/${c.bin}/latest`, { headers: jbHeaders(c, { 'X-Bin-Meta': 'false' }), cache: 'no-store' });
+  if (!r.ok) throw new Error('JSONBin HTTP ' + r.status);
+  const j = await r.json();
+  return (j && j.record && !j.cronograma && !j.ocs) ? j.record : j;
+}
+async function jbPut(c, data) {
+  const r = await fetch(`https://api.jsonbin.io/v3/b/${c.bin}`, { method: 'PUT', headers: jbHeaders(c, { 'Content-Type': 'application/json', 'X-Bin-Versioning': 'false' }), body: JSON.stringify(data) });
+  if (!r.ok) throw new Error('No se pudo guardar (HTTP ' + r.status + ')');
+}
+async function gistGet() {
+  const c = gistCreds(); if (!c || !c.gistId || !c.token) throw new Error('SIN_GIST');
+  const r = await fetch('https://api.github.com/gists/' + c.gistId, { headers: { Authorization: 'token ' + c.token, Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+  if (!r.ok) throw new Error('Gist HTTP ' + r.status);
+  return r.json();
+}
+async function gistFile(gj, name) {
+  const f = gj && gj.files && gj.files[name]; if (!f) return null;
+  if (!f.truncated) return f.content;
+  const r = await fetch(f.raw_url, { cache: 'no-store' }); if (!r.ok) throw new Error('raw HTTP ' + r.status);
+  return r.text();
+}
+async function gistPatch(files) {
+  const c = gistCreds(); if (!c) throw new Error('SIN_GIST');
+  const r = await fetch('https://api.github.com/gists/' + c.gistId, { method: 'PATCH', headers: { Authorization: 'token ' + c.token, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }, body: JSON.stringify({ files }) });
+  if (!r.ok) throw new Error('No se pudo guardar en el Gist (HTTP ' + r.status + ')');
+}
+// pedidos del Gist de PET vienen con nombres cortos
+const PED_REV = { fi: 'fechaIngreso', fe: 'fechaEntrega', cl: 'cliente', med: 'medida', col: 'color', kp: 'kgPedidos', kr: 'kgReales', a: 'ancho', e: 'espesor', ew: 'estadoWorkflow', prd: 'producto', no: 'nroOP', pdt: 'productoTipo', dc: 'destinoCodigo', ns: 'nroSolicitud' };
+function pedLargo(p) { if (!p || 'cliente' in p) return p; const o = {}; for (const k in p) o[PED_REV[k] || k] = p[k]; return o; }
+function parseCrono(txt) { try { const o = JSON.parse(txt || '{}'); return { planificacion: o.planificacion || {}, planificacionEliminados: o.planificacionEliminados || {} }; } catch (_) { return { planificacion: {}, planificacionEliminados: {} }; } }
+function parseViajes(txt) { let o = {}; try { o = JSON.parse(txt || '{}'); } catch (_) {} return { viajes: o.viajes || [], viajesEliminados: o.viajesEliminados || {}, transportes: (o.transportes && o.transportes.length) ? o.transportes : TRANSP_DEF.slice() }; }
+
+async function cargarTermo() { S.load.ter = true; try { S.ter = await jbGet(termoCfg()); S.err.ter = ''; } catch (e) { S.err.ter = e.message; } S.load.ter = false; }
+async function cargarLam() { S.load.lam = true; try { S.lam = await jbGet(lamCfg()); S.err.lam = ''; } catch (e) { S.err.lam = e.message; } S.load.lam = false; }
+async function cargarGist(conPedidos) {
+  S.load.pet = S.load.via = true;
+  try {
+    const gj = await gistGet();
+    S.pet = parseCrono(await gistFile(gj, 'cronograma.json'));
+    S.via = parseViajes(await gistFile(gj, 'viajes.json'));
+    if (conPedidos || !S.petPedidos.length) {
+      try {
+        const w = JSON.parse(await gistFile(gj, 'winflex.json') || '{}');
+        S.petPedidos = (w.pedidos || []).map(pedLargo);
+        const pp = {}; (w.producciones || []).forEach(b => { const f = b.fecha || b.fc, pid = b.pedidoId || b.pi, k = +(b.kg ?? b.k) || 0; if (!f || !pid) return; (pp[f] = pp[f] || {})[pid] = (pp[f][pid] || 0) + k; });
+        S.petProd = pp;
+        if (!gj.files['cronograma.json'] && w.planificacion) S.pet = { planificacion: w.planificacion || {}, planificacionEliminados: w.planificacionEliminados || {} };
+      } catch (e) { console.warn('pedidos PET', e); }
+    }
+    S.err.pet = S.err.via = '';
+  } catch (e) { S.err.pet = S.err.via = e.message === 'SIN_GIST' ? 'Falta conectar' : e.message; }
+  S.load.pet = S.load.via = false;
+}
+let cargando = false, ultCarga = 0;
+async function cargarTodo(full) {
+  if (cargando) return; cargando = true; renderSync();
+  await Promise.all([cargarTermo(), cargarLam(), cargarGist(full)]);
+  cargando = false; ultCarga = Date.now(); render();
+}
+
+/* ═════════ NORMALIZACIÓN: todo lo de la semana en una lista ═════════ */
+function petPed(id) { return S.petPedidos.find(p => p.id === id) || null; }
+function lamOc(id) { return ((S.lam && S.lam.ocs) || []).find(o => o.id === id) || null; }
+const TER_EVT = { MANT: { lbl: 'Mantenimiento', ic: '🔧' }, MATRIZ: { lbl: 'Cambio de matriz', ic: '🔁' }, ROTURA: { lbl: 'Rotura', ic: '⚠️' }, SINBOB: { lbl: 'Sin bobinas', ic: '📦' } };
+const TER_PRODS = ['F40', 'F41', 'F43', 'F50', 'F61', 'F63', 'E900', 'T900', 'S900', 'E910'];
+const TER_TURNOS = { M1: 'M1 · 07–16', M2: 'M2 · 07–19', N: 'Noche · 19–07' };
+const ST_PET = { pendiente: '⏳ Pendiente', curso: '🔄 En curso', completado: '✅ Completado', demorado: '⚠️ Demorado' };
+const ST_VIA = { programado: 'Programado', confirmado: 'Confirmado', realizado: 'Realizado', cancelado: 'Cancelado' };
+
+function items(fecha, area) {
+  const out = [];
+  if (area === 'via' && S.via) S.via.viajes.filter(v => v.fecha === fecha && !S.via.viajesEliminados[v.id]).sort((a, b) => (a.hora || '').localeCompare(b.hora || '')).forEach(v => out.push({ src: 'via', o: v }));
+  if (area === 'pet' && S.pet) {
+    const d = S.pet.planificacion[fecha]; const tomb = S.pet.planificacionEliminados || {};
+    ((d && d.ops) || []).filter(op => !tomb[op.id]).sort((a, b) => (a.prioridad || 0) - (b.prioridad || 0)).forEach(op => out.push({ src: 'pet', o: op, fecha }));
+  }
+  if (area === 'ter' && S.ter) {
+    const tomb = new Set((S.ter.cronogramaBorrados || []).map(t => t.id)); const ord = { M1: 1, M2: 1, N: 2 };
+    (S.ter.cronograma || []).filter(c => c.fecha === fecha && !tomb.has(c.id)).sort((a, b) => (ord[a.turno] || 0) - (ord[b.turno] || 0)).forEach(c => out.push({ src: 'ter', o: c }));
+  }
+  if (AREA[area] && AREA[area].maq && S.lam) {
+    const tomb = S.lam.tomb || {}; const ord = { 'Mañana': 1, 'Todo el día': 2, 'Tarde': 3, 'Noche': 4 };
+    (S.lam.cronograma || []).filter(c => !c.del && !tomb['cronograma:' + c.id] && c.fecha === fecha && c.maq === AREA[area].maq).sort((a, b) => (ord[a.turno] || 9) - (ord[b.turno] || 9)).forEach(c => out.push({ src: 'lam', o: c, area }));
+  }
+  return out;
+}
+
+/* ═════════ TARJETAS ═════════ */
+function card(it, area) {
+  const o = it.o, cls = AREA[area].cls;
+  const k = `data-src="${it.src}" data-id="${esc(o.id)}" data-f="${esc(it.fecha || o.fecha || '')}"`;
+  if (it.src === 'via') {
+    const canc = o.estado === 'cancelado';
+    return `<div class="it via ${canc ? 'canc' : ''}" ${k}><b>🚚 ${esc(o.transporte || 'Sin transporte')}${o.hora ? ' · ' + esc(o.hora) : ''}${o.estado && o.estado !== 'programado' ? ` <span class="tag"><span>${esc(ST_VIA[o.estado] || o.estado)}</span></span>` : ''}</b>
+      ${o.lleva ? `<div class="vrow"><em>Lleva</em><span>${esc(o.lleva)}${o.pallets ? ' · ' + esc(o.pallets) + ' pal.' : ''}</span></div>` : ''}
+      ${o.trae ? `<div class="vrow"><em>Trae</em><span>${esc(o.trae)}</span></div>` : ''}
+      ${o.nota ? `<div class="m" style="font-style:italic">${esc(o.nota)}</div>` : ''}</div>`;
+  }
+  if (it.src === 'pet') {
+    const p = petPed(o.pedidoId);
+    const real = p ? ((S.petProd[it.fecha] || {})[o.pedidoId] || 0) : 0;
+    const st = (ST_PET[o.status || 'pendiente'] || '').split(' ')[0];
+    if (!p && o.proy) return `<div class="it pet proy" ${k}><b>${esc(o.pCli || '—')} <span class="tag"><span>PROYECTADA</span></span></b><div class="m">${esc(o.pDesc || 'sin pedido')}</div><div class="k">${st} ${fmt(o.kgPlan)} kg</div>${o.notas ? `<div class="m" style="font-style:italic">${esc(o.notas)}</div>` : ''}</div>`;
+    if (!p) return `<div class="it pet" ${k}><b>OP eliminada / pedido no encontrado</b><div class="k">${fmt(o.kgPlan)} kg</div></div>`;
+    return `<div class="it pet" ${k}><b>${esc(p.cliente)}</b><div class="m">OP ${esc(p.nroOP || '-')} · ${esc(p.ancho || '-')}×${esc(p.espesor || '-')}${p.color ? ' · ' + esc(p.color) : ''}</div><div class="k">${st} ${fmt(o.kgPlan)} kg${real ? ` · <span style="color:var(--green-d)">${fmt(real)} real</span>` : ''}</div>${o.notas ? `<div class="m" style="font-style:italic">${esc(o.notas)}</div>` : ''}</div>`;
+  }
+  if (it.src === 'ter') {
+    const ev = TER_EVT[o.prod];
+    const ops = (o.operarios || []).map(n => n.split(' ')[0]).join(', ');
+    return `<div class="it ${ev ? 'evt' : 'ter'}" ${k}><b>${ev ? ev.ic + ' ' + esc(ev.lbl) : esc(o.prod)} <span class="m">· ${esc(o.turno)}</span></b>${o.meta ? `<div class="k">${o.meta} pallets</div>` : ''}${ops ? `<div class="m">👷 ${esc(ops)}</div>` : ''}${o.obs ? `<div class="m" style="font-style:italic">${esc(o.obs)}</div>` : ''}</div>`;
+  }
+  if (it.src === 'lam') {
+    const oc = o.ocId ? lamOc(o.ocId) : null;
+    const tit = oc ? `${esc(oc.cliente)} · OC ${esc(oc.nro)}` : o.proy ? `${esc(o.pCli || '—')} <span class="tag"><span>PROYECTADA</span></span>` : esc(o.nota || 'Tarea');
+    const sub = oc ? (oc.desc || '') : o.proy ? (o.pDesc || 'sin OC') : '';
+    return `<div class="it ${o.ocId || o.proy ? cls : 'evt'} ${o.proy && !o.ocId ? 'proy' : ''}" ${k}><b>${tit}</b>${sub ? `<div class="m">${esc(sub)}</div>` : ''}<div class="k">${esc(o.turno || '')}${o.kgObj ? ' · ' + fmt(o.kgObj) + ' kg' : ''}</div>${o.operario ? `<div class="m">👷 ${esc(o.operario)}</div>` : ''}${(oc || o.proy) && o.nota ? `<div class="m" style="font-style:italic">${esc(o.nota)}</div>` : ''}</div>`;
+  }
+  return '';
+}
+
+/* ═════════ RENDER ═════════ */
+function renderSync() {
+  const lbl = { via: 'Viajes', pet: 'PET', ter: 'Termo', lam: 'Laminado' };
+  $('sync').innerHTML = Object.keys(lbl).map(k => {
+    const e = S.err[k], l = cargando;
+    return `<span class="sb ${l ? 'load' : e ? 'err' : 'ok'}" title="${esc(e)}">${lbl[k]}${e ? ': ' + esc(e) : ''}</span>`;
+  }).join('') + `<button class="btn sm noprint" onclick="cargarTodo(true)" title="Actualizar">⟳</button>`;
+}
+function dias() { return Array.from({ length: 7 }, (_, i) => addD(S.ini, i)); }
+function areasVis() { return AREAS.filter(a => !S.ocultas.includes(a.id)); }
+
+function render() {
+  renderSync();
+  if (S.err.pet === 'Falta conectar' && !S.lam && !S.ter) return renderConexion();
+  const ds = dias(), hoy = hoyISO();
+  let h = `<div class="bar">
+    <button class="btn" onclick="semana(-1)">◀</button>
+    <button class="btn" onclick="semana(0)">Hoy</button>
+    <button class="btn" onclick="semana(1)">▶</button>
+    <span class="wk">Semana del ${dm(ds[0])} al ${dm(ds[6])}</span>
+    <span style="flex:1"></span>
+    <div class="seg"><button class="${S.vista === 'semana' ? 'on' : ''}" onclick="vista('semana')">Semana</button><button class="${S.vista === 'agenda' ? 'on' : ''}" onclick="vista('agenda')">Día por día</button></div>
+    <button class="btn via" onclick="nuevo('via','${ds.includes(hoy) ? hoy : ds[0]}')">🚚 Nuevo viaje</button>
+    <button class="btn pri" onclick="nuevo(null,'${ds.includes(hoy) ? hoy : ds[0]}')">＋ Agregar</button>
+    <button class="btn" onclick="whatsapp()" title="Copiar la semana para WhatsApp">📋 WhatsApp</button>
+    <button class="btn" onclick="window.print()">🖨</button>
+  </div>
+  <div class="bar"><div class="chips">${AREAS.map(a => `<span class="fchip ${S.ocultas.includes(a.id) ? 'off' : ''}" onclick="toggleArea('${a.id}')"><i style="background:${a.col}"></i>${a.nom}</span>`).join('')}</div>
+  ${S.err.pet === 'Falta conectar' ? `<button class="btn sm" onclick="renderConexion()">Conectar PET / Viajes</button>` : ''}</div>`;
+  h += proximoViaje();
+  h += `<div class="wrap">` + (S.vista === 'semana' ? grilla(ds, hoy) : agenda(ds, hoy)) + `</div>`;
+  $('app').innerHTML = h;
+  if (S.vista === 'agenda' && !render._scrolled) { const e = document.querySelector('.ag-day.hoy'); if (e) { render._scrolled = true; setTimeout(() => e.scrollIntoView({ block: 'start' }), 50); } }
+}
+function proximoViaje() {
+  if (!S.via) return '';
+  const hoy = hoyISO();
+  const v = S.via.viajes.filter(x => !S.via.viajesEliminados[x.id] && x.fecha >= hoy && x.estado !== 'cancelado' && x.estado !== 'realizado').sort((a, b) => (a.fecha + (a.hora || '')).localeCompare(b.fecha + (b.hora || '')))[0];
+  if (!v) return `<div class="next"><span>🚚 No hay viajes programados desde hoy.</span><button class="btn sm" onclick="nuevo('via','${hoy}')">Programar viaje</button></div>`;
+  return `<div class="next" style="cursor:pointer" data-src="via" data-id="${esc(v.id)}"><b>🚚 Próximo viaje</b><span>${v.fecha === hoy ? 'Hoy' : DIASL[dow(v.fecha)] + ' ' + dm(v.fecha)}${v.hora ? ' ' + esc(v.hora) : ''} · <b style="color:var(--text)">${esc(v.transporte || 'sin transporte')}</b></span>${v.lleva ? `<span>⬆ Lleva: ${esc(v.lleva)}</span>` : ''}${v.trae ? `<span>⬇ Trae: ${esc(v.trae)}</span>` : ''}</div>`;
+}
+function grilla(ds, hoy) {
+  let h = `<div class="grid"><table class="g"><thead><tr><th style="width:150px">Área</th>${ds.map(d => `<th class="${d === hoy ? 'hoy' : ''} ${dow(d) === 0 ? 'dom' : ''}">${DIAS[dow(d)]} ${dm(d)}${d === hoy ? ' · hoy' : ''}<small>${totDia(d)}</small></th>`).join('')}</tr></thead><tbody>`;
+  areasVis().forEach(a => {
+    const err = errArea(a.id);
+    h += `<tr><td class="area"><span class="dot" style="background:${a.col}"></span>${a.nom}<small>${a.sub}${err ? ` · <span style="color:var(--bad)">${esc(err)}</span>` : ''}</small></td>`;
+    ds.forEach(d => {
+      const its = items(d, a.id);
+      h += `<td class="${d === hoy ? 'hoy' : ''} ${dow(d) === 0 ? 'dom' : ''}"><div class="cell">${its.map(it => card(it, a.id)).join('')}${err ? '' : `<div class="add" onclick="nuevo('${a.id}','${d}')">＋</div>`}</div></td>`;
+    });
+    h += `</tr>`;
+  });
+  return h + `</tbody></table></div>`;
+}
+function agenda(ds, hoy) {
+  return ds.map(d => {
+    const bloques = areasVis().map(a => {
+      const its = items(d, a.id); if (!its.length) return '';
+      return `<div class="ag-a"><div class="t" style="color:${a.col}"><span>${a.nom}</span><span class="add touch" style="margin:0;padding:1px 8px" onclick="nuevo('${a.id}','${d}')">＋</span></div><div class="its">${its.map(it => card(it, a.id)).join('')}</div></div>`;
+    }).join('');
+    return `<div class="ag-day ${d === hoy ? 'hoy' : ''}"><div class="ag-h"><span>${DIASL[dow(d)]} ${dm(d)}${d === hoy ? ' · hoy' : ''}</span><span><small>${totDia(d)}</small> <button class="btn sm" onclick="nuevo(null,'${d}')">＋</button></span></div>${bloques || '<div class="empty">Sin nada cargado</div>'}</div>`;
+  }).join('');
+}
+function totDia(d) {
+  const nv = items(d, 'via').filter(x => x.o.estado !== 'cancelado').length;
+  return nv ? `🚚 ${nv} viaje${nv > 1 ? 's' : ''}` : '';
+}
+function errArea(id) { const k = id === 'via' ? 'via' : id === 'pet' ? 'pet' : id === 'ter' ? 'ter' : 'lam'; return S.err[k] || ''; }
+function semana(n) { S.ini = n === 0 ? lunesDe(hoyISO()) : addD(S.ini, 7 * n); render(); }
+function vista(v) { S.vista = v; lsSet('cg_vista', v); render(); }
+function toggleArea(id) { const i = S.ocultas.indexOf(id); if (i >= 0) S.ocultas.splice(i, 1); else S.ocultas.push(id); lsSet('cg_ocultas', JSON.stringify(S.ocultas)); render(); }
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-src][data-id]'); if (!el || e.target.closest('.add')) return;
+  editar(el.getAttribute('data-src'), el.getAttribute('data-id'), el.getAttribute('data-f'));
+});
+
+/* ═════════ WHATSAPP ═════════ */
+function whatsapp() {
+  const ds = dias();
+  let t = `*Winflex · Cronograma general*\nSemana del ${dm(ds[0])} al ${dm(ds[6])}\n`;
+  ds.forEach(d => {
+    let bl = '';
+    areasVis().forEach(a => {
+      const its = items(d, a.id); if (!its.length) return;
+      bl += `_${a.nom}_\n`;
+      its.forEach(it => { bl += '• ' + txtItem(it) + '\n'; });
+    });
+    if (bl) t += `\n*${DIASL[dow(d)]} ${dm(d)}*\n` + bl;
+  });
+  const fin = () => toast('Copiado — pegalo en WhatsApp');
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(fin, () => prompt('Copiá el texto:', t));
+  else prompt('Copiá el texto:', t);
+}
+function txtItem(it) {
+  const o = it.o;
+  if (it.src === 'via') return `${o.transporte || 'Viaje'}${o.hora ? ' ' + o.hora : ''}${o.estado === 'cancelado' ? ' (CANCELADO)' : ''}${o.lleva ? ' — lleva: ' + o.lleva : ''}${o.pallets ? ' (' + o.pallets + ' pal.)' : ''}${o.trae ? ' — trae: ' + o.trae : ''}`;
+  if (it.src === 'pet') { const p = petPed(o.pedidoId); return p ? `${p.cliente} OP ${p.nroOP || '-'} ${p.ancho || ''}x${p.espesor || ''} · ${fmt(o.kgPlan)} kg` : `${o.pCli || '?'} ${o.pDesc || ''} (proyectada) · ${fmt(o.kgPlan)} kg`; }
+  if (it.src === 'ter') { const ev = TER_EVT[o.prod]; return `${o.turno} ${ev ? ev.lbl : o.prod}${o.meta ? ' · ' + o.meta + ' pal.' : ''}${(o.operarios || []).length ? ' · ' + o.operarios.join(', ') : ''}`; }
+  if (it.src === 'lam') { const oc = o.ocId ? lamOc(o.ocId) : null; return `${oc ? oc.cliente + ' OC ' + oc.nro + (oc.desc ? ' ' + oc.desc : '') : o.proy ? (o.pCli || '?') + ' ' + (o.pDesc || '') + ' (proyectada)' : (o.nota || 'Tarea')} · ${o.turno || ''}${o.kgObj ? ' · ' + fmt(o.kgObj) + ' kg' : ''}${o.operario ? ' · ' + o.operario : ''}`; }
+  return '';
+}
+
+/* ═════════ MODALES ═════════ */
+function modal(titulo, cuerpo, pie) {
+  $('modal').innerHTML = `<div class="mbg" onclick="if(event.target===this)cerrar()"><div class="modal"><div class="mh"><h3>${titulo}</h3><button class="x" onclick="cerrar()">✕</button></div><div class="mb">${cuerpo}</div>${pie ? `<div class="mf">${pie}</div>` : ''}</div></div>`;
+}
+function cerrar() { $('modal').innerHTML = ''; }
+const v = id => ($(id) ? $(id).value : '');
+const vt = id => v(id).trim();
+
+function nuevo(area, fecha) {
+  if (!area) {
+    return modal(`Agregar · ${DIASL[dow(fecha)]} ${dm(fecha)}`, `<div class="area-pick">${AREAS.map(a => `<button style="border-left:4px solid ${a.col}" onclick="nuevo('${a.id}','${fecha}')">${a.id === 'via' ? '🚚 ' : ''}${a.nom}<small>${a.sub}${errArea(a.id) ? ' · sin conexión' : ''}</small></button>`).join('')}</div>`);
+  }
+  if (errArea(area)) return toast('Sin conexión con ' + AREA[area].nom + ': ' + errArea(area), true);
+  if (area === 'via') return formVia({ fecha, estado: 'programado' });
+  if (area === 'pet') return formPet({ fecha, status: 'pendiente', kgPlan: 0 }, fecha);
+  if (area === 'ter') return formTer({ fecha, turno: diaTurnoTer(fecha), prod: '', meta: 0, operarios: [], obs: '' });
+  return formLam({ fecha, maq: AREA[area].maq, turno: 'Todo el día', ocId: '', proy: false, pCli: '', pDesc: '', operario: '', kgObj: null, nota: '' });
+}
+function editar(src, id, f) {
+  if (src === 'via') { const o = S.via.viajes.find(x => x.id === id); if (o) formVia(JSON.parse(JSON.stringify(o))); return; }
+  if (src === 'pet') { const d = S.pet.planificacion[f]; const o = d && d.ops.find(x => x.id === id); if (o) formPet(JSON.parse(JSON.stringify(o)), f); return; }
+  if (src === 'ter') { const o = (S.ter.cronograma || []).find(x => x.id === id); if (o) formTer(JSON.parse(JSON.stringify(o))); return; }
+  if (src === 'lam') { const o = (S.lam.cronograma || []).find(x => x.id === id); if (o) formLam(JSON.parse(JSON.stringify(o))); }
+}
+function pieForm(fnGuardar, fnBorrar) {
+  return `<div>${fnBorrar ? `<button class="btn bad" onclick="${fnBorrar}">🗑 Borrar</button>` : ''}</div><div style="display:flex;gap:8px"><button class="btn" onclick="cerrar()">Cancelar</button><button class="btn pri" onclick="${fnGuardar}">💾 Guardar</button></div>`;
+}
+
+/* ── VIAJES ── */
+let ED = null;
+function formVia(o) {
+  ED = o; const tr = (S.via && S.via.transportes) || TRANSP_DEF;
+  modal(o.id ? '🚚 Editar viaje' : '🚚 Nuevo viaje Chivilcoy ↔ Lanús', `
+    <div class="f"><label>Fecha</label><input type="date" id="v_fecha" value="${esc(o.fecha)}"></div>
+    <div class="f"><label>Hora (opcional)</label><input type="time" id="v_hora" value="${esc(o.hora || '')}"></div>
+    <div class="f w"><label>Transporte</label><input id="v_tr" list="v_trl" value="${esc(o.transporte || '')}" placeholder="Quién hace el viaje"><datalist id="v_trl">${tr.map(t => `<option value="${esc(t)}">`).join('')}</datalist>
+      <div class="opsel" style="margin-top:4px">${tr.map(t => `<label onclick="$('v_tr').value=this.textContent.trim()">${esc(t)}</label>`).join('')}</div></div>
+    <div class="f w"><label>⬆ Lleva — Chivilcoy → Lanús</label><textarea id="v_lleva" rows="2" placeholder="Ej: bobinas F40 y T900, PET Don Yeyo, pallets de Bligraf…">${esc(o.lleva || '')}</textarea></div>
+    <div class="f"><label>Pallets que lleva (opcional)</label><input type="number" id="v_pal" min="0" value="${esc(o.pallets || '')}"></div>
+    <div class="f"><label>Estado</label><select id="v_est">${Object.keys(ST_VIA).map(k => `<option value="${k}" ${o.estado === k ? 'selected' : ''}>${ST_VIA[k]}</option>`).join('')}</select></div>
+    <div class="f w"><label>⬇ Trae — Lanús → Chivilcoy</label><textarea id="v_trae" rows="2" placeholder="Ej: PE para laminar, scrap, conos, insumos…">${esc(o.trae || '')}</textarea></div>
+    <div class="f w"><label>Nota</label><input id="v_nota" value="${esc(o.nota || '')}" placeholder="Opcional"></div>`,
+    pieForm('guardarVia()', o.id ? 'borrarVia()' : ''));
+}
+async function guardarVia() {
+  const o = Object.assign({}, ED, { fecha: v('v_fecha'), hora: v('v_hora'), transporte: vt('v_tr'), lleva: vt('v_lleva'), trae: vt('v_trae'), pallets: +v('v_pal') || '', estado: v('v_est'), nota: vt('v_nota'), mod: nowISO() });
+  if (!o.fecha) return toast('Falta la fecha', true);
+  if (!o.transporte) return toast('Poné qué transporte hace el viaje', true);
+  if (!o.lleva && !o.trae) return toast('Poné qué lleva o qué trae', true);
+  if (!o.id) { o.id = uid('VJ'); o.creado = o.mod; }
+  await escribir('Viajes', () => viaWrite(d => {
+    const i = d.viajes.findIndex(x => x.id === o.id); if (i >= 0) d.viajes[i] = o; else d.viajes.push(o);
+    if (o.transporte && !d.transportes.some(t => t.toLowerCase() === o.transporte.toLowerCase())) d.transportes.push(o.transporte);
+  }));
+}
+async function borrarVia() {
+  if (!await confirmar('¿Borrar este viaje?', 'Borrar')) return;
+  const id = ED.id;
+  await escribir('Viajes', () => viaWrite(d => { d.viajes = d.viajes.filter(x => x.id !== id); d.viajesEliminados[id] = nowISO(); }));
+}
+async function viaWrite(mut) {
+  const gj = await gistGet();
+  const d = parseViajes(await gistFile(gj, 'viajes.json'));
+  mut(d);
+  const lim = new Date(Date.now() - 120 * 864e5).toISOString();
+  Object.keys(d.viajesEliminados).forEach(k => { if (d.viajesEliminados[k] < lim) delete d.viajesEliminados[k]; });
+  d.viajes = d.viajes.filter(x => !d.viajesEliminados[x.id]);
+  await gistPatch({ 'viajes.json': { content: JSON.stringify({ viajes: d.viajes, viajesEliminados: d.viajesEliminados, transportes: d.transportes, lastUpdate: nowISO() }) } });
+  S.via = d;
+}
+
+/* ── PET CHIVILCOY (cronograma.json del Gist; mismo formato que la app PET) ── */
+function petActivos() { return S.petPedidos.filter(p => !['Finalizada', 'Cancelada', 'Despachada'].includes(p.estadoWorkflow || '')).sort((a, b) => (a.cliente || '').localeCompare(b.cliente || '')); }
+function formPet(o, fechaOrig) {
+  ED = { o, fechaOrig: o.id ? fechaOrig : null };
+  const act = petActivos(); const ped = o.pedidoId ? petPed(o.pedidoId) : null;
+  if (ped && !act.includes(ped)) act.unshift(ped);
+  const tipo = o.pedidoId ? 'ped' : (o.id ? 'proy' : (act.length ? 'ped' : 'proy'));
+  const clis = [...new Set(S.petPedidos.map(p => (p.cliente || '').trim()).filter(Boolean))].sort();
+  modal(o.id ? '🏭 Extrusión PET · editar' : '🏭 Extrusión PET · agregar', `
+    <div class="f"><label>Fecha</label><input type="date" id="p_fecha" value="${esc(fechaOrig || o.fecha)}"></div>
+    <div class="f"><label>Tipo</label><select id="p_tipo" onchange="petTipo()"><option value="ped" ${tipo === 'ped' ? 'selected' : ''}>Con pedido</option><option value="proy" ${tipo === 'proy' ? 'selected' : ''}>Proyectada (sin pedido / OC)</option></select></div>
+    <div class="f w p-ped"><label>Pedido / OP</label><select id="p_ped" onchange="petSug()"><option value="">— elegir —</option>${act.map(p => { const r = Math.max(0, (+p.kgPedidos || 0) - (+p.kgReales || 0)); return `<option value="${esc(p.id)}" data-r="${r}" ${p.id === o.pedidoId ? 'selected' : ''}>${esc(p.cliente)} — OP ${esc(p.nroOP || '-')} · ${esc(p.ancho || '-')}×${esc(p.espesor || '-')} · rest. ${fmt(r)} kg</option>`; }).join('')}</select><span class="h" id="p_h"></span></div>
+    <div class="f p-proy"><label>Cliente / destino</label><input id="p_cli" list="p_clis" value="${esc(o.pCli || '')}"><datalist id="p_clis">${clis.map(c => `<option value="${esc(c)}">`).join('')}</datalist></div>
+    <div class="f p-proy"><label>Producto / medida</label><input id="p_desc" value="${esc(o.pDesc || '')}" placeholder="Ej: rPET cristal 580×300"></div>
+    <div class="f"><label>Kg planificados</label><input type="number" id="p_kg" min="0" step="50" value="${esc(o.kgPlan || 0)}"></div>
+    <div class="f"><label>Estado</label><select id="p_st">${Object.keys(ST_PET).map(k => `<option value="${k}" ${(o.status || 'pendiente') === k ? 'selected' : ''}>${ST_PET[k]}</option>`).join('')}</select></div>
+    <div class="f w"><label>Notas</label><textarea id="p_not" rows="2">${esc(o.notas || '')}</textarea></div>`,
+    pieForm('guardarPet()', o.id ? 'borrarPet()' : ''));
+  petTipo();
+}
+function petTipo() { const t = v('p_tipo'); document.querySelectorAll('.p-ped').forEach(e => e.style.display = t === 'ped' ? '' : 'none'); document.querySelectorAll('.p-proy').forEach(e => e.style.display = t === 'proy' ? '' : 'none'); }
+function petSug() { const s = $('p_ped'), op = s.options[s.selectedIndex]; if (!op || !op.value) return; const r = +op.getAttribute('data-r') || 0; if (!ED.o.id && r) $('p_kg').value = Math.min(r, 3000); $('p_h').textContent = 'Restante del pedido: ' + fmt(r) + ' kg'; }
+async function guardarPet() {
+  const fecha = v('p_fecha'), tipo = v('p_tipo'), base = ED.o, fechaOrig = ED.fechaOrig;
+  if (!fecha) return toast('Falta la fecha', true);
+  const o = Object.assign({}, base, { kgPlan: +v('p_kg') || 0, status: v('p_st'), notas: vt('p_not'), mod: nowISO() });
+  if (tipo === 'ped') { o.pedidoId = v('p_ped'); if (!o.pedidoId) return toast('Elegí el pedido (o cambiá a proyectada)', true); delete o.proy; delete o.pCli; delete o.pDesc; }
+  else { o.pedidoId = ''; o.proy = true; o.pCli = vt('p_cli'); o.pDesc = vt('p_desc'); if (!o.pCli) return toast('Poné el cliente o destino', true); }
+  const mueve = o.id && fechaOrig && fechaOrig !== fecha;
+  await escribir('PET Chivilcoy', () => petWrite(d => {
+    const t = nowISO();
+    if (mueve || !o.id) {
+      // cambiar de día = baja en el día viejo + alta nueva (el merge de la app PET es por día)
+      if (mueve) { const dv = d.planificacion[fechaOrig]; if (dv) dv.ops = dv.ops.filter(x => x.id !== o.id); d.planificacionEliminados[o.id] = t; }
+      o.id = 'OPL-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6); o.creado = t; o.mod = t;
+      const dn = d.planificacion[fecha] = d.planificacion[fecha] || { ops: [], notas: '' };
+      o.prioridad = dn.ops.length + 1; dn.ops.push(o);
+    } else {
+      const dn = d.planificacion[fecha] = d.planificacion[fecha] || { ops: [], notas: '' };
+      const i = dn.ops.findIndex(x => x.id === o.id); if (i >= 0) dn.ops[i] = o; else dn.ops.push(o);
+    }
+  }));
+}
+async function borrarPet() {
+  if (!await confirmar('¿Quitar esta producción del cronograma de PET?', 'Quitar')) return;
+  const id = ED.o.id, f = ED.fechaOrig;
+  await escribir('PET Chivilcoy', () => petWrite(d => { const dv = d.planificacion[f]; if (dv) dv.ops = dv.ops.filter(x => x.id !== id); d.planificacionEliminados[id] = nowISO(); }));
+}
+async function petWrite(mut) {
+  const gj = await gistGet();
+  let d;
+  const txt = await gistFile(gj, 'cronograma.json');
+  if (txt != null) d = parseCrono(txt);
+  else { const w = JSON.parse(await gistFile(gj, 'winflex.json') || '{}'); d = { planificacion: w.planificacion || {}, planificacionEliminados: w.planificacionEliminados || {} }; }
+  mut(d);
+  Object.keys(d.planificacion).forEach(f => { const x = d.planificacion[f]; x.ops = (x.ops || []).filter(op => !d.planificacionEliminados[op.id]); if (!x.ops.length && !x.notas) delete d.planificacion[f]; });
+  await gistPatch({ 'cronograma.json': { content: JSON.stringify({ planificacion: d.planificacion, planificacionEliminados: d.planificacionEliminados, lastUpdate: nowISO() }) } });
+  S.pet = d;
+}
+
+/* ── TERMOFORMADO (bin JSONBin de termoformado) ── */
+function terOperarios() { const l = ((S.ter && S.ter.operarios) || []).map(o => o.n).filter(Boolean); return l.length ? l : ['Luna Gabriel', 'Garbia Luis', 'Vera Alan', 'Rodriguez Alan', 'Zayas Antonio', 'Vera Juan']; }
+function diaTurnoTer(f) { const x = ((S.ter && S.ter.cronograma) || []).find(c => c.fecha === f && (c.turno === 'M1' || c.turno === 'M2')); return x ? x.turno : 'M2'; }
+function formTer(o) {
+  ED = o; const ops = terOperarios();
+  modal(o.id ? '♨️ Termoformado · editar' : '♨️ Termoformado · agregar', `
+    <div class="f"><label>Fecha</label><input type="date" id="t_fecha" value="${esc(o.fecha)}"></div>
+    <div class="f"><label>Turno</label><select id="t_turno">${Object.keys(TER_TURNOS).map(k => `<option value="${k}" ${o.turno === k ? 'selected' : ''}>${TER_TURNOS[k]}</option>`).join('')}</select><span class="h">M1 y M2 no se mezclan el mismo día (como en la app)</span></div>
+    <div class="f"><label>Producto / evento</label><select id="t_prod"><option value="">— elegir —</option><optgroup label="Productos">${TER_PRODS.map(p => `<option ${o.prod === p ? 'selected' : ''}>${p}</option>`).join('')}</optgroup><optgroup label="Eventos">${Object.keys(TER_EVT).map(k => `<option value="${k}" ${o.prod === k ? 'selected' : ''}>${TER_EVT[k].ic} ${TER_EVT[k].lbl}</option>`).join('')}</optgroup></select></div>
+    <div class="f"><label>Meta de pallets (opcional)</label><input type="number" id="t_meta" min="0" value="${esc(o.meta || '')}"></div>
+    <div class="f w"><label>Operarios</label><div class="opsel">${ops.map((n, i) => `<label><input type="checkbox" class="t_op" value="${esc(n)}" ${(o.operarios || []).includes(n) ? 'checked' : ''}>${esc(n)}</label>`).join('')}</div></div>
+    <div class="f w"><label>Observaciones</label><input id="t_obs" value="${esc(o.obs || '')}"></div>
+    <div class="info">No hace falta pedido: es lo que se va a producir. Se guarda en la app de Termoformado.</div>`,
+    pieForm('guardarTer()', o.id ? 'borrarTer()' : ''));
+}
+async function guardarTer() {
+  const o = Object.assign({}, ED, { fecha: v('t_fecha'), turno: v('t_turno'), prod: v('t_prod'), meta: parseInt(v('t_meta')) || 0, operarios: [...document.querySelectorAll('.t_op:checked')].map(x => x.value), obs: vt('t_obs'), mod: nowISO() });
+  if (!o.fecha) return toast('Elegí la fecha', true); if (!o.prod) return toast('Elegí el producto', true);
+  if (!o.id) o.id = 'cr' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+  await escribir('Termoformado', () => terWrite(r => {
+    r.cronograma = r.cronograma || [];
+    const i = r.cronograma.findIndex(x => x.id === o.id); if (i >= 0) r.cronograma[i] = o; else r.cronograma.push(o);
+    if (o.turno === 'M1' || o.turno === 'M2') r.cronograma.forEach(x => { if (x.fecha === o.fecha && (x.turno === 'M1' || x.turno === 'M2') && x.turno !== o.turno) { x.turno = o.turno; x.mod = o.mod; } });
+  }, r => (r.cronograma || []).some(x => x.id === o.id && (x.mod || '') >= o.mod)));
+}
+async function borrarTer() {
+  if (!await confirmar('¿Borrar esta asignación de Termoformado?', 'Borrar')) return;
+  const id = ED.id;
+  await escribir('Termoformado', () => terWrite(r => { r.cronograma = (r.cronograma || []).filter(x => x.id !== id); r.cronogramaBorrados = r.cronogramaBorrados || []; if (!r.cronogramaBorrados.some(t => t.id === id)) r.cronogramaBorrados.push({ id, ts: nowISO() }); },
+    r => !(r.cronograma || []).some(x => x.id === id)));
+}
+async function terWrite(mut, ok) {
+  const c = termoCfg();
+  for (let i = 0; i < 2; i++) {
+    const r = await jbGet(c); // siempre sobre lo último de la nube: se conserva todo lo demás del bin
+    mut(r); r._w = { app: 'cronograma-general ' + VERSION, ts: nowISO() };
+    await jbPut(c, r);
+    const chk = await jbGet(c); // verificación: si la tablet pisó justo en el medio, se reintenta
+    if (ok(chk)) { S.ter = chk; return; }
+  }
+  throw new Error('Termoformado no confirmó el cambio, probá de nuevo');
+}
+
+/* ── LAMINADO Y REFILADO (bin JSONBin winflex-refilado) ── */
+function formLam(o) {
+  ED = o; const L = S.lam || {};
+  const ocs = (L.ocs || []).filter(x => x.estado === 'abierta').sort((a, b) => String(a.cliente || '').localeCompare(String(b.cliente || '')));
+  if (o.ocId && !ocs.some(x => x.id === o.ocId)) { const x = lamOc(o.ocId); if (x) ocs.unshift(x); }
+  const tipo = o.ocId ? 'oc' : o.proy ? 'proy' : (o.id ? 'otro' : (ocs.length ? 'oc' : 'proy'));
+  const clis = [...new Set([...(L.catalogo || []).map(p => p.cliente), ...(L.ocs || []).map(x => x.cliente)].filter(Boolean).map(x => String(x).trim()))].sort();
+  const prods = [...new Set((L.catalogo || []).map(p => `${p.cliente} ${p.medida || ''}`.trim()))].sort();
+  modal(o.id ? '🎞 Laminado y Refilado · editar' : '🎞 Laminado y Refilado · agregar', `
+    <div class="f"><label>Fecha</label><input type="date" id="l_fecha" value="${esc(o.fecha)}"></div>
+    <div class="f"><label>Máquina</label><select id="l_maq">${['Laminadora', 'Refiladora Verde', 'Refiladora Gris'].map(m => `<option ${m === o.maq ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+    <div class="f"><label>Turno</label><select id="l_turno">${['Mañana', 'Tarde', 'Noche', 'Todo el día'].map(t => `<option ${t === o.turno ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div class="f"><label>Tipo</label><select id="l_tipo" onchange="lamTipo()"><option value="oc" ${tipo === 'oc' ? 'selected' : ''}>Con OC</option><option value="proy" ${tipo === 'proy' ? 'selected' : ''}>Proyectada (sin OC)</option><option value="otro" ${tipo === 'otro' ? 'selected' : ''}>Otra tarea</option></select></div>
+    <div class="f w l-oc"><label>OC</label><select id="l_oc"><option value="">— elegir OC —</option>${ocs.map(x => `<option value="${esc(x.id)}" ${x.id === o.ocId ? 'selected' : ''}>${esc(x.cliente)} · OC ${esc(x.nro)} · ${esc(x.desc || '')} · ${fmt(x.kg)} kg</option>`).join('')}</select></div>
+    <div class="f l-pr"><label>Cliente</label><input id="l_cli" list="l_clis" value="${esc(o.pCli || '')}"><datalist id="l_clis">${clis.map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>
+    <div class="f l-pr"><label>Producto / medida</label><input id="l_desc" list="l_prods" value="${esc(o.pDesc || '')}"><datalist id="l_prods">${prods.map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>
+    <div class="f"><label>Operario</label><select id="l_op"><option value="">—</option>${(L.operarios || []).map(x => `<option ${x.n === o.operario ? 'selected' : ''}>${esc(x.n)}</option>`).join('')}</select></div>
+    <div class="f"><label>Kg objetivo</label><input type="number" id="l_kg" step="any" value="${esc(o.kgObj ?? '')}"></div>
+    <div class="f w"><label>Nota <span class="h" id="l_nh"></span></label><input id="l_nota" value="${esc(o.nota || '')}"></div>`,
+    pieForm('guardarLam()', o.id ? 'borrarLam()' : ''));
+  lamTipo();
+}
+function lamTipo() { const t = v('l_tipo'); document.querySelectorAll('.l-oc').forEach(e => e.style.display = t === 'oc' ? '' : 'none'); document.querySelectorAll('.l-pr').forEach(e => e.style.display = t === 'proy' ? '' : 'none'); $('l_nh').textContent = t === 'otro' ? '(qué tarea es)' : ''; }
+async function guardarLam() {
+  const tp = v('l_tipo'), t = nowISO();
+  const o = Object.assign({}, ED, { fecha: v('l_fecha'), maq: v('l_maq'), turno: v('l_turno'), ocId: tp === 'oc' ? v('l_oc') : '', proy: tp === 'proy', pCli: tp === 'proy' ? vt('l_cli') : '', pDesc: tp === 'proy' ? vt('l_desc') : '', operario: v('l_op'), kgObj: +v('l_kg') || null, nota: vt('l_nota'), updatedAt: t, por: 'Cronograma General' });
+  if (!o.fecha) return toast('Falta la fecha', true);
+  if (tp === 'oc' && !o.ocId) return toast('Elegí la OC (o cambiá a proyectada)', true);
+  if (tp === 'proy' && !o.pCli) return toast('Falta el cliente', true);
+  if (tp === 'otro' && !o.nota) return toast('Poné en la nota qué tarea es', true);
+  if (!o.id) o.id = uid('CRO');
+  await escribir('Laminado y Refilado', () => lamWrite(s => {
+    s.cronograma = s.cronograma || []; const i = s.cronograma.findIndex(x => x.id === o.id); if (i >= 0) s.cronograma[i] = o; else s.cronograma.push(o);
+  }, s => (s.cronograma || []).some(x => x.id === o.id && (x.updatedAt || '') >= t)));
+}
+async function borrarLam() {
+  if (!await confirmar('¿Borrar esta asignación de Laminado y Refilado?', 'Borrar')) return;
+  const id = ED.id, t = nowISO();
+  await escribir('Laminado y Refilado', () => lamWrite(s => {
+    const c = (s.cronograma || []).find(x => x.id === id); if (c) { c.del = true; c.updatedAt = t; }
+    s.tomb = s.tomb || {}; s.tomb['cronograma:' + id] = t;
+  }, s => !!(s.tomb && s.tomb['cronograma:' + id])));
+}
+async function lamWrite(mut, ok) {
+  const c = lamCfg();
+  for (let i = 0; i < 2; i++) {
+    const s = await jbGet(c);
+    mut(s);
+    await jbPut(c, s);
+    const chk = await jbGet(c);
+    if (ok(chk)) { S.lam = chk; return; }
+  }
+  throw new Error('Laminado no confirmó el cambio, probá de nuevo');
+}
+
+/* ── guardado común ── */
+let escribiendo = false;
+async function escribir(nom, fn) {
+  if (escribiendo) return; escribiendo = true; busy(true, 'Guardando en ' + nom + '…');
+  try { await fn(); cerrar(); toast('Guardado en ' + nom + ' ✓'); render(); }
+  catch (e) { console.error(e); toast(e.message === 'SIN_GIST' ? 'Falta conectar el Gist de PET' : ('No se guardó: ' + e.message), true); }
+  finally { escribiendo = false; busy(false); }
+}
+
+/* ═════════ CONEXIÓN DEL GIST ═════════ */
+function renderConexion() {
+  const c = gistCreds() || {};
+  modal('Conectar PET Chivilcoy y Viajes', `
+    <div class="info w">En esta PC ya está conectado si alguna vez abriste la app de PET Chivilcoy en este mismo navegador. Si no, abrí el <b>link de conexión</b> que genera PET Chivilcoy (⚙ Configuración) cambiando <span class="mono">index.html</span> por <span class="mono">cronograma-general.html</span>, o cargá los datos acá.</div>
+    <div class="f w"><label>Gist ID</label><input id="g_id" value="${esc(c.gistId || '')}" class="mono"></div>
+    <div class="f w"><label>Token de GitHub</label><input id="g_tk" type="password" value="${esc(c.token || '')}" class="mono"></div>`,
+    `<div></div><div style="display:flex;gap:8px"><button class="btn" onclick="cerrar()">Cancelar</button><button class="btn pri" onclick="guardarConexion()">Conectar</button></div>`);
+}
+function guardarConexion() {
+  const g = vt('g_id'), t = vt('g_tk'); if (!g || !t) return toast('Completá los dos datos', true);
+  lsSet('winflex_gist_credentials', JSON.stringify({ gistId: g, token: t })); cerrar(); cargarTodo(true);
+}
+
+/* ═════════ ARRANQUE Y ACTUALIZACIÓN ═════════ */
+function hayModal() { return !!$('modal').innerHTML || !!document.querySelector('.mbg'); }
+setInterval(() => { if (!document.hidden && !hayModal() && !escribiendo) cargarTodo(false); }, 120000);
+window.addEventListener('focus', () => { if (Date.now() - ultCarga > 30000 && !hayModal() && !escribiendo) cargarTodo(false); });
+setInterval(async () => { // se actualiza sola cuando se publica una versión nueva
+  if (hayModal()) return;
+  try { const t = await (await fetch('cronograma-general.html?v=' + Date.now(), { cache: 'no-store' })).text(); const m = t.match(/const VERSION = '([^']+)'/); if (m && m[1] !== VERSION) location.reload(); } catch (_) {}
+}, 180000);
+render();
+cargarTodo(true);
+</script>
+</body>
+</html>
